@@ -10,37 +10,28 @@ import UIKit
 import SwiftUI
 import FineUIKit
 
-final class ToDoListViewController: UIViewController {
-    @Observable
-    final class ViewModel {
-        var items: [ToDo] = []
+@Observable
+final class ToDoListViewModel {
+    var items: [ToDo] = []
+}
+
+final class ToDoListViewController: FineViewController<ToDoListViewModel> {
+    init() {
+        super.init(state: .init())
     }
 
-    let viewModel: ViewModel = .init()
-
-    private var fineUI: FineUI<ViewModel>?
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-
-        view.backgroundColor = .systemBackground
-
-        let fineUI = FineUI(viewModel) { viewModel in
-            FineStack.vertical(spacing: 8) {
-                [
-                    FineLabel(text: "\(viewModel.items.count) items"),
-                    FineButton(title: "Add") {
-                        viewModel.items.append(.init(title: "Task \(viewModel.items.count + 1)"))
-                    },
-                    FineList(viewModel.items) { item in
-                        FineLabel(text: item.title)
-                    },
-                ]
-            }
+    override func body(_ viewModel: ToDoListViewModel) -> any Renderable {
+        FineStack.vertical(spacing: 8) {
+            [
+                FineLabel(text: "\(viewModel.items.count) items"),
+                FineButton(title: "Add") {
+                    viewModel.items.append(.init(title: "Task \(viewModel.items.count + 1)"))
+                },
+                FineList(viewModel.items) { item in
+                    FineLabel(text: item.title)
+                },
+            ]
         }
-        fineUI.build(to: view)
-
-        self.fineUI = fineUI
     }
 }
 

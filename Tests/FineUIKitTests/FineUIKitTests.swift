@@ -105,6 +105,38 @@ struct FineListTests {
 }
 
 @MainActor
+struct FineViewControllerTests {
+    @Observable
+    final class Counter {
+        var count: Int = 0
+    }
+
+    final class CounterViewController: FineViewController<Counter> {
+        override func body(_ state: Counter) -> any Renderable {
+            FineLabel(text: "\(state.count)")
+        }
+    }
+
+    @Test func buildsBodyAndRerendersOnStateChange() async throws {
+        let counter = Counter()
+        let viewController = CounterViewController(state: counter)
+        viewController.loadViewIfNeeded()
+
+        let label = try #require(viewController.view.subviews.first as? UILabel)
+        #expect(label.text == "0")
+
+        counter.count = 1
+
+        for _ in 0..<10 where label.text != "1" {
+            await Task.yield()
+        }
+
+        #expect(label.text == "1")
+        #expect(viewController.view.subviews.first === label)
+    }
+}
+
+@MainActor
 struct FineUITests {
     @Observable
     final class Counter {

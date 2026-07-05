@@ -24,16 +24,55 @@ public final class FineUI<State> {
     private weak var container: UIView?
     private var rootView: UIView?
 
+    #if DEBUG
+    // nonisolated(unsafe): only written on the main actor; deinit reads it
+    // when no other references remain.
+    private nonisolated(unsafe) var injectionObserver: (any NSObjectProtocol)?
+    #endif
+
     public init(_ state: State, body: @escaping @MainActor (State) -> any Renderable) {
         self.state = state
         self.body = body
+    }
+
+    deinit {
+        #if DEBUG
+        if let injectionObserver {
+            NotificationCenter.default.removeObserver(injectionObserver)
+        }
+        #endif
     }
 
     /// Renders the tree into `container` and starts observing `state`.
     public func build(to container: UIView) {
         self.container = container
         render()
+
+        #if DEBUG
+        observeInjection()
+        #endif
     }
+
+    #if DEBUG
+    /// Re-renders after a code injection (InjectionIII / InjectionNext /
+    /// InjectionLite) so updated component implementations take effect.
+    /// Note: `body` itself is a closure captured at init; to pick up changes
+    /// to the body's source, recreate the `FineUI` from the injection
+    /// notification in your view controller.
+    private func observeInjection() {
+        guard injectionObserver == nil else { return }
+
+        injectionObserver = NotificationCenter.default.addObserver(
+            forName: .init("INJECTION_BUNDLE_NOTIFICATION"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.render()
+            }
+        }
+    }
+    #endif
 
     private func render() {
         guard let container else { return }

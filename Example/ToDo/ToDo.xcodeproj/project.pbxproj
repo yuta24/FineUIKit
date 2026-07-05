@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		988BDF3E2FF80EED0073085B /* FineUIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 988BDF3D2FF80EED0073085B /* FineUIKit */; };
+		988BDF422FF810000073085B /* InjectionLite in Frameworks */ = {isa = PBXBuildFile; productRef = 988BDF412FF810000073085B /* InjectionLite */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +28,7 @@
 			isa = PBXFrameworksBuildPhase;
 			files = (
 				988BDF3E2FF80EED0073085B /* FineUIKit in Frameworks */,
+				988BDF422FF810000073085B /* InjectionLite in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -67,6 +69,7 @@
 			name = ToDo;
 			packageProductDependencies = (
 				988BDF3D2FF80EED0073085B /* FineUIKit */,
+				988BDF412FF810000073085B /* InjectionLite */,
 			);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* ToDo.app */;
@@ -98,6 +101,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				988BDF3C2FF80EED0073085B /* XCLocalSwiftPackageReference "../../../FineUIKit" */,
+				988BDF402FF810000073085B /* XCRemoteSwiftPackageReference "InjectionLite" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -280,6 +284,10 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-Xlinker",
+					"-interposable",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "devplaceholder.$(PROJECT_UNIQUE_VALUE:identifier).$(PRODUCT_NAME:identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -362,10 +370,26 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		988BDF402FF810000073085B /* XCRemoteSwiftPackageReference "InjectionLite" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/johnno1962/InjectionLite";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		988BDF3D2FF80EED0073085B /* FineUIKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = FineUIKit;
+		};
+		988BDF412FF810000073085B /* InjectionLite */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 988BDF402FF810000073085B /* XCRemoteSwiftPackageReference "InjectionLite" */;
+			productName = InjectionLite;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
