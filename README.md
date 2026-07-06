@@ -50,7 +50,7 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
 | コンポーネント | ベース | 特記事項 |
 |---|---|---|
 | `FineLabel` | `UILabel` | 型付きモディファイア: `.font` / `.textColor` / `.textAlignment` / `.numberOfLines` |
-| `FineButton` | `UIButton` | `action` クロージャ |
+| `FineButton` | `UIButton` | `action` クロージャ。`.image` / `.configuration(UIButton.Configuration)` |
 | `FineImage` | `UIImageView` | |
 | `FineStack` | `UIStackView` | `vertical` / `horizontal`、`spacing` / `alignment` / `distribution`。子は keyed + 位置ベースで差分適用 |
 | `FineList` | `UITableView` | diffable data source(`Identifiable`)。`.onSelect` / `.onDelete`(スワイプ削除) |
@@ -83,6 +83,9 @@ FineLabel(text: title)
     .padding(16)                                     // レイアウト(ラッパー)
     .backgroundColor(.systemGray6)                   // 外観(同一ビューへ適用)
     .cornerRadius(8)
+
+FineButton(title: "Add") { viewModel.add() }
+    .configuration(.filled())
 ```
 
 - 外観系: `.backgroundColor` / `.cornerRadius` / `.border` / `.opacity` / `.tintColor`

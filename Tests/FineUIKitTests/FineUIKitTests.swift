@@ -55,6 +55,80 @@ struct FineRendererTests {
 }
 
 @MainActor
+struct FineButtonTests {
+    private func testImage() -> UIImage {
+        UIGraphicsImageRenderer(size: .init(width: 1, height: 1)).image { _ in }
+    }
+
+    @Test func imageAppliesAndResetsWithoutConfiguration() throws {
+        let first = FineRenderer.render(FineButton(title: "Add", action: {}).image(testImage()))
+        let button = try #require(first as? UIButton)
+
+        #expect(button.configuration == nil)
+        #expect(button.image(for: .normal) != nil)
+
+        let second = FineRenderer.render(FineButton(title: "Add", action: {}), reusing: first)
+
+        #expect(second === first)
+        #expect(button.configuration == nil)
+        #expect(button.image(for: .normal) == nil)
+    }
+
+    @Test func configurationReceivesDeclaredTitleAndImage() throws {
+        let image = testImage()
+        var configuration = UIButton.Configuration.filled()
+        configuration.title = "Ignored"
+        configuration.image = testImage()
+
+        let view = FineRenderer.render(
+            FineButton(title: "Save", action: {})
+                .image(image)
+                .configuration(configuration)
+        )
+        let button = try #require(view as? UIButton)
+        let appliedConfiguration = try #require(button.configuration)
+        let appliedImage = try #require(appliedConfiguration.image)
+
+        #expect(appliedConfiguration.title == "Save")
+        #expect(appliedImage === image)
+    }
+
+    @Test func configurationPresenceControlsReuseButValueChangesInPlace() {
+        let configured = FineRenderer.render(FineButton(title: "A", action: {}).configuration(.filled()))
+        let plain = FineRenderer.render(FineButton(title: "A", action: {}), reusing: configured)
+
+        #expect(plain !== configured)
+
+        let filled = FineRenderer.render(FineButton(title: "A", action: {}).configuration(.filled()))
+        let tinted = FineRenderer.render(FineButton(title: "B", action: {}).configuration(.tinted()), reusing: filled)
+
+        #expect(tinted === filled)
+        #expect((tinted as? UIButton)?.configuration?.title == "B")
+    }
+
+    @Test func configuredButtonActionDoesNotStackOnReuse() throws {
+        var tapCount = 0
+        let first = FineRenderer.render(
+            FineButton(title: "Tap", action: { tapCount += 1 })
+                .configuration(.filled())
+        )
+        let button = try #require(first as? UIButton)
+
+        let second = FineRenderer.render(
+            FineButton(title: "Tap", action: { tapCount += 1 })
+                .configuration(.filled()),
+            reusing: first
+        )
+
+        #expect(second === first)
+
+        button.sendActions(for: .primaryActionTriggered)
+
+        #expect(tapCount == 1)
+    }
+}
+
+@MainActor
 struct FineListTests {
     final class Item: Identifiable {
         let id: String
