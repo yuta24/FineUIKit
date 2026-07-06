@@ -830,6 +830,177 @@ struct FineAccessibilityTests {
 }
 
 @MainActor
+struct FineBuilderTests {
+    final class Item: Identifiable {
+        let id: String
+        let title: String
+
+        init(id: String, title: String) {
+            self.id = id
+            self.title = title
+        }
+    }
+
+    @Test func sequentialStatementsBecomeArrangedSubviewsInOrder() throws {
+        let stack = FineRenderer.render(FineStack.vertical {
+            FineLabel(text: "A")
+            FineButton(title: "B") {}
+            FineLabel(text: "C")
+        })
+        let stackView = try #require(stack as? UIStackView)
+
+        #expect(stackView.arrangedSubviews.count == 3)
+        #expect((stackView.arrangedSubviews[0] as? UILabel)?.text == "A")
+        #expect((stackView.arrangedSubviews[1] as? UIButton)?.title(for: .normal) == "B")
+        #expect((stackView.arrangedSubviews[2] as? UILabel)?.text == "C")
+    }
+
+    @Test func optionalIfAddsAndRemovesChildrenAcrossRenders() throws {
+        var showsDetail = true
+        let stack = FineRenderer.render(FineStack.vertical {
+            FineLabel(text: "Header")
+            if showsDetail {
+                FineLabel(text: "Detail")
+            }
+        })
+        let stackView = try #require(stack as? UIStackView)
+        let header = stackView.arrangedSubviews[0]
+
+        #expect(stackView.arrangedSubviews.count == 2)
+
+        showsDetail = false
+        _ = FineRenderer.render(FineStack.vertical {
+            FineLabel(text: "Header")
+            if showsDetail {
+                FineLabel(text: "Detail")
+            }
+        }, reusing: stack)
+
+        #expect(stackView.arrangedSubviews.count == 1)
+        #expect(stackView.arrangedSubviews[0] === header)
+        #expect((stackView.arrangedSubviews[0] as? UILabel)?.text == "Header")
+    }
+
+    @Test func eitherBranchesUseExistingDiffRules() throws {
+        var usesButton = false
+        let differentType = FineRenderer.render(FineStack.vertical {
+            if usesButton {
+                FineButton(title: "Action") {}
+            } else {
+                FineLabel(text: "Label")
+            }
+        })
+        let differentTypeStack = try #require(differentType as? UIStackView)
+        let originalLabel = differentTypeStack.arrangedSubviews[0]
+
+        usesButton = true
+        _ = FineRenderer.render(FineStack.vertical {
+            if usesButton {
+                FineButton(title: "Action") {}
+            } else {
+                FineLabel(text: "Label")
+            }
+        }, reusing: differentType)
+
+        #expect(differentTypeStack.arrangedSubviews[0] !== originalLabel)
+        #expect(differentTypeStack.arrangedSubviews[0] is UIButton)
+
+        var usesAlternateText = false
+        let sameType = FineRenderer.render(FineStack.vertical {
+            if usesAlternateText {
+                FineLabel(text: "B")
+            } else {
+                FineLabel(text: "A")
+            }
+        })
+        let sameTypeStack = try #require(sameType as? UIStackView)
+        let originalSameTypeLabel = sameTypeStack.arrangedSubviews[0]
+
+        usesAlternateText = true
+        _ = FineRenderer.render(FineStack.vertical {
+            if usesAlternateText {
+                FineLabel(text: "B")
+            } else {
+                FineLabel(text: "A")
+            }
+        }, reusing: sameType)
+
+        #expect(sameTypeStack.arrangedSubviews[0] === originalSameTypeLabel)
+        #expect((sameTypeStack.arrangedSubviews[0] as? UILabel)?.text == "B")
+    }
+
+    @Test func forInIsFlattened() throws {
+        let items = ["A", "B", "C"]
+        let stack = FineRenderer.render(FineStack.vertical {
+            FineLabel(text: "Header")
+            for item in items {
+                FineLabel(text: item)
+            }
+        })
+        let stackView = try #require(stack as? UIStackView)
+
+        #expect(stackView.arrangedSubviews.count == 4)
+        #expect((stackView.arrangedSubviews[0] as? UILabel)?.text == "Header")
+        #expect((stackView.arrangedSubviews[1] as? UILabel)?.text == "A")
+        #expect((stackView.arrangedSubviews[2] as? UILabel)?.text == "B")
+        #expect((stackView.arrangedSubviews[3] as? UILabel)?.text == "C")
+    }
+
+    @Test func fineForEachKeepsKeyedViewsInsideBuilder() throws {
+        let a = Item(id: "a", title: "A")
+        let b = Item(id: "b", title: "B")
+        let c = Item(id: "c", title: "C")
+        let stack = FineRenderer.render(FineStack.vertical {
+            FineLabel(text: "Header")
+            FineForEach([a, b]) { item in
+                FineLabel(text: item.title)
+            }
+        })
+        let stackView = try #require(stack as? UIStackView)
+        let header = stackView.arrangedSubviews[0]
+        let originalA = stackView.arrangedSubviews[1]
+        let originalB = stackView.arrangedSubviews[2]
+
+        _ = FineRenderer.render(FineStack.vertical {
+            FineLabel(text: "Header")
+            FineForEach([c, a, b]) { item in
+                FineLabel(text: item.title)
+            }
+        }, reusing: stack)
+
+        #expect(stackView.arrangedSubviews.count == 4)
+        #expect(stackView.arrangedSubviews[0] === header)
+        #expect(stackView.arrangedSubviews[1] !== originalA)
+        #expect(stackView.arrangedSubviews[2] === originalA)
+        #expect(stackView.arrangedSubviews[3] === originalB)
+        #expect((stackView.arrangedSubviews[1] as? UILabel)?.text == "C")
+        #expect((stackView.arrangedSubviews[2] as? UILabel)?.text == "A")
+        #expect((stackView.arrangedSubviews[3] as? UILabel)?.text == "B")
+    }
+
+    @Test func arrayLiteralAndExplicitReturnClosuresRemainCompatible() throws {
+        let arrayLiteral = FineRenderer.render(FineStack.vertical {
+            [FineLabel(text: "A"), FineLabel(text: "B")]
+        })
+        let arrayLiteralStack = try #require(arrayLiteral as? UIStackView)
+
+        #expect(arrayLiteralStack.arrangedSubviews.count == 2)
+        #expect((arrayLiteralStack.arrangedSubviews[0] as? UILabel)?.text == "A")
+        #expect((arrayLiteralStack.arrangedSubviews[1] as? UILabel)?.text == "B")
+
+        let explicitReturn = FineRenderer.render(FineStack.vertical {
+            let first: any Renderable = FineLabel(text: "C")
+            return [first, FineLabel(text: "D")]
+        })
+        let explicitReturnStack = try #require(explicitReturn as? UIStackView)
+
+        #expect(explicitReturnStack.arrangedSubviews.count == 2)
+        #expect((explicitReturnStack.arrangedSubviews[0] as? UILabel)?.text == "C")
+        #expect((explicitReturnStack.arrangedSubviews[1] as? UILabel)?.text == "D")
+    }
+}
+
+@MainActor
 struct FineKeyedReconciliationTests {
     final class Item: Identifiable {
         let id: String

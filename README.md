@@ -25,23 +25,19 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
 
     override func body(_ viewModel: ToDoListViewModel) -> any Renderable {
         FineStack.vertical(spacing: 8) {
-            [
-                FineLabel(text: "\(viewModel.items.count) items")
-                    .font(.preferredFont(forTextStyle: .headline))
-                    .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16)),
-                FineStack.horizontal(spacing: 8) {
-                    [
-                        FineTextField(text: .init(viewModel, \.draft), placeholder: "New task"),
-                        FineButton(title: "Add") { viewModel.add() }
-                            .hugging(.defaultHigh, axis: .horizontal),
-                    ]
-                }
-                .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16)),
-                FineList(viewModel.items) { item in
-                    FineLabel(text: item.title)
-                }
-                .onDelete { viewModel.remove($0) },
-            ]
+            FineLabel(text: "\(viewModel.items.count) items")
+                .font(.preferredFont(forTextStyle: .headline))
+                .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16))
+            FineStack.horizontal(spacing: 8) {
+                FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
+                FineButton(title: "Add") { viewModel.add() }
+                    .hugging(.defaultHigh, axis: .horizontal)
+            }
+            .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16))
+            FineList(viewModel.items) { item in
+                FineLabel(text: item.title)
+            }
+            .onDelete { viewModel.remove($0) }
         }
     }
 }
@@ -124,11 +120,15 @@ FineImage(image: photo).constraints(id: "photo") { view in   // エスケープ�
 
 ```swift
 FineStack.vertical(spacing: 8) {
-    [FineLabel(text: "Header")] + FineForEach(items) { item in
+    FineLabel(text: "Header")
+    FineForEach(items) { item in
         FineTextField(text: .init(item, \.title))
     }
 }
 ```
+
+`if/else` と `for-in` は位置ベースで照合されます。安定した identity が必要な子には `FineForEach` か `.key(_:)` を使ってください。
+従来の配列リテラル構文(`{ [a, b] }` や配列連結)もそのまま動きます。
 
 `FineList` / `FineGrid` は `Identifiable` の ID で常に keyed です。
 

@@ -33,7 +33,7 @@ public struct FineStack: Renderable {
         spacing: CGFloat = 0,
         alignment: UIStackView.Alignment = .fill,
         distribution: UIStackView.Distribution = .fill,
-        content: @escaping @MainActor () -> [any Renderable]
+        @FineBuilder content: @escaping @MainActor () -> [any Renderable]
     ) -> FineStack {
         .init(axis: .vertical, spacing: spacing, alignment: alignment, distribution: distribution, content: content)
     }
@@ -42,7 +42,7 @@ public struct FineStack: Renderable {
         spacing: CGFloat = 0,
         alignment: UIStackView.Alignment = .fill,
         distribution: UIStackView.Distribution = .fill,
-        content: @escaping @MainActor () -> [any Renderable]
+        @FineBuilder content: @escaping @MainActor () -> [any Renderable]
     ) -> FineStack {
         .init(axis: .horizontal, spacing: spacing, alignment: alignment, distribution: distribution, content: content)
     }
