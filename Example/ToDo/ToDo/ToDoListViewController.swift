@@ -61,7 +61,8 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
                                 : viewModel.draft
                             viewModel.items.append(.init(title: title))
                             viewModel.draft = ""
-                        },
+                        }
+                        .hugging(.defaultHigh, axis: .horizontal),
                     ]
                 }
                 .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16)),

@@ -20,11 +20,7 @@ public struct FineButton: Renderable {
     }
 
     public func _makeView() -> UIView {
-        let button = UIButton(type: .system)
-        // Hug the title horizontally so the button doesn't swallow flexible
-        // neighbors (e.g. a text field) in a horizontal stack.
-        button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-        return button
+        UIButton(type: .system)
     }
 
     public func _canUpdate(_ view: UIView) -> Bool {

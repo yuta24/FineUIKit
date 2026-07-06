@@ -582,6 +582,192 @@ struct FineModifierTests {
 }
 
 @MainActor
+struct FineLayoutModifierTests {
+    private func attachToWindow(_ view: UIView, width: CGFloat = 320, height: CGFloat = 200) -> UIWindow {
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: width, height: height))
+        view.translatesAutoresizingMaskIntoConstraints = false
+        window.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.topAnchor.constraint(equalTo: window.topAnchor),
+            view.leadingAnchor.constraint(equalTo: window.leadingAnchor),
+            view.widthAnchor.constraint(equalToConstant: width),
+            view.heightAnchor.constraint(equalToConstant: height),
+        ])
+        window.isHidden = false
+        return window
+    }
+
+    private func approximatelyEqual(_ lhs: CGFloat, _ rhs: CGFloat) -> Bool {
+        abs(lhs - rhs) < 0.5
+    }
+
+    @Test func widthHeightAndAspectConstraintsInstallAndUpdate() throws {
+        let first = FineRenderer.render(
+            FineLabel(text: "A")
+                .width(.equal, 100)
+                .height(.greaterThanOrEqual, 44, priority: .init(750))
+                .aspectRatio(2)
+        )
+        let width = try #require(first.fineInstalledConstraints.values.first {
+            $0.firstAttribute == .width && $0.secondItem == nil
+        })
+        let height = try #require(first.fineInstalledConstraints.values.first {
+            $0.firstAttribute == .height && $0.relation == .greaterThanOrEqual
+        })
+        let aspect = try #require(first.fineInstalledConstraints.values.first {
+            $0.firstAttribute == .width && $0.secondAttribute == .height
+        })
+
+        #expect(width.constant == 100)
+        #expect(width.relation == .equal)
+        #expect(width.priority == .init(999))
+        #expect(height.constant == 44)
+        #expect(height.priority == .init(750))
+        #expect(aspect.multiplier == 2)
+
+        let second = FineRenderer.render(
+            FineLabel(text: "B")
+                .width(.equal, 120)
+                .height(.greaterThanOrEqual, 50, priority: .init(750))
+                .aspectRatio(2),
+            reusing: first
+        )
+        let updatedWidth = try #require(second.fineInstalledConstraints.values.first {
+            $0.firstAttribute == .width && $0.secondItem == nil
+        })
+        let updatedHeight = try #require(second.fineInstalledConstraints.values.first {
+            $0.firstAttribute == .height && $0.relation == .greaterThanOrEqual
+        })
+
+        #expect(second === first)
+        #expect(updatedWidth === width)
+        #expect(updatedHeight === height)
+        #expect(updatedWidth.constant == 120)
+        #expect(updatedHeight.constant == 50)
+
+        let third = FineRenderer.render(FineLabel(text: "C").width(.lessThanOrEqual, 120), reusing: second)
+        #expect(third !== second)
+    }
+
+    @Test func priorityModifiersApplyAndDoNotLeak() {
+        let styled = FineRenderer.render(
+            FineLabel(text: "A")
+                .hugging(.required, axis: .horizontal)
+                .compressionResistance(.required, axis: .vertical)
+        )
+
+        #expect(styled.contentHuggingPriority(for: .horizontal) == .required)
+        #expect(styled.contentCompressionResistancePriority(for: .vertical) == .required)
+
+        let plain = FineRenderer.render(FineLabel(text: "B"), reusing: styled)
+        #expect(plain !== styled)
+    }
+
+    @Test func fillStackCanOverrideSelfWidthConstraint() {
+        let stack = FineRenderer.render(FineStack.vertical {
+            [FineLabel(text: "A").width(.equal, 120)]
+        })
+        let stackView = stack as! UIStackView
+        let window = attachToWindow(stackView, width: 300, height: 80)
+
+        window.layoutIfNeeded()
+
+        #expect(approximatelyEqual(stackView.bounds.width, 300))
+        #expect(approximatelyEqual(stackView.arrangedSubviews[0].bounds.width, stackView.bounds.width))
+        _ = window
+    }
+
+    @Test func frameAlignmentCentersChildAndAlignmentChangeRebuilds() throws {
+        let first = FineRenderer.render(FineLabel(text: "A").frame(width: 44, height: 44, alignment: .center))
+        let frameView = try #require(first as? FineFrameView)
+        let child = try #require(frameView.hosted)
+        let window = attachToWindow(frameView, width: 44, height: 44)
+
+        window.layoutIfNeeded()
+
+        #expect(approximatelyEqual(child.center.x, frameView.bounds.midX))
+        #expect(approximatelyEqual(child.center.y, frameView.bounds.midY))
+
+        let second = FineRenderer.render(FineLabel(text: "A").frame(width: 44, height: 44, alignment: .leading), reusing: first)
+        #expect(second !== first)
+        _ = window
+    }
+
+    @Test func customConstraintsRecreateOnEveryRender() throws {
+        var runCount = 0
+        let node = {
+            FineLabel(text: "A").constraints(id: "test") { view in
+                runCount += 1
+                return [view.widthAnchor.constraint(equalToConstant: CGFloat(10 * runCount))]
+            }
+        }
+
+        let first = FineRenderer.render(node())
+        let firstConstraint = try #require(first.fineCustomConstraints["custom:test"]?.first)
+
+        #expect(runCount == 1)
+        #expect(firstConstraint.isActive)
+
+        let second = FineRenderer.render(node(), reusing: first)
+        let secondConstraint = try #require(second.fineCustomConstraints["custom:test"]?.first)
+
+        #expect(second === first)
+        #expect(runCount == 2)
+        #expect(firstConstraint !== secondConstraint)
+        #expect(firstConstraint.isActive == false)
+        #expect(secondConstraint.isActive)
+    }
+
+    @Test func spacerAbsorbsSlackAndMinLengthInstallsConstraints() throws {
+        let stack = FineRenderer.render(FineStack.horizontal {
+            [
+                FineLabel(text: "A"),
+                FineSpacer(),
+                FineLabel(text: "B"),
+            ]
+        })
+        let stackView = stack as! UIStackView
+        let window = attachToWindow(stackView, width: 400, height: 80)
+
+        window.layoutIfNeeded()
+
+        #expect(approximatelyEqual(stackView.arrangedSubviews[0].frame.minX, 0))
+        #expect(approximatelyEqual(stackView.arrangedSubviews[2].frame.maxX, 400))
+
+        let spacer = FineRenderer.render(FineSpacer(minLength: 20))
+        let minWidth = try #require(spacer.fineInstalledConstraints["spacer.minW"])
+        let minHeight = try #require(spacer.fineInstalledConstraints["spacer.minH"])
+        #expect(minWidth.relation == .greaterThanOrEqual)
+        #expect(minWidth.constant == 20)
+        #expect(minHeight.relation == .greaterThanOrEqual)
+        #expect(minHeight.constant == 20)
+        _ = window
+    }
+
+    @Test func scrollViewHostsTallContentAndReusesViews() throws {
+        let makeContent = {
+            FineStack.vertical(spacing: 4) {
+                (0..<30).map { FineLabel(text: "\($0)") as any Renderable }
+            }
+        }
+        let first = FineRenderer.render(FineScrollView(.vertical) { makeContent() })
+        let scrollView = try #require(first as? FineScrollHostView)
+        let hosted = try #require(scrollView.hosted)
+        let window = attachToWindow(scrollView, width: 200, height: 100)
+
+        window.layoutIfNeeded()
+
+        #expect(scrollView.contentSize.height > scrollView.bounds.height)
+
+        let second = FineRenderer.render(FineScrollView(.vertical) { makeContent() }, reusing: first)
+
+        #expect(second === first)
+        #expect(scrollView.hosted === hosted)
+        _ = window
+    }
+}
+
+@MainActor
 struct FineKeyedReconciliationTests {
     final class Item: Identifiable {
         let id: String

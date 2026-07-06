@@ -12,6 +12,8 @@ import ObjectiveC
 extension UIView {
     nonisolated(unsafe) static var fineModifierSignatureKey: UInt8 = 0
     nonisolated(unsafe) static var fineKeyKey: UInt8 = 0
+    nonisolated(unsafe) static var fineInstalledConstraintsKey: UInt8 = 0
+    nonisolated(unsafe) static var fineCustomConstraintsKey: UInt8 = 0
 
     var fineModifierSignature: String {
         get {
@@ -28,6 +30,24 @@ extension UIView {
         }
         set {
             objc_setAssociatedObject(self, &Self.fineKeyKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
+
+    var fineInstalledConstraints: [String: NSLayoutConstraint] {
+        get {
+            objc_getAssociatedObject(self, &Self.fineInstalledConstraintsKey) as? [String: NSLayoutConstraint] ?? [:]
+        }
+        set {
+            objc_setAssociatedObject(self, &Self.fineInstalledConstraintsKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
+
+    var fineCustomConstraints: [String: [NSLayoutConstraint]] {
+        get {
+            objc_getAssociatedObject(self, &Self.fineCustomConstraintsKey) as? [String: [NSLayoutConstraint]] ?? [:]
+        }
+        set {
+            objc_setAssociatedObject(self, &Self.fineCustomConstraintsKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
     }
 }
