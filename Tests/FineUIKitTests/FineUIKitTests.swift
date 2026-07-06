@@ -275,3 +275,96 @@ struct FineUITests {
         #expect(stackView.arrangedSubviews.first === label)
     }
 }
+
+@MainActor
+struct FineModifierTests {
+    @Test func styleValueChangeReusesView() throws {
+        let first = FineRenderer.render(FineLabel(text: "A").backgroundColor(.red))
+        let second = FineRenderer.render(FineLabel(text: "B").backgroundColor(.blue), reusing: first)
+
+        #expect(second === first)
+        #expect(second.backgroundColor?.isEqual(UIColor.blue) == true)
+        #expect((second as? UILabel)?.text == "B")
+    }
+
+    @Test func removedStyleRebuildsView() {
+        let first = FineRenderer.render(FineLabel(text: "A").backgroundColor(.red))
+        let second = FineRenderer.render(FineLabel(text: "B"), reusing: first)
+
+        #expect(second !== first)
+        // A fresh UILabel's default background isn't nil on recent SDKs;
+        // what matters is that the styled color didn't leak into the rebuild.
+        #expect(second.backgroundColor?.isEqual(UIColor.red) != true)
+        #expect((second as? UILabel)?.text == "B")
+    }
+
+    @Test func paddingReusesContainerAndChildWhileUpdatingInsets() throws {
+        let first = FineRenderer.render(FineLabel(text: "A").padding(.init(top: 1, leading: 2, bottom: 3, trailing: 4)))
+        let paddingView = try #require(first as? FinePaddingView)
+        let child = try #require(paddingView.hosted as? UILabel)
+
+        let second = FineRenderer.render(FineLabel(text: "B").padding(.init(top: 5, leading: 6, bottom: 7, trailing: 8)), reusing: first)
+
+        #expect(second === first)
+        #expect(paddingView.hosted === child)
+        #expect(child.text == "B")
+        #expect(paddingView.topConstraint?.constant == 5)
+        #expect(paddingView.leadingConstraint?.constant == 6)
+        #expect(paddingView.bottomConstraint?.constant == 7)
+        #expect(paddingView.trailingConstraint?.constant == 8)
+    }
+
+    @Test func modifierOrderControlsStyledView() throws {
+        let styledChild = FineRenderer.render(FineLabel(text: "A").backgroundColor(.red).padding(4))
+        let styledChildContainer = try #require(styledChild as? FinePaddingView)
+        let styledChildLabel = try #require(styledChildContainer.hosted as? UILabel)
+
+        #expect(styledChildContainer.backgroundColor == nil)
+        #expect(styledChildLabel.backgroundColor?.isEqual(UIColor.red) == true)
+
+        let styledContainer = FineRenderer.render(FineLabel(text: "A").padding(4).backgroundColor(.blue))
+        let paddingView = try #require(styledContainer as? FinePaddingView)
+        let label = try #require(paddingView.hosted as? UILabel)
+
+        #expect(paddingView.backgroundColor?.isEqual(UIColor.blue) == true)
+        #expect(label.backgroundColor?.isEqual(UIColor.blue) != true)
+    }
+
+    @Test func frameCreatesDimensionConstraints() throws {
+        let view = FineRenderer.render(FineLabel(text: "A").frame(width: 120, height: 44))
+        let frameView = try #require(view as? FineFrameView)
+        let label = try #require(frameView.hosted as? UILabel)
+
+        #expect(label.text == "A")
+        #expect(frameView.widthConstraint?.constant == 120)
+        #expect(frameView.heightConstraint?.constant == 44)
+        #expect(frameView.widthConstraint?.isActive == true)
+        #expect(frameView.heightConstraint?.isActive == true)
+    }
+
+    @Test func labelTypedModifiersApplyAndResetToDefaults() throws {
+        let customFont = UIFont.boldSystemFont(ofSize: 22)
+        let first = FineRenderer.render(
+            FineLabel(text: "A")
+                .font(customFont)
+                .textColor(.red)
+                .textAlignment(.center)
+                .numberOfLines(3)
+        )
+        let label = try #require(first as? UILabel)
+
+        #expect(label.font.isEqual(customFont))
+        #expect(label.textColor.isEqual(UIColor.red))
+        #expect(label.textAlignment == .center)
+        #expect(label.numberOfLines == 3)
+
+        let second = FineRenderer.render(FineLabel(text: "B"), reusing: first)
+
+        #expect(second === first)
+        #expect(label.text == "B")
+        #expect(label.font.isEqual(UIFont.systemFont(ofSize: UIFont.labelFontSize)))
+        #expect(label.textColor.isEqual(UIColor.label))
+        #expect(label.textAlignment == .natural)
+        #expect(label.numberOfLines == 1)
+    }
+}

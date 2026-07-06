@@ -22,4 +22,13 @@ public protocol Renderable {
 
     /// Applies this description to `view`.
     func _update(_ view: UIView)
+
+    /// Identity for wrapper/property modifiers that affect reuse safety.
+    var _modifierSignature: String { get }
+}
+
+public extension Renderable {
+    var _modifierSignature: String {
+        ""
+    }
 }

@@ -24,7 +24,8 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
     override func body(_ viewModel: ToDoListViewModel) -> any Renderable {
         FineStack.vertical(spacing: 8) {
             [
-                FineLabel(text: "\(viewModel.items.count) items"),
+                FineLabel(text: "\(viewModel.items.count) items")
+                    .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16)),
                 FineStack.horizontal(spacing: 8) {
                     [
                         FineTextField(text: .init(viewModel, \.draft), placeholder: "New task"),
@@ -36,7 +37,8 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
                             viewModel.draft = ""
                         },
                     ]
-                },
+                }
+                .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16)),
                 FineList(viewModel.items) { item in
                     FineStack.horizontal(spacing: 8) {
                         [

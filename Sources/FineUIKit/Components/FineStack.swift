@@ -11,20 +11,40 @@ import UIKit
 public struct FineStack: Renderable {
     private let axis: NSLayoutConstraint.Axis
     private let spacing: CGFloat
+    private let alignment: UIStackView.Alignment
+    private let distribution: UIStackView.Distribution
     private let content: () -> [any Renderable]
 
-    private init(axis: NSLayoutConstraint.Axis, spacing: CGFloat, content: @escaping @MainActor () -> [any Renderable]) {
+    private init(
+        axis: NSLayoutConstraint.Axis,
+        spacing: CGFloat,
+        alignment: UIStackView.Alignment,
+        distribution: UIStackView.Distribution,
+        content: @escaping @MainActor () -> [any Renderable]
+    ) {
         self.axis = axis
         self.spacing = spacing
+        self.alignment = alignment
+        self.distribution = distribution
         self.content = content
     }
 
-    public static func vertical(spacing: CGFloat = 0, content: @escaping @MainActor () -> [any Renderable]) -> FineStack {
-        .init(axis: .vertical, spacing: spacing, content: content)
+    public static func vertical(
+        spacing: CGFloat = 0,
+        alignment: UIStackView.Alignment = .fill,
+        distribution: UIStackView.Distribution = .fill,
+        content: @escaping @MainActor () -> [any Renderable]
+    ) -> FineStack {
+        .init(axis: .vertical, spacing: spacing, alignment: alignment, distribution: distribution, content: content)
     }
 
-    public static func horizontal(spacing: CGFloat = 0, content: @escaping @MainActor () -> [any Renderable]) -> FineStack {
-        .init(axis: .horizontal, spacing: spacing, content: content)
+    public static func horizontal(
+        spacing: CGFloat = 0,
+        alignment: UIStackView.Alignment = .fill,
+        distribution: UIStackView.Distribution = .fill,
+        content: @escaping @MainActor () -> [any Renderable]
+    ) -> FineStack {
+        .init(axis: .horizontal, spacing: spacing, alignment: alignment, distribution: distribution, content: content)
     }
 
     public func _makeView() -> UIView {
@@ -40,6 +60,8 @@ public struct FineStack: Renderable {
 
         stackView.axis = axis
         stackView.spacing = spacing
+        stackView.alignment = alignment
+        stackView.distribution = distribution
 
         // Reconcile children positionally: reuse the arranged subview at the
         // same index when compatible, otherwise a new view takes its place.
