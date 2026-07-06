@@ -13,6 +13,7 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
     private let content: @MainActor (Element) -> any Renderable
     private var onSelect: (@MainActor (Element) -> Void)?
     private var onDelete: (@MainActor (Element) -> Void)?
+    private var deleteActionTitle: String = "Delete"
 
     public init(_ elements: [Element], content: @escaping @MainActor (Element) -> any Renderable) {
         self.elements = elements
@@ -25,9 +26,12 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
         return copy
     }
 
-    public func onDelete(_ handler: @escaping @MainActor (Element) -> Void) -> FineList {
+    /// Enables swipe-to-delete. Pass a localized `title` for the action
+    /// button; the default is the English "Delete".
+    public func onDelete(title: String = "Delete", _ handler: @escaping @MainActor (Element) -> Void) -> FineList {
         var copy = self
         copy.onDelete = handler
+        copy.deleteActionTitle = title
         return copy
     }
 
@@ -55,6 +59,7 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
         coordinator.elementsByID = .init(elements.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
         coordinator.onSelect = onSelect
         coordinator.onDelete = onDelete
+        coordinator.deleteActionTitle = deleteActionTitle
         coordinator.dataSource.canEditRows = onDelete != nil
 
         let ids = elements.map(\.id)
@@ -93,6 +98,7 @@ extension FineList {
         var content: (@MainActor (Element) -> any Renderable)?
         var onSelect: (@MainActor (Element) -> Void)?
         var onDelete: (@MainActor (Element) -> Void)?
+        var deleteActionTitle: String = "Delete"
 
         init(listView: FineListView) {
             listView.register(FineListHostCell.self, forCellReuseIdentifier: FineListHostCell.reuseIdentifier)
@@ -138,7 +144,7 @@ extension FineList {
                   let element = elementsByID[id]
             else { return nil }
 
-            let action = UIContextualAction(style: .destructive, title: "Delete") { _, _, completion in
+            let action = UIContextualAction(style: .destructive, title: deleteActionTitle) { _, _, completion in
                 MainActor.assumeIsolated {
                     onDelete(element)
                     completion(true)

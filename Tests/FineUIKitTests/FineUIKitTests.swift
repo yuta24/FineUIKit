@@ -171,6 +171,20 @@ struct FineListTests {
         _ = window
     }
 
+    @Test func deleteActionUsesCustomTitle() async throws {
+        let items = [Item(id: "a", title: "A")]
+        let view = FineRenderer.render(FineList(items) { FineLabel(text: $0.title) }
+            .onDelete(title: "削除") { _ in })
+        let listView = try #require(view as? UITableView)
+        let window = attachToWindow(listView)
+        let indexPath = IndexPath(row: 0, section: 0)
+
+        await waitForRows(1, in: listView)
+        let configuration = try #require(listView.delegate?.tableView?(listView, trailingSwipeActionsConfigurationForRowAt: indexPath) ?? nil)
+        #expect(configuration.actions.first?.title == "削除")
+        _ = window
+    }
+
     @Test func withoutOnDeleteNoEditingNoConfiguration() async throws {
         let items = [Item(id: "a", title: "A")]
         let view = FineRenderer.render(FineList(items) { FineLabel(text: $0.title) })
