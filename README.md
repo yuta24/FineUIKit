@@ -87,6 +87,7 @@ FineLabel(text: title)
 
 - 外観系: `.backgroundColor` / `.cornerRadius` / `.border` / `.opacity` / `.tintColor`
 - レイアウト系: `.padding` / `.frame(width:height:alignment:)`
+- アクセシビリティ系: `.accessibilityLabel` / `.accessibilityValue` / `.accessibilityHint` / `.accessibilityTraits` / `.accessibilityIdentifier` / `.accessibilityHidden`
 - 順序に意味があります(`.backgroundColor().padding()` は背景の外に余白、逆は余白ごと背景)
 - コンポーネント固有モディファイアは具体型を返すため、**汎用モディファイアより先に**書きます(型消去後は呼べません。これは意図的な設計で、不正な組み合わせをコンパイルエラーにします)
 

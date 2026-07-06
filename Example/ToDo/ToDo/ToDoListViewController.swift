@@ -54,7 +54,8 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
                     .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16)),
                 FineStack.horizontal(spacing: 8) {
                     [
-                        FineTextField(text: .init(viewModel, \.draft), placeholder: "New task"),
+                        FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
+                            .accessibilityIdentifier("draft-field"),
                         FineButton(title: "Add") {
                             let title = viewModel.draft.isEmpty
                                 ? "Task \(viewModel.items.count + 1)"
@@ -62,7 +63,9 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
                             viewModel.items.append(.init(title: title))
                             viewModel.draft = ""
                         }
-                        .hugging(.defaultHigh, axis: .horizontal),
+                        .hugging(.defaultHigh, axis: .horizontal)
+                        .accessibilityLabel("Add task")
+                        .accessibilityHint("Adds a new task to the list"),
                     ]
                 }
                 .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16)),

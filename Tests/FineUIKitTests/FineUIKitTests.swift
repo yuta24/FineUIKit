@@ -782,6 +782,54 @@ struct FineLayoutModifierTests {
 }
 
 @MainActor
+struct FineAccessibilityTests {
+    @Test func accessibilityPropertiesApply() {
+        let view = FineRenderer.render(
+            FineLabel(text: "Task")
+                .accessibilityLabel("Task title")
+                .accessibilityValue("Done")
+                .accessibilityHint("Double tap to open")
+                .accessibilityTraits(.button)
+                .accessibilityIdentifier("task-title")
+        )
+
+        #expect(view.accessibilityLabel == "Task title")
+        #expect(view.accessibilityValue == "Done")
+        #expect(view.accessibilityHint == "Double tap to open")
+        #expect(view.accessibilityTraits == .button)
+        #expect(view.accessibilityIdentifier == "task-title")
+        #expect(view.isAccessibilityElement)
+    }
+
+    @Test func hiddenHidesFromAccessibility() {
+        let view = FineRenderer.render(FineLabel(text: "Hidden").accessibilityHidden())
+
+        #expect(view.accessibilityElementsHidden)
+        #expect(view.isAccessibilityElement == false)
+    }
+
+    @Test func removalRebuildsView() {
+        let first = FineRenderer.render(FineLabel(text: "A").accessibilityLabel("A"))
+        let second = FineRenderer.render(FineLabel(text: "B"), reusing: first)
+
+        #expect(second !== first)
+        #expect((second as? UILabel)?.text == "B")
+    }
+
+    @Test func chainingFlattens() throws {
+        let view = FineRenderer.render(
+            FineButton(title: "Add") {}
+                .accessibilityLabel("Add task")
+                .accessibilityHint("Adds a task")
+        )
+        let button = try #require(view as? UIButton)
+
+        #expect(button.accessibilityLabel == "Add task")
+        #expect(button.accessibilityHint == "Adds a task")
+    }
+}
+
+@MainActor
 struct FineKeyedReconciliationTests {
     final class Item: Identifiable {
         let id: String

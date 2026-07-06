@@ -157,6 +157,47 @@ public extension Renderable {
             view.tintColor = color
         }
     }
+
+    func accessibilityLabel(_ label: String) -> any Renderable {
+        _styled("axLabel") { view in
+            view.accessibilityLabel = label
+            view.isAccessibilityElement = true
+        }
+    }
+
+    func accessibilityValue(_ value: String) -> any Renderable {
+        _styled("axValue") { view in
+            view.accessibilityValue = value
+        }
+    }
+
+    func accessibilityHint(_ hint: String) -> any Renderable {
+        _styled("axHint") { view in
+            view.accessibilityHint = hint
+        }
+    }
+
+    func accessibilityTraits(_ traits: UIAccessibilityTraits) -> any Renderable {
+        _styled("axTraits") { view in
+            view.accessibilityTraits = traits
+        }
+    }
+
+    func accessibilityIdentifier(_ identifier: String) -> any Renderable {
+        _styled("axIdentifier") { view in
+            view.accessibilityIdentifier = identifier
+        }
+    }
+
+    func accessibilityHidden(_ hidden: Bool = true) -> any Renderable {
+        _styled("axHidden") { view in
+            view.accessibilityElementsHidden = hidden
+
+            if hidden {
+                view.isAccessibilityElement = false
+            }
+        }
+    }
 }
 
 private extension NSLayoutConstraint.Relation {
