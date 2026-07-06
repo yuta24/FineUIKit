@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Run tests
+        run: |
+          DEVICE=$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | sed -E 's/ \([^)]*\).*$//' | sed -E 's/^ +//')
+          echo "Using simulator: $DEVICE"
+          xcodebuild -scheme FineUIKit \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            test
