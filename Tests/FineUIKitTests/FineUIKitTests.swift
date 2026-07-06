@@ -368,3 +368,134 @@ struct FineModifierTests {
         #expect(label.numberOfLines == 1)
     }
 }
+
+@MainActor
+struct FineKeyedReconciliationTests {
+    final class Item: Identifiable {
+        let id: String
+        let title: String
+
+        init(id: String, title: String) {
+            self.id = id
+            self.title = title
+        }
+    }
+
+    @Test func headInsertionPreservesKeyedViews() throws {
+        let a = Item(id: "a", title: "A")
+        let b = Item(id: "b", title: "B")
+        let c = Item(id: "c", title: "C")
+        let stack = FineRenderer.render(FineStack.vertical {
+            FineForEach([a, b]) { item in
+                FineLabel(text: item.title)
+            }
+        })
+        let stackView = try #require(stack as? UIStackView)
+        let originalA = stackView.arrangedSubviews[0]
+        let originalB = stackView.arrangedSubviews[1]
+
+        _ = FineRenderer.render(FineStack.vertical {
+            FineForEach([c, a, b]) { item in
+                FineLabel(text: item.title)
+            }
+        }, reusing: stack)
+
+        #expect(stackView.arrangedSubviews.count == 3)
+        #expect(stackView.arrangedSubviews[0] !== originalA)
+        #expect(stackView.arrangedSubviews[1] === originalA)
+        #expect(stackView.arrangedSubviews[2] === originalB)
+        #expect((stackView.arrangedSubviews[0] as? UILabel)?.text == "C")
+        #expect((stackView.arrangedSubviews[1] as? UILabel)?.text == "A")
+        #expect((stackView.arrangedSubviews[2] as? UILabel)?.text == "B")
+    }
+
+    @Test func reorderMovesExistingViews() throws {
+        let a = Item(id: "a", title: "A")
+        let b = Item(id: "b", title: "B")
+        let stack = FineRenderer.render(FineStack.vertical {
+            FineForEach([a, b]) { item in
+                FineLabel(text: item.title)
+            }
+        })
+        let stackView = try #require(stack as? UIStackView)
+        let originalA = stackView.arrangedSubviews[0]
+        let originalB = stackView.arrangedSubviews[1]
+
+        _ = FineRenderer.render(FineStack.vertical {
+            FineForEach([b, a]) { item in
+                FineLabel(text: item.title)
+            }
+        }, reusing: stack)
+
+        #expect(stackView.arrangedSubviews.count == 2)
+        #expect(stackView.arrangedSubviews[0] === originalB)
+        #expect(stackView.arrangedSubviews[1] === originalA)
+        #expect((stackView.arrangedSubviews[0] as? UILabel)?.text == "B")
+        #expect((stackView.arrangedSubviews[1] as? UILabel)?.text == "A")
+    }
+
+    @Test func removalDropsOnlyThatView() throws {
+        let a = Item(id: "a", title: "A")
+        let b = Item(id: "b", title: "B")
+        let c = Item(id: "c", title: "C")
+        let stack = FineRenderer.render(FineStack.vertical {
+            FineForEach([a, b, c]) { item in
+                FineLabel(text: item.title)
+            }
+        })
+        let stackView = try #require(stack as? UIStackView)
+        let originalA = stackView.arrangedSubviews[0]
+        let originalC = stackView.arrangedSubviews[2]
+
+        _ = FineRenderer.render(FineStack.vertical {
+            FineForEach([a, c]) { item in
+                FineLabel(text: item.title)
+            }
+        }, reusing: stack)
+
+        #expect(stackView.arrangedSubviews.count == 2)
+        #expect(stackView.arrangedSubviews[0] === originalA)
+        #expect(stackView.arrangedSubviews[1] === originalC)
+        #expect((stackView.arrangedSubviews[0] as? UILabel)?.text == "A")
+        #expect((stackView.arrangedSubviews[1] as? UILabel)?.text == "C")
+    }
+
+    @Test func mixedUnkeyedAndKeyedChildren() throws {
+        let a = Item(id: "a", title: "A")
+        let b = Item(id: "b", title: "B")
+        let stack = FineRenderer.render(FineStack.vertical {
+            [FineLabel(text: "header")] + FineForEach([a, b]) { item in
+                FineLabel(text: item.title)
+            }
+        })
+        let stackView = try #require(stack as? UIStackView)
+        let header = stackView.arrangedSubviews[0]
+        let originalA = stackView.arrangedSubviews[1]
+        let originalB = stackView.arrangedSubviews[2]
+
+        _ = FineRenderer.render(FineStack.vertical {
+            [FineLabel(text: "header")] + FineForEach([b, a]) { item in
+                FineLabel(text: item.title)
+            }
+        }, reusing: stack)
+
+        #expect(stackView.arrangedSubviews.count == 3)
+        #expect(stackView.arrangedSubviews[0] === header)
+        #expect(stackView.arrangedSubviews[1] === originalB)
+        #expect(stackView.arrangedSubviews[2] === originalA)
+        #expect((stackView.arrangedSubviews[0] as? UILabel)?.text == "header")
+        #expect((stackView.arrangedSubviews[1] as? UILabel)?.text == "B")
+        #expect((stackView.arrangedSubviews[2] as? UILabel)?.text == "A")
+    }
+
+    @Test func keyMismatchPreventsReuseInRenderer() {
+        let first = FineRenderer.render(FineLabel(text: "A").key("x"))
+        let differentKey = FineRenderer.render(FineLabel(text: "B").key("y"), reusing: first)
+        let sameKey = FineRenderer.render(FineLabel(text: "C").key("x"), reusing: first)
+
+        #expect(differentKey !== first)
+        #expect((differentKey as? UILabel)?.text == "B")
+        #expect(sameKey === first)
+        #expect((sameKey as? UILabel)?.text == "C")
+    }
+}

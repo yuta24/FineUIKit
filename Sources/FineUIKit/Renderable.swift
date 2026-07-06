@@ -25,10 +25,17 @@ public protocol Renderable {
 
     /// Identity for wrapper/property modifiers that affect reuse safety.
     var _modifierSignature: String { get }
+
+    /// Stable identity for keyed container reconciliation.
+    var _key: AnyHashable? { get }
 }
 
 public extension Renderable {
     var _modifierSignature: String {
         ""
+    }
+
+    var _key: AnyHashable? {
+        nil
     }
 }

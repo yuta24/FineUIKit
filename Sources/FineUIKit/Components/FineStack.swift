@@ -63,11 +63,33 @@ public struct FineStack: Renderable {
         stackView.alignment = alignment
         stackView.distribution = distribution
 
-        // Reconcile children positionally: reuse the arranged subview at the
-        // same index when compatible, otherwise a new view takes its place.
         let oldViews = stackView.arrangedSubviews
-        let newViews = content().enumerated().map { index, node in
-            FineRenderer.render(node, reusing: index < oldViews.count ? oldViews[index] : nil)
+        var keyedOldViews: [AnyHashable: UIView] = [:]
+        var unkeyedOldViews: [UIView] = []
+
+        for oldView in oldViews {
+            if let key = oldView.fineKey {
+                keyedOldViews[key] = oldView
+            } else {
+                unkeyedOldViews.append(oldView)
+            }
+        }
+
+        var seenKeys = Set<AnyHashable>()
+        var unkeyedIndex = 0
+        let newViews = content().map { node in
+            if let key = node._key {
+                guard seenKeys.insert(key).inserted else {
+                    assertionFailure("Duplicate FineUIKit key: \(key)")
+                    return FineRenderer.render(node, reusing: nil)
+                }
+
+                return FineRenderer.render(node, reusing: keyedOldViews.removeValue(forKey: key))
+            }
+
+            let reusable = unkeyedIndex < unkeyedOldViews.count ? unkeyedOldViews[unkeyedIndex] : nil
+            unkeyedIndex += 1
+            return FineRenderer.render(node, reusing: reusable)
         }
 
         for oldView in oldViews where !newViews.contains(where: { $0 === oldView }) {

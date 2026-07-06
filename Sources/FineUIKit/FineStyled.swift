@@ -37,6 +37,10 @@ struct FineStyled: Renderable {
     var _modifierSignature: String {
         content._modifierSignature + "|" + styles.map(\.key).joined(separator: "|")
     }
+
+    var _key: AnyHashable? {
+        content._key
+    }
 }
 
 extension Renderable {

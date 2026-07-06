@@ -69,4 +69,8 @@ struct FinePadded: Renderable {
     var _modifierSignature: String {
         "padding"
     }
+
+    var _key: AnyHashable? {
+        content._key
+    }
 }

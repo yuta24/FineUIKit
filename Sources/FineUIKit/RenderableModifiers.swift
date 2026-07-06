@@ -8,6 +8,10 @@
 import UIKit
 
 public extension Renderable {
+    func key(_ key: some Hashable) -> any Renderable {
+        FineKeyed(key: AnyHashable(key), content: self)
+    }
+
     func padding(_ length: CGFloat = 16) -> any Renderable {
         padding(.init(top: length, leading: length, bottom: length, trailing: length))
     }

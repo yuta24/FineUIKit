@@ -71,6 +71,10 @@ struct FineFramed: Renderable {
         "frame"
     }
 
+    var _key: AnyHashable? {
+        content._key
+    }
+
     private func updateDimension(_ constraint: inout NSLayoutConstraint?, on anchor: NSLayoutDimension, value: CGFloat?) {
         guard let value else {
             constraint?.isActive = false
