@@ -55,7 +55,7 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
 | `FineStack` | `UIStackView` | `vertical` / `horizontal`、`spacing` / `alignment` / `distribution`。子は keyed + 位置ベースで差分適用 |
 | `FineList` | `UITableView` | diffable data source(`Identifiable`)。`.onSelect` / `.onDelete`(スワイプ削除) |
 | `FineGrid` | `UICollectionView` | compositional layout。`columns: .count(n)` / `.adaptive(minimum:)`、`.onSelect` |
-| `FineTextField` | `UITextField` | `FineBinding<String>` で双方向 |
+| `FineTextField` | `UITextField` | `FineBinding<String>` で双方向。`.keyboardType` / `.returnKeyType` / `.secureTextEntry` / `.onSubmit` |
 | `FineToggle` | `UISwitch` | `FineBinding<Bool>` |
 | `FineSlider` | `UISlider` | `FineBinding<Float>` + `in:` レンジ |
 | `FineSpacer` | — | スタック内の余白吸収(`minLength:`) |
@@ -67,6 +67,10 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
 FineTextField(text: .init(viewModel, \.draft))   // ReferenceWritableKeyPath から生成
 FineToggle(isOn: .init(item, \.completed))
 FineSlider(value: .init(settings, \.volume), in: 0...10)
+
+FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
+    .returnKeyType(.done)
+    .onSubmit { viewModel.add() }
 ```
 
 `FineBinding` は `get` / `set` のペアです。`get` はレンダリング中(observation スコープ内)に評価されるため、バインド先の変更で自動的に再レンダリングされます。UI 側の変更は `set` を通じて状態へ書き戻され、「現在値と異なるときだけビューに書く」ガードにより入力中のカーソルは保持されます。

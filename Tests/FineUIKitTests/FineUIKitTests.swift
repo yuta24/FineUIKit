@@ -371,6 +371,68 @@ struct FineBindingTests {
         #expect(textField.text == "abc")
     }
 
+    @Test func textFieldInputTraitsApply() throws {
+        let state = FormState()
+        let view = FineRenderer.render(
+            FineTextField(text: .init(state, \.text))
+                .keyboardType(.emailAddress)
+                .returnKeyType(.done)
+                .secureTextEntry()
+        )
+        let textField = try #require(view as? UITextField)
+
+        #expect(textField.keyboardType == .emailAddress)
+        #expect(textField.returnKeyType == .done)
+        #expect(textField.isSecureTextEntry == true)
+    }
+
+    @Test func textFieldInputTraitsResetToDefaultsOnReuse() throws {
+        let state = FormState()
+        let first = FineRenderer.render(
+            FineTextField(text: .init(state, \.text))
+                .keyboardType(.numberPad)
+                .returnKeyType(.go)
+                .secureTextEntry()
+        )
+        let textField = try #require(first as? UITextField)
+
+        let second = FineRenderer.render(FineTextField(text: .init(state, \.text)), reusing: first)
+
+        #expect(second === first)
+        #expect(textField.keyboardType == .default)
+        #expect(textField.returnKeyType == .default)
+        #expect(textField.isSecureTextEntry == false)
+    }
+
+    @Test func textFieldOnSubmitRunsOnEditingDidEndOnExit() throws {
+        let state = FormState()
+        var submitCount = 0
+        let view = FineRenderer.render(
+            FineTextField(text: .init(state, \.text))
+                .onSubmit { submitCount += 1 }
+        )
+        let textField = try #require(view as? UITextField)
+
+        textField.sendActions(for: .editingDidEndOnExit)
+
+        #expect(submitCount == 1)
+    }
+
+    @Test func textFieldOnSubmitIsRemovedOnReuse() throws {
+        let state = FormState()
+        var submitCount = 0
+        let first = FineRenderer.render(
+            FineTextField(text: .init(state, \.text))
+                .onSubmit { submitCount += 1 }
+        )
+        let textField = try #require(first as? UITextField)
+
+        _ = FineRenderer.render(FineTextField(text: .init(state, \.text)), reusing: first)
+        textField.sendActions(for: .editingDidEndOnExit)
+
+        #expect(submitCount == 0)
+    }
+
     @Test func toggleRoundTrips() async throws {
         let state = FormState()
         let container = UIView()
