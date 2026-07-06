@@ -105,6 +105,88 @@ struct FineListTests {
 }
 
 @MainActor
+struct FineBindingTests {
+    @Observable
+    final class FormState {
+        var text: String = ""
+        var isOn: Bool = false
+        var volume: Float = 0.5
+    }
+
+    @Test func textFieldWritesBackToState() throws {
+        let state = FormState()
+        let view = FineRenderer.render(FineTextField(text: .init(state, \.text)))
+        let textField = try #require(view as? UITextField)
+
+        textField.text = "hello"
+        textField.sendActions(for: .editingChanged)
+
+        #expect(state.text == "hello")
+    }
+
+    @Test func textFieldUpdatesFromState() async throws {
+        let state = FormState()
+        let container = UIView()
+
+        let fineUI = FineUI(state) { state in
+            FineTextField(text: .init(state, \.text))
+        }
+        fineUI.build(to: container)
+
+        let textField = try #require(container.subviews.first as? UITextField)
+        #expect(textField.text == "")
+
+        state.text = "abc"
+
+        for _ in 0..<10 where textField.text != "abc" {
+            await Task.yield()
+        }
+
+        #expect(textField.text == "abc")
+    }
+
+    @Test func toggleRoundTrips() async throws {
+        let state = FormState()
+        let container = UIView()
+
+        let fineUI = FineUI(state) { state in
+            FineToggle(isOn: .init(state, \.isOn))
+        }
+        fineUI.build(to: container)
+
+        let uiSwitch = try #require(container.subviews.first as? UISwitch)
+        #expect(uiSwitch.isOn == false)
+
+        // UI -> state
+        uiSwitch.isOn = true
+        uiSwitch.sendActions(for: .valueChanged)
+        #expect(state.isOn == true)
+
+        // state -> UI
+        state.isOn = false
+        for _ in 0..<10 where uiSwitch.isOn {
+            await Task.yield()
+        }
+        #expect(uiSwitch.isOn == false)
+    }
+
+    @Test func sliderAppliesRangeAndWritesBack() throws {
+        let state = FormState()
+        let view = FineRenderer.render(FineSlider(value: .init(state, \.volume), in: 0...10))
+        let slider = try #require(view as? UISlider)
+
+        #expect(slider.minimumValue == 0)
+        #expect(slider.maximumValue == 10)
+        #expect(slider.value == 0.5)
+
+        slider.value = 7
+        slider.sendActions(for: .valueChanged)
+
+        #expect(state.volume == 7)
+    }
+}
+
+@MainActor
 struct FineViewControllerTests {
     @Observable
     final class Counter {

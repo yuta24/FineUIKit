@@ -12,6 +12,7 @@ import FineUIKit
 
 @Observable
 final class ToDoListViewModel {
+    var draft: String = ""
     var items: [ToDo] = []
 }
 
@@ -24,11 +25,25 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
         FineStack.vertical(spacing: 8) {
             [
                 FineLabel(text: "\(viewModel.items.count) items"),
-                FineButton(title: "Add") {
-                    viewModel.items.append(.init(title: "Task \(viewModel.items.count + 1)"))
+                FineStack.horizontal(spacing: 8) {
+                    [
+                        FineTextField(text: .init(viewModel, \.draft), placeholder: "New task"),
+                        FineButton(title: "Add") {
+                            let title = viewModel.draft.isEmpty
+                                ? "Task \(viewModel.items.count + 1)"
+                                : viewModel.draft
+                            viewModel.items.append(.init(title: title))
+                            viewModel.draft = ""
+                        },
+                    ]
                 },
                 FineList(viewModel.items) { item in
-                    FineLabel(text: item.title)
+                    FineStack.horizontal(spacing: 8) {
+                        [
+                            FineToggle(isOn: .init(item, \.completed)),
+                            FineLabel(text: item.title),
+                        ]
+                    }
                 },
             ]
         }
