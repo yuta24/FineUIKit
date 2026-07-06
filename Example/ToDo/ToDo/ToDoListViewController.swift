@@ -46,6 +46,9 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
                             FineLabel(text: item.title),
                         ]
                     }
+                }
+                .onDelete { item in
+                    viewModel.items.removeAll { $0.id == item.id }
                 },
             ]
         }

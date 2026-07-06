@@ -57,10 +57,26 @@ struct FineRendererTests {
 @MainActor
 struct FineListTests {
     final class Item: Identifiable {
+        let id: String
         let title: String
 
-        init(title: String) {
+        init(id: String = UUID().uuidString, title: String) {
+            self.id = id
             self.title = title
+        }
+    }
+
+    private func attachToWindow(_ listView: UITableView) -> UIWindow {
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: 400, height: 800))
+        listView.frame = window.bounds
+        window.addSubview(listView)
+        window.isHidden = false
+        return window
+    }
+
+    private func waitForRows(_ count: Int, in listView: UITableView) async {
+        for _ in 0..<10 where listView.numberOfRows(inSection: 0) != count {
+            await Task.yield()
         }
     }
 
@@ -69,20 +85,16 @@ struct FineListTests {
         let view = FineRenderer.render(FineList(items) { FineLabel(text: $0.title) })
         let listView = try #require(view as? UITableView)
 
-        let window = UIWindow(frame: .init(x: 0, y: 0, width: 400, height: 800))
-        listView.frame = window.bounds
-        window.addSubview(listView)
-        window.isHidden = false
+        let window = attachToWindow(listView)
 
-        for _ in 0..<10 where listView.numberOfRows(inSection: 0) != 2 {
-            await Task.yield()
-        }
+        await waitForRows(2, in: listView)
         #expect(listView.numberOfRows(inSection: 0) == 2)
 
         listView.layoutIfNeeded()
         let cell = try #require(listView.cellForRow(at: .init(row: 0, section: 0)))
         let label = try #require(cell.contentView.subviews.first as? UILabel)
         #expect(label.text == "A")
+        _ = window
     }
 
     @Test func reusesTableViewAcrossUpdates() async throws {
@@ -97,10 +109,79 @@ struct FineListTests {
 
         #expect(second === first)
 
-        for _ in 0..<10 where listView.numberOfRows(inSection: 0) != 2 {
-            await Task.yield()
-        }
+        await waitForRows(2, in: listView)
         #expect(listView.numberOfRows(inSection: 0) == 2)
+    }
+
+    @Test func selectionInvokesHandlerWithElement() async throws {
+        let first = Item(id: "a", title: "A")
+        let second = Item(id: "b", title: "B")
+        var selected: Item?
+        let view = FineRenderer.render(FineList([first, second]) { FineLabel(text: $0.title) }
+            .onSelect { selected = $0 })
+        let listView = try #require(view as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForRows(2, in: listView)
+        listView.delegate?.tableView?(listView, didSelectRowAt: .init(row: 1, section: 0))
+
+        #expect(selected === second)
+        _ = window
+    }
+
+    @Test func selectionStyleFollowsOnSelect() async throws {
+        let items = [Item(id: "a", title: "A")]
+        let selectable = FineRenderer.render(FineList(items) { FineLabel(text: $0.title) }
+            .onSelect { _ in })
+        let selectableListView = try #require(selectable as? UITableView)
+        let selectableWindow = attachToWindow(selectableListView)
+
+        await waitForRows(1, in: selectableListView)
+        selectableListView.layoutIfNeeded()
+        let selectableCell = try #require(selectableListView.cellForRow(at: .init(row: 0, section: 0)))
+        #expect(selectableCell.selectionStyle == .default)
+
+        let plain = FineRenderer.render(FineList(items) { FineLabel(text: $0.title) })
+        let plainListView = try #require(plain as? UITableView)
+        let plainWindow = attachToWindow(plainListView)
+
+        await waitForRows(1, in: plainListView)
+        plainListView.layoutIfNeeded()
+        let plainCell = try #require(plainListView.cellForRow(at: .init(row: 0, section: 0)))
+        #expect(plainCell.selectionStyle == .none)
+
+        _ = selectableWindow
+        _ = plainWindow
+    }
+
+    @Test func onDeleteEnablesEditingAndSwipeConfiguration() async throws {
+        let items = [Item(id: "a", title: "A")]
+        let view = FineRenderer.render(FineList(items) { FineLabel(text: $0.title) }
+            .onDelete { _ in })
+        let listView = try #require(view as? UITableView)
+        let window = attachToWindow(listView)
+        let indexPath = IndexPath(row: 0, section: 0)
+
+        await waitForRows(1, in: listView)
+        #expect(listView.dataSource?.tableView?(listView, canEditRowAt: indexPath) == true)
+
+        let configuration = try #require(listView.delegate?.tableView?(listView, trailingSwipeActionsConfigurationForRowAt: indexPath) ?? nil)
+        #expect(configuration.actions.count == 1)
+        #expect(configuration.actions.first?.style == .destructive)
+        _ = window
+    }
+
+    @Test func withoutOnDeleteNoEditingNoConfiguration() async throws {
+        let items = [Item(id: "a", title: "A")]
+        let view = FineRenderer.render(FineList(items) { FineLabel(text: $0.title) })
+        let listView = try #require(view as? UITableView)
+        let window = attachToWindow(listView)
+        let indexPath = IndexPath(row: 0, section: 0)
+
+        await waitForRows(1, in: listView)
+        #expect(listView.dataSource?.tableView?(listView, canEditRowAt: indexPath) == false)
+        #expect((listView.delegate?.tableView?(listView, trailingSwipeActionsConfigurationForRowAt: indexPath) ?? nil) == nil)
+        _ = window
     }
 }
 

@@ -11,10 +11,24 @@ import UIKit
 public struct FineList<Element: Identifiable>: Renderable where Element.ID: Sendable {
     private let elements: [Element]
     private let content: @MainActor (Element) -> any Renderable
+    private var onSelect: (@MainActor (Element) -> Void)?
+    private var onDelete: (@MainActor (Element) -> Void)?
 
     public init(_ elements: [Element], content: @escaping @MainActor (Element) -> any Renderable) {
         self.elements = elements
         self.content = content
+    }
+
+    public func onSelect(_ handler: @escaping @MainActor (Element) -> Void) -> FineList {
+        var copy = self
+        copy.onSelect = handler
+        return copy
+    }
+
+    public func onDelete(_ handler: @escaping @MainActor (Element) -> Void) -> FineList {
+        var copy = self
+        copy.onDelete = handler
+        return copy
     }
 
     public func _makeView() -> UIView {
@@ -39,6 +53,9 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
 
         coordinator.content = content
         coordinator.elementsByID = .init(elements.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        coordinator.onSelect = onSelect
+        coordinator.onDelete = onDelete
+        coordinator.dataSource.canEditRows = onDelete != nil
 
         let ids = elements.map(\.id)
         let previousIDs = Set(coordinator.dataSource.snapshot().itemIdentifiers)
@@ -60,11 +77,22 @@ extension FineList {
     }
 
     @MainActor
-    final class Coordinator {
-        let dataSource: UITableViewDiffableDataSource<Section, Element.ID>
+    final class DataSource: UITableViewDiffableDataSource<Section, Element.ID> {
+        var canEditRows = false
+
+        override func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
+            canEditRows
+        }
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, UITableViewDelegate {
+        let dataSource: DataSource
 
         var elementsByID: [Element.ID: Element] = [:]
         var content: (@MainActor (Element) -> any Renderable)?
+        var onSelect: (@MainActor (Element) -> Void)?
+        var onDelete: (@MainActor (Element) -> Void)?
 
         init(listView: FineListView) {
             listView.register(FineListHostCell.self, forCellReuseIdentifier: FineListHostCell.reuseIdentifier)
@@ -80,10 +108,43 @@ extension FineList {
                       let content = coordinator.content
                 else { return cell }
 
+                cell.selectionStyle = coordinator.onSelect == nil ? .none : .default
                 cell.render(content(element))
 
                 return cell
             }
+
+            super.init()
+
+            listView.delegate = self
+        }
+
+        func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+            tableView.deselectRow(at: indexPath, animated: true)
+
+            guard let id = dataSource.itemIdentifier(for: indexPath),
+                  let element = elementsByID[id]
+            else { return }
+
+            onSelect?(element)
+        }
+
+        func tableView(
+            _ tableView: UITableView,
+            trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath
+        ) -> UISwipeActionsConfiguration? {
+            guard let onDelete,
+                  let id = dataSource.itemIdentifier(for: indexPath),
+                  let element = elementsByID[id]
+            else { return nil }
+
+            let action = UIContextualAction(style: .destructive, title: "Delete") { _, _, completion in
+                MainActor.assumeIsolated {
+                    onDelete(element)
+                    completion(true)
+                }
+            }
+            return .init(actions: [action])
         }
     }
 }
