@@ -65,10 +65,16 @@ Example アプリでは [InjectionLite](https://github.com/johnno1962/InjectionL
 
 Xcode の新リンカ(chained fixups)環境では、`private` メソッドへの直接呼び出しなど静的ディスパッチされるコードは注入で差し替わりません。確実に差し替わるのは、クラスの vtable 経由(`FineViewController.body` の override)か ObjC ディスパッチ(`@objc dynamic`)のコードです。ホットリロードで書き換えたいロジックはできるだけ `body` から辿れる位置に置いてください。
 
-### 既知の問題(Xcode 27 beta + InjectionLite 1.2.x、CLI ビルド時)
+### 既知の問題(Xcode 27 beta + InjectionLite 1.2.x)
 
-Xcode の GUI から普通にビルド・実行する場合は不要ですが、`xcodebuild` CLI でビルドしたアプリで InjectionLite を使う場合は以下が必要でした:
+1. **Xcode 27 の SLF ログ形式との非互換** — InjectionLite がビルドログから抽出するコンパイルコマンドの行頭にゴミ(不均衡な引用符)が混入し、`sh: unexpected EOF while looking for matching '"'` で再コンパイルに失敗する。GUI ビルドでも発生する(InjectionLite 側の対応待ち)
+2. **注入 dylib の rpath に `/usr/lib/swift` が含まれない** — `libswift_Concurrency.dylib` が見つからず dlopen に失敗することがある
+3. **CLI ビルドのみ**: `xcodebuild` には `EMIT_FRONTEND_COMMAND_LINES=YES` を付けないとログに `swift-frontend` の行が残らない。対象ファイルが実際に再コンパイルされたビルドのログにしか行は残らない
 
-1. **`EMIT_FRONTEND_COMMAND_LINES=YES` を付けてビルドする** — InjectionLite はビルドログから `swift-frontend -primary-file` の行を探すため。対象ファイルが実際に再コンパイルされたビルドのログにしか行は残らない
-2. **Xcode 27 の SLF ログ形式との非互換** — 抽出したコマンド行に引用符が不均衡なゴミが混入し再コンパイルに失敗することがある(InjectionLite 側の対応待ち)
-3. **注入 dylib の rpath に `/usr/lib/swift` が含まれない** — `libswift_Concurrency.dylib` が見つからず dlopen に失敗する場合、DerivedData の `Debug-iphonesimulator/PackageFrameworks/` へ symlink を置くと回避できる
+1 と 2 は `Scripts/injectionlite-xcode27-fix.sh` で回避できます。クリーンなコマンドだけを含むログを DerivedData に生成し、`PackageFrameworks/` に dylib の symlink を張ります:
+
+```sh
+Scripts/injectionlite-xcode27-fix.sh ToDo   # ビルドのたびに実行(スキームの post-action 推奨)
+```
+
+新しいビルドを行うと壊れたログが最新になってしまうため、**ビルド後に毎回実行**が必要です。Xcode の Edit Scheme → Build → Post-actions に Run Script として登録しておくと自動化できます。
