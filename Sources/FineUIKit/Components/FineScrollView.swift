@@ -17,12 +17,19 @@ final class FineScrollHostView: UIScrollView {
 public struct FineScrollView: Renderable {
     private let axis: NSLayoutConstraint.Axis
     private let content: @MainActor () -> any Renderable
+    private var keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
 
     /// Creates a scroll container. Avoid nesting `FineList` or `FineGrid`
     /// inside it because those components already manage their own scrolling.
     public init(_ axis: NSLayoutConstraint.Axis = .vertical, content: @escaping @MainActor () -> any Renderable) {
         self.axis = axis
         self.content = content
+    }
+
+    public func keyboardDismissMode(_ mode: UIScrollView.KeyboardDismissMode) -> FineScrollView {
+        var copy = self
+        copy.keyboardDismissMode = mode
+        return copy
     }
 
     public func _makeView() -> UIView {
@@ -35,6 +42,10 @@ public struct FineScrollView: Renderable {
 
     public func _update(_ view: UIView) {
         guard let scrollView = view as? FineScrollHostView else { return }
+
+        if scrollView.keyboardDismissMode != keyboardDismissMode {
+            scrollView.keyboardDismissMode = keyboardDismissMode
+        }
 
         let hosted = FineRenderer.render(content(), reusing: scrollView.hosted)
 

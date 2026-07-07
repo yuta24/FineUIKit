@@ -63,13 +63,13 @@ FineList(sections: [
 | `FineButton` | `UIButton` | `action` クロージャ。`.image` / `.configuration(UIButton.Configuration)` |
 | `FineImage` | `UIImageView` | |
 | `FineStack` | `UIStackView` | `vertical` / `horizontal`、`spacing` / `alignment` / `distribution`。子は keyed + 位置ベースで差分適用 |
-| `FineList` | `UITableView` | diffable data source(`Identifiable`)。セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedRows()` / `.onSelect` / `.onDelete` |
+| `FineList` | `UITableView` | diffable data source(`Identifiable`)。セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedRows()` / `.onSelect` / `.onDelete` / `.keyboardDismissMode` |
 | `FineGrid` | `UICollectionView` | compositional layout。`columns: .count(n)` / `.adaptive(minimum:)`、`.onSelect` |
 | `FineTextField` | `UITextField` | `FineBinding<String>` で双方向。`.keyboardType` / `.returnKeyType` / `.secureTextEntry` / `.onSubmit` |
 | `FineToggle` | `UISwitch` | `FineBinding<Bool>` |
 | `FineSlider` | `UISlider` | `FineBinding<Float>` + `in:` レンジ |
 | `FineSpacer` | — | スタック内の余白吸収(`minLength:`) |
-| `FineScrollView` | `UIScrollView` | 縦横対応。`FineList` / `FineGrid` は自身がスクロールするので入れないこと |
+| `FineScrollView` | `UIScrollView` | 縦横対応。`.keyboardDismissMode`。`FineList` / `FineGrid` は自身がスクロールするので入れないこと |
 
 ## ナビゲーション
 
@@ -109,6 +109,37 @@ FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
 
 `FineBinding` は `get` / `set` のペアです。`get` はレンダリング中(observation スコープ内)に評価されるため、バインド先の変更で自動的に再レンダリングされます。UI 側の変更は `set` を通じて状態へ書き戻され、「現在値と異なるときだけビューに書く」ガードにより入力中のカーソルは保持されます。
 
+## ライフサイクルと非同期処理
+
+`.onAppear` / `.onDisappear` はビューが window に載った / 外れたタイミングで発火します。`.task` は表示時に async 処理を起動し、非表示になると自動でキャンセルします。
+
+```swift
+FineLabel(text: viewModel.status)
+    .task { await viewModel.load() }   // 表示で開始、非表示でキャンセル
+
+FineLabel(text: detail.title)
+    .task(id: viewModel.selectedID) { await viewModel.loadDetail() }  // id が変わると再起動
+```
+
+再レンダリングで実行中の task が再起動されることはありません(再起動は `id` の変化時のみ)。`.onAppear` は window への着脱のたびに発火します。
+
+## キーボード
+
+ルートビューの下端は既定で `keyboardLayoutGuide` に追従するため、キーボード表示中はコンテンツがその上に詰まり、隠れません(キーボード非表示時は safe area 下端と一致し、レイアウトは従来どおり)。無効にする場合は `FineViewController` の `avoidsKeyboard` を override します(`FineUI` 直接利用なら `init(_:avoidsKeyboard:body:)`)。
+
+```swift
+override var avoidsKeyboard: Bool { false }
+```
+
+スクロールでキーボードを閉じるには `.keyboardDismissMode` を使います(`FineList` / `FineScrollView`)。
+
+```swift
+FineList(viewModel.items) { item in
+    FineLabel(text: item.title)
+}
+.keyboardDismissMode(.onDrag)
+```
+
 ## モディファイア
 
 ```swift
@@ -125,6 +156,7 @@ FineButton(title: "Add") { viewModel.add() }
 - 外観系: `.backgroundColor` / `.cornerRadius` / `.border` / `.opacity` / `.tintColor`
 - レイアウト系: `.padding` / `.frame(width:height:alignment:)`
 - アクセシビリティ系: `.accessibilityLabel` / `.accessibilityValue` / `.accessibilityHint` / `.accessibilityTraits` / `.accessibilityIdentifier` / `.accessibilityHidden`
+- ライフサイクル系: `.onAppear` / `.onDisappear` / `.task` / `.task(id:)`
 - 順序に意味があります(`.backgroundColor().padding()` は背景の外に余白、逆は余白ごと背景)
 - コンポーネント固有モディファイアは具体型を返すため、**汎用モディファイアより先に**書きます(型消去後は呼べません。これは意図的な設計で、不正な組み合わせをコンパイルエラーにします)
 

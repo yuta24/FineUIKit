@@ -19,6 +19,7 @@ import UIKit
 @MainActor
 public final class FineUI<State> {
     private let state: State
+    private let avoidsKeyboard: Bool
     private let body: (State) -> any Renderable
 
     private weak var container: UIView?
@@ -30,8 +31,18 @@ public final class FineUI<State> {
     private nonisolated(unsafe) var injectionObserver: (any NSObjectProtocol)?
     #endif
 
-    public init(_ state: State, body: @escaping @MainActor (State) -> any Renderable) {
+    /// - Parameter avoidsKeyboard: When `true` (the default), the tree's
+    ///   bottom edge follows `keyboardLayoutGuide`, so content compresses
+    ///   above the keyboard instead of being covered by it. With the keyboard
+    ///   hidden the guide matches the bottom safe area, so layout is
+    ///   unchanged.
+    public init(
+        _ state: State,
+        avoidsKeyboard: Bool = true,
+        body: @escaping @MainActor (State) -> any Renderable
+    ) {
         self.state = state
+        self.avoidsKeyboard = avoidsKeyboard
         self.body = body
     }
 
@@ -97,16 +108,23 @@ public final class FineUI<State> {
 
         let guide = container.safeAreaLayoutGuide
 
+        // With no keyboard on screen, keyboardLayoutGuide's top edge matches
+        // the bottom safe area (usesBottomSafeArea defaults to true), so both
+        // anchors produce the same resting layout.
+        let bottomAnchor = avoidsKeyboard
+            ? container.keyboardLayoutGuide.topAnchor
+            : guide.bottomAnchor
+
         // Text-like content (hugging priority 251+) keeps its natural height;
         // views with no intrinsic height (lists, images) expand to fill.
-        let fillBottom = view.bottomAnchor.constraint(equalTo: guide.bottomAnchor)
+        let fillBottom = view.bottomAnchor.constraint(equalTo: bottomAnchor)
         fillBottom.priority = .defaultLow
 
         NSLayoutConstraint.activate([
             view.topAnchor.constraint(equalTo: guide.topAnchor),
             view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
             view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
-            view.bottomAnchor.constraint(lessThanOrEqualTo: guide.bottomAnchor),
+            view.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
             fillBottom,
         ])
     }

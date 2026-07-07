@@ -1722,3 +1722,215 @@ struct FineKeyedReconciliationTests {
         #expect((sameKey as? UILabel)?.text == "C")
     }
 }
+
+@MainActor
+struct FineLifecycleTests {
+    private func attachToWindow(_ view: UIView) -> UIWindow {
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 200))
+        view.translatesAutoresizingMaskIntoConstraints = false
+        window.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.topAnchor.constraint(equalTo: window.topAnchor),
+            view.leadingAnchor.constraint(equalTo: window.leadingAnchor),
+        ])
+        window.isHidden = false
+        return window
+    }
+
+    /// Yields to the main actor until `condition` holds or attempts run out.
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<1000 where !condition() {
+            await Task.yield()
+        }
+    }
+
+    @Test func onAppearAndOnDisappearFollowWindowAttachment() {
+        var appearCount = 0
+        var disappearCount = 0
+
+        let view = FineRenderer.render(
+            FineLabel(text: "A")
+                .onAppear { appearCount += 1 }
+                .onDisappear { disappearCount += 1 }
+        )
+
+        #expect(appearCount == 0)
+
+        let window = attachToWindow(view)
+        #expect(appearCount == 1)
+        #expect(disappearCount == 0)
+
+        view.removeFromSuperview()
+        #expect(appearCount == 1)
+        #expect(disappearCount == 1)
+
+        window.addSubview(view)
+        #expect(appearCount == 2)
+    }
+
+    @Test func lifecycleModifiersMergeIntoOneWrapperAndReuse() throws {
+        let first = FineRenderer.render(
+            FineLabel(text: "A")
+                .onAppear {}
+                .onDisappear {}
+        )
+        let lifecycleView = try #require(first as? FineLifecycleView)
+
+        #expect(lifecycleView.hosted is UILabel)
+        #expect((lifecycleView.hosted as? UILabel)?.text == "A")
+
+        var appearCount = 0
+        let second = FineRenderer.render(
+            FineLabel(text: "B")
+                .onAppear { appearCount += 1 }
+                .onDisappear {},
+            reusing: first
+        )
+
+        #expect(second === first)
+        #expect((lifecycleView.hosted as? UILabel)?.text == "B")
+
+        _ = attachToWindow(second)
+        #expect(appearCount == 1)
+    }
+
+    @Test func taskStartsOnAppearAndCancelsOnDisappear() async {
+        var started = false
+        var cancelled = false
+
+        let view = FineRenderer.render(
+            FineLabel(text: "A").task {
+                started = true
+                do {
+                    try await Task.sleep(nanoseconds: 60_000_000_000)
+                } catch {
+                    cancelled = true
+                }
+            }
+        )
+
+        let window = attachToWindow(view)
+        defer { window.isHidden = true }
+
+        await waitUntil { started }
+        #expect(started)
+        #expect(!cancelled)
+
+        view.removeFromSuperview()
+
+        await waitUntil { cancelled }
+        #expect(cancelled)
+    }
+
+    @Test func taskRestartsOnlyWhenIDChanges() async {
+        var runCount = 0
+
+        @MainActor
+        func node(id: Int) -> any Renderable {
+            FineLabel(text: "A").task(id: id) {
+                runCount += 1
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+            }
+        }
+
+        let view = FineRenderer.render(node(id: 1))
+        let window = attachToWindow(view)
+        defer { window.isHidden = true }
+
+        await waitUntil { runCount == 1 }
+        #expect(runCount == 1)
+
+        let sameID = FineRenderer.render(node(id: 1), reusing: view)
+        #expect(sameID === view)
+        await Task.yield()
+        #expect(runCount == 1)
+
+        let changedID = FineRenderer.render(node(id: 2), reusing: view)
+        #expect(changedID === view)
+        await waitUntil { runCount == 2 }
+        #expect(runCount == 2)
+    }
+
+    @Test func finishedTaskDoesNotRestartOnRerender() async {
+        var runCount = 0
+
+        @MainActor
+        func node() -> any Renderable {
+            FineLabel(text: "A").task { runCount += 1 }
+        }
+
+        let view = FineRenderer.render(node())
+        let window = attachToWindow(view)
+        defer { window.isHidden = true }
+
+        await waitUntil { runCount == 1 }
+        #expect(runCount == 1)
+
+        _ = FineRenderer.render(node(), reusing: view)
+        await Task.yield()
+        #expect(runCount == 1)
+    }
+}
+
+@MainActor
+struct FineKeyboardTests {
+    final class Model {}
+
+    @Test func rootBottomFollowsKeyboardLayoutGuideByDefault() {
+        let container = UIView()
+        let ui = FineUI(Model()) { _ in FineLabel(text: "A") }
+        ui.build(to: container)
+
+        let root = container.subviews.first
+        let followsKeyboard = container.constraints.contains { constraint in
+            constraint.firstItem === root
+                && constraint.firstAttribute == .bottom
+                && (constraint.secondItem as? UILayoutGuide) === container.keyboardLayoutGuide
+        }
+
+        #expect(followsKeyboard)
+    }
+
+    @Test func keyboardAvoidanceCanBeDisabled() {
+        let container = UIView()
+        let ui = FineUI(Model(), avoidsKeyboard: false) { _ in FineLabel(text: "A") }
+        ui.build(to: container)
+
+        let root = container.subviews.first
+        let followsSafeArea = container.constraints.contains { constraint in
+            constraint.firstItem === root
+                && constraint.firstAttribute == .bottom
+                && (constraint.secondItem as? UILayoutGuide) === container.safeAreaLayoutGuide
+        }
+
+        #expect(followsSafeArea)
+    }
+
+    @Test func scrollViewKeyboardDismissModeAppliesAndResets() throws {
+        let first = FineRenderer.render(
+            FineScrollView { FineLabel(text: "A") }.keyboardDismissMode(.interactive)
+        )
+        let scrollView = try #require(first as? UIScrollView)
+
+        #expect(scrollView.keyboardDismissMode == .interactive)
+
+        let second = FineRenderer.render(FineScrollView { FineLabel(text: "A") }, reusing: first)
+
+        #expect(second === first)
+        #expect(scrollView.keyboardDismissMode == .none)
+    }
+
+    @Test func listKeyboardDismissModeApplies() throws {
+        struct Item: Identifiable {
+            let id: Int
+        }
+
+        let view = FineRenderer.render(
+            FineList([Item(id: 1)]) { _ in FineLabel(text: "A") }
+                .keyboardDismissMode(.onDrag)
+        )
+        let listView = try #require(view as? UITableView)
+
+        #expect(listView.keyboardDismissMode == .onDrag)
+    }
+}

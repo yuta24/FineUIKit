@@ -68,6 +68,7 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
     private var onRefresh: (@MainActor () async -> Void)?
     private var areElementsEqual: ((Element, Element) -> Bool)?
     private var deleteActionTitle: String = "Delete"
+    private var keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
 
     public init(_ elements: [Element], content: @escaping @MainActor (Element) -> any Renderable) {
         self.sections = [.init(id: "__FineList.main", items: elements)]
@@ -97,6 +98,12 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
     public func onRefresh(_ handler: @escaping @MainActor () async -> Void) -> FineList {
         var copy = self
         copy.onRefresh = handler
+        return copy
+    }
+
+    public func keyboardDismissMode(_ mode: UIScrollView.KeyboardDismissMode) -> FineList {
+        var copy = self
+        copy.keyboardDismissMode = mode
         return copy
     }
 
@@ -135,6 +142,10 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
         coordinator.deleteActionTitle = deleteActionTitle
         coordinator.dataSource.canEditRows = onDelete != nil
         coordinator.updateRefreshControl(on: listView)
+
+        if listView.keyboardDismissMode != keyboardDismissMode {
+            listView.keyboardDismissMode = keyboardDismissMode
+        }
 
         var snapshotSections: [FineListSection<Element>] = []
         var seenSectionIDs = Set<AnyHashable>()

@@ -91,6 +91,7 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
                 .onDelete { item in
                     viewModel.items.removeAll { $0.id == item.id }
                 }
+                .keyboardDismissMode(.onDrag)
             }
         }
     }

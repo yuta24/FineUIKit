@@ -48,12 +48,21 @@ open class FineViewController<State>: UIViewController {
         nil
     }
 
+    /// Whether the rendered tree's bottom edge follows the keyboard.
+    ///
+    /// Defaults to `true`: content compresses above the keyboard instead of
+    /// being covered by it. Override to return `false` to keep the tree
+    /// anchored to the bottom safe area. Read once in `viewDidLoad`.
+    open var avoidsKeyboard: Bool {
+        true
+    }
+
     open override func viewDidLoad() {
         super.viewDidLoad()
 
         view.backgroundColor = .systemBackground
 
-        let fineUI = FineUI(state) { [unowned self] state in
+        let fineUI = FineUI(state, avoidsKeyboard: avoidsKeyboard) { [unowned self] state in
             if let navigation = self.navigation(state) {
                 navigation.apply(to: self.navigationItem)
             }
