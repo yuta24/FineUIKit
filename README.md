@@ -196,3 +196,11 @@ Scripts/injectionlite-xcode27-fix.sh ToDo   # ビルドのたびに実行(スキ
 ```sh
 xcodebuild -scheme FineUIKit -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
+
+性能比較テストだけを実行する場合:
+
+```sh
+xcodebuild -scheme FineUIKit -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:FineUIKitTests/RenderingPerformanceTests test
+```
+
+性能値の絶対値は実機 + Release 構成でないと意味を持ちにくく、シミュレータ結果は傾向把握用です。
