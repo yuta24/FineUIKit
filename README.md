@@ -233,9 +233,10 @@ FineStack.vertical(spacing: 8) {
 
 ## アーキテクチャ
 
-- `Renderable` — UI 記述のプロトコル。`_makeView()`(生成)/ `_canUpdate(_:)`(再利用可否)/ `_update(_:)`(適用)を実装する値型
-- `FineRenderer` — 差分適用層。「ビュー型互換 + モディファイア署名一致 + key 一致」のときだけ in-place 更新、それ以外は作り直し
-- `FineUI` — `withObservationTracking` で「body 再評価 → 差分適用」のループを回すランタイム
+- `Renderable` — UI 記述の公開プロトコル。アプリ側は `body` で組み込みコンポーネントを合成する
+- 内部プリミティブ — 組み込みコンポーネントが持つ `_makeView()` / `_canUpdate(_:)` / `_update(_:context:)` 契約。署名や全プロパティ書き戻しの規則は公開 API ではない
+- `FineRenderer` — 差分適用層。`body` を内部プリミティブへ解決し、「ビュー型互換 + モディファイア署名一致 + key 一致」のときだけ in-place 更新、それ以外は作り直し
+- `FineUI` — `withObservationTracking` で差分適用を駆動するランタイム。root の `body` は構造、コンテナの `content` はそのノード、`FineLabel.text` はラベルノード単位で再評価される
 - `FineViewController` — 上記をまとめた推奨インターフェース
 
 ## ホットリロード

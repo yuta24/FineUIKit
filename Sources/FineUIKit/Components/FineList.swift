@@ -60,7 +60,7 @@ struct FineSectionIdentifier: Hashable, @unchecked Sendable {
 }
 
 @MainActor
-public struct FineList<Element: Identifiable>: Renderable where Element.ID: Sendable {
+public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Element.ID: Sendable {
     private let sections: [FineListSection<Element>]
     private let content: @MainActor (Element) -> any Renderable
     private var onSelect: (@MainActor (Element) -> Void)?
@@ -69,6 +69,10 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
     private var areElementsEqual: ((Element, Element) -> Bool)?
     private var deleteActionTitle: String = "Delete"
     private var keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
+
+    public var body: any Renderable {
+        fatalError("Primitive Renderable body should not be evaluated")
+    }
 
     public init(_ elements: [Element], content: @escaping @MainActor (Element) -> any Renderable) {
         self.sections = [.init(id: "__FineList.main", items: elements)]
@@ -107,7 +111,7 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
         return copy
     }
 
-    public func _makeView() -> UIView {
+    func _makeView() -> UIView {
         let listView = FineListView(frame: .zero, style: .plain)
         listView.sectionHeaderHeight = UITableView.automaticDimension
         listView.estimatedSectionHeaderHeight = 36
@@ -119,12 +123,12 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
         return listView
     }
 
-    public func _canUpdate(_ view: UIView) -> Bool {
+    func _canUpdate(_ view: UIView) -> Bool {
         guard let listView = view as? FineListView else { return false }
         return listView.coordinator == nil || listView.coordinator is Coordinator
     }
 
-    public func _update(_ view: UIView) {
+    func _update(_ view: UIView, context: FineRenderContext) {
         guard let listView = view as? FineListView else { return }
 
         let coordinator: Coordinator
@@ -404,8 +408,9 @@ final class FineListHostCell: UITableViewCell {
 
         let transaction = FineTransactionContext.current
         let apply = { [self] in
-            withObservationTracking {
-                FineRenderer.render(makeNode(), reusing: self.hostedView)
+            let context = FineRenderContext()
+            return withObservationTracking {
+                context.render(makeNode(), reusing: self.hostedView)
             } onChange: { [weak self] in
                 Task { @MainActor in
                     guard let self,
@@ -455,7 +460,7 @@ final class FineListHostHeaderFooterView: UITableViewHeaderFooterView {
     private var hostedView: UIView?
 
     func render(_ node: any Renderable) {
-        let view = FineRenderer.render(node, reusing: hostedView)
+        let view = FineRenderContext().render(node, reusing: hostedView)
         guard view !== hostedView else { return }
 
         hostedView?.removeFromSuperview()

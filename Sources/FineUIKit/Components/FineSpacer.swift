@@ -12,14 +12,18 @@ final class FineSpacerView: UIView {
 }
 
 @MainActor
-public struct FineSpacer: Renderable {
+public struct FineSpacer: FinePrimitiveRenderable {
     private let minLength: CGFloat?
+
+    public var body: any Renderable {
+        fatalError("Primitive Renderable body should not be evaluated")
+    }
 
     public init(minLength: CGFloat? = nil) {
         self.minLength = minLength
     }
 
-    public func _makeView() -> UIView {
+    func _makeView() -> UIView {
         let view = FineSpacerView(frame: .zero)
         view.setContentHuggingPriority(.init(1), for: .horizontal)
         view.setContentHuggingPriority(.init(1), for: .vertical)
@@ -28,11 +32,11 @@ public struct FineSpacer: Renderable {
         return view
     }
 
-    public func _canUpdate(_ view: UIView) -> Bool {
+    func _canUpdate(_ view: UIView) -> Bool {
         view is FineSpacerView
     }
 
-    public func _update(_ view: UIView) {
+    func _update(_ view: UIView, context: FineRenderContext) {
         var constraints = view.fineInstalledConstraints
 
         if let minLength {

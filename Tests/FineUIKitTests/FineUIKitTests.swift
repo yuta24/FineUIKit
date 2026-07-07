@@ -5,12 +5,48 @@ import UIKit
 
 @MainActor
 struct FineRendererTests {
+    struct CompositeLabel: Renderable {
+        let text: String
+
+        var body: any Renderable {
+            FineLabel(text: text)
+        }
+    }
+
+    struct NestedCompositeLabel: Renderable {
+        let text: String
+
+        var body: any Renderable {
+            CompositeLabel(text: text)
+        }
+    }
+
     @Test func labelIsReusedAndUpdatedInPlace() {
         let first = FineRenderer.render(FineLabel(text: "Hello"))
         let second = FineRenderer.render(FineLabel(text: "World"), reusing: first)
 
         #expect(second === first)
         #expect((second as? UILabel)?.text == "World")
+    }
+
+    @Test func compositeRenderableBodyRendersAndReusesPrimitiveView() throws {
+        let first = FineRenderer.render(CompositeLabel(text: "Hello"))
+        let label = try #require(first as? UILabel)
+
+        let second = FineRenderer.render(CompositeLabel(text: "World"), reusing: first)
+
+        #expect(second === first)
+        #expect(label.text == "World")
+    }
+
+    @Test func nestedCompositeRenderableBodyResolvesToPrimitiveView() throws {
+        let first = FineRenderer.render(NestedCompositeLabel(text: "A"))
+        let label = try #require(first as? UILabel)
+
+        let second = FineRenderer.render(NestedCompositeLabel(text: "B"), reusing: first)
+
+        #expect(second === first)
+        #expect(label.text == "B")
     }
 
     @Test func incompatibleViewIsReplaced() {
@@ -1246,6 +1282,20 @@ struct FineUITests {
         var count: Int = 0
     }
 
+    @Observable
+    final class TextModel {
+        var title: String = "A"
+        var subtitle: String = "One"
+        var items: [String] = ["A"]
+        var usesSubtitle = false
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<100 where !condition() {
+            await Task.yield()
+        }
+    }
+
     @Test func rerendersWhenObservableStateChanges() async throws {
         let counter = Counter()
         let container = UIView()
@@ -1267,6 +1317,146 @@ struct FineUITests {
 
         #expect(label.text == "1")
         #expect(container.subviews.first === label)
+    }
+
+    #if DEBUG
+    @Test func injectionRerenderDoesNotLeaveStaleObservationActive() async {
+        let counter = Counter()
+        let container = UIView()
+        var bodyEvaluationCount = 0
+
+        let fineUI = FineUI(counter) { counter in
+            bodyEvaluationCount += 1
+            let text = "\(counter.count)"
+            return FineLabel(text: text)
+        }
+        // An instance-specific name keeps this post from re-rendering every
+        // live FineUI in concurrently running tests.
+        let notificationName = Notification.Name("FineUIKitTests.injection.\(UUID().uuidString)")
+        fineUI.injectionNotificationName = notificationName
+        fineUI.build(to: container)
+
+        NotificationCenter.default.post(name: notificationName, object: nil)
+
+        for _ in 0..<10 where bodyEvaluationCount < 2 {
+            await Task.yield()
+        }
+
+        counter.count = 1
+
+        for _ in 0..<10 where bodyEvaluationCount < 3 {
+            await Task.yield()
+        }
+        for _ in 0..<10 {
+            await Task.yield()
+        }
+
+        #expect(bodyEvaluationCount == 3)
+    }
+    #endif
+
+    @Test func labelTextChangeUpdatesNodeWithoutBodyReevaluation() async throws {
+        let model = TextModel()
+        let container = UIView()
+        var bodyEvaluationCount = 0
+
+        let fineUI = FineUI(model) { model in
+            bodyEvaluationCount += 1
+            return FineLabel(text: model.title)
+        }
+        fineUI.build(to: container)
+
+        let label = try #require(container.subviews.first as? UILabel)
+        #expect(label.text == "A")
+        #expect(bodyEvaluationCount == 1)
+
+        model.title = "B"
+
+        await waitUntil { label.text == "B" }
+        for _ in 0..<10 {
+            await Task.yield()
+        }
+
+        #expect(label.text == "B")
+        #expect(bodyEvaluationCount == 1)
+    }
+
+    @Test func stackContentChangeUpdatesThatNodeWithoutBodyReevaluation() async throws {
+        let model = TextModel()
+        let container = UIView()
+        var bodyEvaluationCount = 0
+
+        let fineUI = FineUI(model) { model in
+            bodyEvaluationCount += 1
+            return FineStack.vertical {
+                model.items.map { FineLabel(text: $0) as any Renderable }
+            }
+        }
+        fineUI.build(to: container)
+
+        let stackView = try #require(container.subviews.first as? UIStackView)
+        #expect(stackView.arrangedSubviews.count == 1)
+        #expect(bodyEvaluationCount == 1)
+
+        model.items.append("B")
+
+        await waitUntil { stackView.arrangedSubviews.count == 2 }
+        let secondLabel = try #require(stackView.arrangedSubviews.last as? UILabel)
+
+        #expect(secondLabel.text == "B")
+        #expect(bodyEvaluationCount == 1)
+    }
+
+    @Test func bodyDirectReadStillTriggersBodyReevaluation() async throws {
+        let model = TextModel()
+        let container = UIView()
+        var bodyEvaluationCount = 0
+
+        let fineUI = FineUI(model) { model in
+            bodyEvaluationCount += 1
+            let title = model.title
+            return FineLabel(text: title)
+        }
+        fineUI.build(to: container)
+
+        let label = try #require(container.subviews.first as? UILabel)
+        #expect(label.text == "A")
+
+        model.title = "B"
+
+        await waitUntil { bodyEvaluationCount == 2 && label.text == "B" }
+
+        #expect(label.text == "B")
+        #expect(bodyEvaluationCount == 2)
+    }
+
+    @Test func staleRootObservationDoesNotRerenderAfterParentRerender() async throws {
+        let model = TextModel()
+        let container = UIView()
+        var bodyEvaluationCount = 0
+
+        let fineUI = FineUI(model) { model in
+            bodyEvaluationCount += 1
+            let title = model.title
+            let suffix = model.usesSubtitle ? model.subtitle : "Zero"
+            return FineLabel(text: "\(title)-\(suffix)")
+        }
+        fineUI.build(to: container)
+
+        let label = try #require(container.subviews.first as? UILabel)
+        #expect(label.text == "A-Zero")
+
+        model.usesSubtitle = true
+        await waitUntil { bodyEvaluationCount == 2 && label.text == "A-One" }
+
+        model.title = "B"
+        await waitUntil { bodyEvaluationCount == 3 && label.text == "B-One" }
+        for _ in 0..<10 {
+            await Task.yield()
+        }
+
+        #expect(label.text == "B-One")
+        #expect(bodyEvaluationCount == 3)
     }
 
     // Regression test: state reads inside a container's content closure happen
@@ -1351,6 +1541,32 @@ struct FineAnimationTests {
         window.layoutIfNeeded()
 
         let label = try #require(container.subviews.first as? UILabel)
+        label.layer.removeAllAnimations()
+
+        withFineAnimation(.linear(duration: 2)) {
+            model.opacity = 0.5
+        }
+
+        await waitUntil { label.alpha == 0.5 && (label.layer.animationKeys()?.contains("opacity") == true) }
+
+        #expect(label.layer.animationKeys()?.contains("opacity") == true)
+        _ = window
+    }
+
+    @Test func animatedNodeScopedOpacityChangeAddsLayerAnimation() async throws {
+        let model = Model()
+        let container = UIView()
+        let ui = FineUI(model) { model in
+            FineStack.vertical {
+                [FineLabel(text: "A").opacity(model.opacity)]
+            }
+        }
+        let window = attachToWindow(container)
+        ui.build(to: container)
+        window.layoutIfNeeded()
+
+        let stackView = try #require(container.subviews.first as? UIStackView)
+        let label = try #require(stackView.arrangedSubviews.first as? UILabel)
         label.layer.removeAllAnimations()
 
         withFineAnimation(.linear(duration: 2)) {

@@ -14,6 +14,7 @@ extension UIView {
     nonisolated(unsafe) static var fineKeyKey: UInt8 = 0
     nonisolated(unsafe) static var fineInstalledConstraintsKey: UInt8 = 0
     nonisolated(unsafe) static var fineCustomConstraintsKey: UInt8 = 0
+    nonisolated(unsafe) static var fineNodeStateKey: UInt8 = 0
 
     var fineModifierSignature: String {
         get {
@@ -48,6 +49,15 @@ extension UIView {
         }
         set {
             objc_setAssociatedObject(self, &Self.fineCustomConstraintsKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
+
+    var fineNodeState: FineNodeState? {
+        get {
+            objc_getAssociatedObject(self, &Self.fineNodeStateKey) as? FineNodeState
+        }
+        set {
+            objc_setAssociatedObject(self, &Self.fineNodeStateKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
     }
 }

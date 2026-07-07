@@ -9,28 +9,29 @@ import UIKit
 
 /// A value that describes a piece of UI.
 ///
-/// A `Renderable` is a lightweight description, not a view. `FineRenderer`
-/// turns descriptions into `UIView`s, reusing existing views when possible.
+/// A `Renderable` composes built-in components through `body`. `FineRenderer`
+/// resolves that composition into primitive descriptions and turns them into
+/// `UIView`s, reusing existing views when possible.
 @MainActor
 public protocol Renderable {
-    /// Creates a fresh view for this description. Do not configure it here;
-    /// configuration belongs in `_update(_:)` so it also runs on reuse.
+    /// Returns the composed UI description.
+    var body: any Renderable { get }
+}
+
+@MainActor
+protocol FinePrimitiveRenderable: Renderable {
     func _makeView() -> UIView
-
-    /// Whether this description can be applied to `view` in place.
     func _canUpdate(_ view: UIView) -> Bool
-
-    /// Applies this description to `view`.
-    func _update(_ view: UIView)
-
-    /// Identity for wrapper/property modifiers that affect reuse safety.
+    func _update(_ view: UIView, context: FineRenderContext)
     var _modifierSignature: String { get }
-
-    /// Stable identity for keyed container reconciliation.
     var _key: AnyHashable? { get }
 }
 
-public extension Renderable {
+extension FinePrimitiveRenderable {
+    var body: any Renderable {
+        fatalError("Primitive Renderable body should not be evaluated")
+    }
+
     var _modifierSignature: String {
         ""
     }

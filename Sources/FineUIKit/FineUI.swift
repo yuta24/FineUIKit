@@ -10,9 +10,9 @@ import UIKit
 
 /// Drives a `Renderable` tree from an observable state object.
 ///
-/// `FineUI` re-evaluates `body` whenever an `@Observable` property read
-/// inside it changes, and applies the new description to the existing view
-/// hierarchy in place.
+/// `FineUI` re-evaluates the smallest tracked description it can: root `body`
+/// for structural reads, and primitive nodes for values read while updating
+/// those nodes.
 ///
 /// Keep a strong reference to this object (e.g. in your view controller);
 /// releasing it stops the render loop.
@@ -24,11 +24,17 @@ public final class FineUI<State> {
 
     private weak var container: UIView?
     private var rootView: UIView?
+    private var generation = 0
 
     #if DEBUG
     // nonisolated(unsafe): only written on the main actor; deinit reads it
     // when no other references remain.
     private nonisolated(unsafe) var injectionObserver: (any NSObjectProtocol)?
+
+    /// The notification that triggers an injection re-render. Overridable so
+    /// tests can post to an instance-specific name instead of broadcasting to
+    /// every live `FineUI` in the process. Read once in `build(to:)`.
+    var injectionNotificationName = Notification.Name("INJECTION_BUNDLE_NOTIFICATION")
     #endif
 
     /// - Parameter avoidsKeyboard: When `true` (the default), the tree's
@@ -74,7 +80,7 @@ public final class FineUI<State> {
         guard injectionObserver == nil else { return }
 
         injectionObserver = NotificationCenter.default.addObserver(
-            forName: .init("INJECTION_BUNDLE_NOTIFICATION"),
+            forName: injectionNotificationName,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -86,20 +92,29 @@ public final class FineUI<State> {
     #endif
 
     private func render() {
+        generation += 1
+        let expectedGeneration = generation
         guard let container else { return }
 
         let transaction = FineTransactionContext.current
-        let apply = { [self] in
-            // Render inside the tracking closure: component content closures
-            // (e.g. FineStack's children) read state lazily during _update, and
-            // those reads must be tracked too.
-            withObservationTracking {
-                FineRenderer.render(self.body(self.state), reusing: self.rootView)
-            } onChange: { [weak self] in
-                Task { @MainActor in
-                    self?.render()
-                }
+        let description = withObservationTracking {
+            self.body(self.state)
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self,
+                      self.generation == expectedGeneration
+                else { return }
+
+                self.render()
             }
+        }
+
+        let scheduler = FineNodeScheduler()
+        let context = FineRenderContext(nodeScheduler: scheduler)
+        let apply = { [self] in
+            let rendered = FineRenderer.render(description, reusing: self.rootView, context: context)
+            scheduler.drain()
+            return rendered
         }
 
         let view: UIView

@@ -8,14 +8,18 @@
 import UIKit
 
 @MainActor
-public struct FineLabel: Renderable {
-    private let text: String?
+public struct FineLabel: FinePrimitiveRenderable {
+    private let text: @MainActor () -> String?
     private var font: UIFont?
     private var textColor: UIColor?
     private var textAlignment: NSTextAlignment?
     private var numberOfLines: Int?
 
-    public init(text: String?) {
+    public var body: any Renderable {
+        fatalError("Primitive Renderable body should not be evaluated")
+    }
+
+    public init(text: @autoclosure @escaping @MainActor () -> String?) {
         self.text = text
     }
 
@@ -43,24 +47,25 @@ public struct FineLabel: Renderable {
         return copy
     }
 
-    public func _makeView() -> UIView {
+    func _makeView() -> UIView {
         UILabel(frame: .zero)
     }
 
-    public func _canUpdate(_ view: UIView) -> Bool {
+    func _canUpdate(_ view: UIView) -> Bool {
         view is UILabel
     }
 
-    public func _update(_ view: UIView) {
+    func _update(_ view: UIView, context: FineRenderContext) {
         guard let label = view as? UILabel else { return }
 
         let resolvedFont = font ?? UIFont.systemFont(ofSize: UIFont.labelFontSize)
         let resolvedTextColor = textColor ?? UIColor.label
         let resolvedTextAlignment = textAlignment ?? NSTextAlignment.natural
         let resolvedNumberOfLines = numberOfLines ?? 1
+        let resolvedText = text()
 
-        if label.text != text {
-            label.text = text
+        if label.text != resolvedText {
+            label.text = resolvedText
         }
         if !label.font.isEqual(resolvedFont) {
             label.font = resolvedFont

@@ -57,7 +57,7 @@ public struct FineGridSection<Element: Identifiable> {
 }
 
 @MainActor
-public struct FineGrid<Element: Identifiable>: Renderable where Element.ID: Sendable {
+public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Element.ID: Sendable {
     private let sections: [FineGridSection<Element>]
     private let columns: FineGridColumns
     private let spacing: CGFloat
@@ -66,6 +66,10 @@ public struct FineGrid<Element: Identifiable>: Renderable where Element.ID: Send
     private var onRefresh: (@MainActor () async -> Void)?
     private var areElementsEqual: ((Element, Element) -> Bool)?
     private var keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
+
+    public var body: any Renderable {
+        fatalError("Primitive Renderable body should not be evaluated")
+    }
 
     public init(
         _ elements: [Element],
@@ -109,7 +113,7 @@ public struct FineGrid<Element: Identifiable>: Renderable where Element.ID: Send
         return copy
     }
 
-    public func _makeView() -> UIView {
+    func _makeView() -> UIView {
         let gridView = FineGridView(frame: .zero, collectionViewLayout: Self.makeLayout())
         let layout = Self.makeLayout { [weak gridView] in
             (gridView?.coordinator as? Coordinator)?.layoutConfiguration(for: $0)
@@ -119,12 +123,12 @@ public struct FineGrid<Element: Identifiable>: Renderable where Element.ID: Send
         return gridView
     }
 
-    public func _canUpdate(_ view: UIView) -> Bool {
+    func _canUpdate(_ view: UIView) -> Bool {
         guard let gridView = view as? FineGridView else { return false }
         return gridView.coordinator == nil || gridView.coordinator is Coordinator
     }
 
-    public func _update(_ view: UIView) {
+    func _update(_ view: UIView, context: FineRenderContext) {
         guard let gridView = view as? FineGridView else { return }
 
         let coordinator: Coordinator
@@ -494,8 +498,9 @@ final class FineGridHostCell: UICollectionViewCell {
 
         let transaction = FineTransactionContext.current
         let apply = { [self] in
-            withObservationTracking {
-                FineRenderer.render(makeNode(), reusing: self.hostedView)
+            let context = FineRenderContext()
+            return withObservationTracking {
+                context.render(makeNode(), reusing: self.hostedView)
             } onChange: { [weak self] in
                 Task { @MainActor in
                     guard let self,
@@ -551,7 +556,7 @@ final class FineGridHostSupplementaryView: UICollectionReusableView {
     }
 
     func render(_ node: any Renderable) {
-        let view = FineRenderer.render(node, reusing: hostedView)
+        let view = FineRenderContext().render(node, reusing: hostedView)
         guard view !== hostedView else { return }
 
         hostedView?.removeFromSuperview()

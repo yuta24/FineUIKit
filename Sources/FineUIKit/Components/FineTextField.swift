@@ -8,7 +8,7 @@
 import UIKit
 
 @MainActor
-public struct FineTextField: Renderable {
+public struct FineTextField: FinePrimitiveRenderable {
     private static let editingChangedActionKey = "FineUIKit.FineTextField.editingChanged"
     private static let editingDidEndOnExitActionKey = "FineUIKit.FineTextField.editingDidEndOnExit"
 
@@ -18,6 +18,10 @@ public struct FineTextField: Renderable {
     private var returnKeyType: UIReturnKeyType?
     private var isSecureTextEntry: Bool?
     private var onSubmit: (@MainActor () -> Void)?
+
+    public var body: any Renderable {
+        fatalError("Primitive Renderable body should not be evaluated")
+    }
 
     public init(text: FineBinding<String>, placeholder: String? = nil) {
         self.text = text
@@ -55,17 +59,17 @@ public struct FineTextField: Renderable {
         return copy
     }
 
-    public func _makeView() -> UIView {
+    func _makeView() -> UIView {
         let textField = UITextField(frame: .zero)
         textField.borderStyle = .roundedRect
         return textField
     }
 
-    public func _canUpdate(_ view: UIView) -> Bool {
+    func _canUpdate(_ view: UIView) -> Bool {
         view is UITextField
     }
 
-    public func _update(_ view: UIView) {
+    func _update(_ view: UIView, context: FineRenderContext) {
         guard let textField = view as? UITextField else { return }
 
         let resolvedKeyboardType = keyboardType ?? .default

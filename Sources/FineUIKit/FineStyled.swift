@@ -14,20 +14,20 @@ struct FineStyle {
 }
 
 @MainActor
-struct FineStyled: Renderable {
+struct FineStyled: FinePrimitiveRenderable {
     let content: any Renderable
     let styles: [FineStyle]
 
     func _makeView() -> UIView {
-        content._makeView()
+        FineRenderer.primitive(for: content)._makeView()
     }
 
     func _canUpdate(_ view: UIView) -> Bool {
-        content._canUpdate(view)
+        FineRenderer.primitive(for: content)._canUpdate(view)
     }
 
-    func _update(_ view: UIView) {
-        content._update(view)
+    func _update(_ view: UIView, context: FineRenderContext) {
+        FineRenderer.primitive(for: content)._update(view, context: context)
 
         for style in styles {
             style.apply(view)
@@ -35,11 +35,11 @@ struct FineStyled: Renderable {
     }
 
     var _modifierSignature: String {
-        content._modifierSignature + "|" + styles.map(\.key).joined(separator: "|")
+        FineRenderer.primitive(for: content)._modifierSignature + "|" + styles.map(\.key).joined(separator: "|")
     }
 
     var _key: AnyHashable? {
-        content._key
+        FineRenderer.primitive(for: content)._key
     }
 }
 

@@ -8,22 +8,26 @@
 import UIKit
 
 @MainActor
-public struct FineImage: Renderable {
+public struct FineImage: FinePrimitiveRenderable {
     private let image: UIImage
+
+    public var body: any Renderable {
+        fatalError("Primitive Renderable body should not be evaluated")
+    }
 
     public init(image: UIImage) {
         self.image = image
     }
 
-    public func _makeView() -> UIView {
+    func _makeView() -> UIView {
         UIImageView(frame: .zero)
     }
 
-    public func _canUpdate(_ view: UIView) -> Bool {
+    func _canUpdate(_ view: UIView) -> Bool {
         view is UIImageView
     }
 
-    public func _update(_ view: UIView) {
+    func _update(_ view: UIView, context: FineRenderContext) {
         guard let imageView = view as? UIImageView else { return }
 
         if imageView.image !== image {

@@ -14,10 +14,14 @@ final class FineScrollHostView: UIScrollView {
 }
 
 @MainActor
-public struct FineScrollView: Renderable {
+public struct FineScrollView: FinePrimitiveRenderable {
     private let axis: NSLayoutConstraint.Axis
     private let content: @MainActor () -> any Renderable
     private var keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
+
+    public var body: any Renderable {
+        fatalError("Primitive Renderable body should not be evaluated")
+    }
 
     /// Creates a scroll container. Avoid nesting `FineList` or `FineGrid`
     /// inside it because those components already manage their own scrolling.
@@ -32,22 +36,22 @@ public struct FineScrollView: Renderable {
         return copy
     }
 
-    public func _makeView() -> UIView {
+    func _makeView() -> UIView {
         FineScrollHostView(frame: .zero)
     }
 
-    public func _canUpdate(_ view: UIView) -> Bool {
+    func _canUpdate(_ view: UIView) -> Bool {
         view is FineScrollHostView
     }
 
-    public func _update(_ view: UIView) {
+    func _update(_ view: UIView, context: FineRenderContext) {
         guard let scrollView = view as? FineScrollHostView else { return }
 
         if scrollView.keyboardDismissMode != keyboardDismissMode {
             scrollView.keyboardDismissMode = keyboardDismissMode
         }
 
-        let hosted = FineRenderer.render(content(), reusing: scrollView.hosted)
+        let hosted = context.render(content(), reusing: scrollView.hosted)
 
         if hosted !== scrollView.hosted {
             NSLayoutConstraint.deactivate(scrollView.hostConstraints)
@@ -78,7 +82,7 @@ public struct FineScrollView: Renderable {
         }
     }
 
-    public var _modifierSignature: String {
+    var _modifierSignature: String {
         switch axis {
         case .horizontal:
             "scroll.h"

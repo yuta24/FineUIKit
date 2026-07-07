@@ -8,24 +8,24 @@
 import UIKit
 
 @MainActor
-struct FineKeyed: Renderable {
+struct FineKeyed: FinePrimitiveRenderable {
     let key: AnyHashable
     let content: any Renderable
 
     func _makeView() -> UIView {
-        content._makeView()
+        FineRenderer.primitive(for: content)._makeView()
     }
 
     func _canUpdate(_ view: UIView) -> Bool {
-        content._canUpdate(view)
+        FineRenderer.primitive(for: content)._canUpdate(view)
     }
 
-    func _update(_ view: UIView) {
-        content._update(view)
+    func _update(_ view: UIView, context: FineRenderContext) {
+        FineRenderer.primitive(for: content)._update(view, context: context)
     }
 
     var _modifierSignature: String {
-        content._modifierSignature
+        FineRenderer.primitive(for: content)._modifierSignature
     }
 
     var _key: AnyHashable? {

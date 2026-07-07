@@ -29,7 +29,7 @@ final class FineFrameView: UIView {
 }
 
 @MainActor
-struct FineFramed: Renderable {
+struct FineFramed: FinePrimitiveRenderable {
     let content: any Renderable
     let width: CGFloat?
     let height: CGFloat?
@@ -43,10 +43,10 @@ struct FineFramed: Renderable {
         view is FineFrameView
     }
 
-    func _update(_ view: UIView) {
+    func _update(_ view: UIView, context: FineRenderContext) {
         guard let frameView = view as? FineFrameView else { return }
 
-        let hosted = FineRenderer.render(content, reusing: frameView.hosted)
+        let hosted = context.render(content, reusing: frameView.hosted)
 
         if hosted !== frameView.hosted {
             NSLayoutConstraint.deactivate(frameView.hostConstraints)
@@ -69,7 +69,7 @@ struct FineFramed: Renderable {
     }
 
     var _key: AnyHashable? {
-        content._key
+        FineRenderer.primitive(for: content)._key
     }
 
     private func updateDimension(_ constraint: inout NSLayoutConstraint?, on anchor: NSLayoutDimension, value: CGFloat?) {

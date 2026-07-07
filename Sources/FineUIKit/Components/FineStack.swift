@@ -8,12 +8,16 @@
 import UIKit
 
 @MainActor
-public struct FineStack: Renderable {
+public struct FineStack: FinePrimitiveRenderable {
     private let axis: NSLayoutConstraint.Axis
     private let spacing: CGFloat
     private let alignment: UIStackView.Alignment
     private let distribution: UIStackView.Distribution
     private let content: () -> [any Renderable]
+
+    public var body: any Renderable {
+        fatalError("Primitive Renderable body should not be evaluated")
+    }
 
     private init(
         axis: NSLayoutConstraint.Axis,
@@ -47,15 +51,15 @@ public struct FineStack: Renderable {
         .init(axis: .horizontal, spacing: spacing, alignment: alignment, distribution: distribution, content: content)
     }
 
-    public func _makeView() -> UIView {
+    func _makeView() -> UIView {
         UIStackView(frame: .zero)
     }
 
-    public func _canUpdate(_ view: UIView) -> Bool {
+    func _canUpdate(_ view: UIView) -> Bool {
         view is UIStackView
     }
 
-    public func _update(_ view: UIView) {
+    func _update(_ view: UIView, context: FineRenderContext) {
         guard let stackView = view as? UIStackView else { return }
 
         if stackView.axis != axis {
@@ -86,18 +90,19 @@ public struct FineStack: Renderable {
         var seenKeys = Set<AnyHashable>()
         var unkeyedIndex = 0
         let newViews = content().map { node in
-            if let key = node._key {
+            let primitive = FineRenderer.primitive(for: node)
+            if let key = primitive._key {
                 guard seenKeys.insert(key).inserted else {
                     assertionFailure("Duplicate FineUIKit key: \(key)")
-                    return FineRenderer.render(node, reusing: nil)
+                    return context.render(node, reusing: nil)
                 }
 
-                return FineRenderer.render(node, reusing: keyedOldViews.removeValue(forKey: key))
+                return context.render(node, reusing: keyedOldViews.removeValue(forKey: key))
             }
 
             let reusable = unkeyedIndex < unkeyedOldViews.count ? unkeyedOldViews[unkeyedIndex] : nil
             unkeyedIndex += 1
-            return FineRenderer.render(node, reusing: reusable)
+            return context.render(node, reusing: reusable)
         }
 
         for oldView in oldViews where !newViews.contains(where: { $0 === oldView }) {

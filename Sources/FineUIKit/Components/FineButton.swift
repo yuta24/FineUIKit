@@ -8,13 +8,17 @@
 import UIKit
 
 @MainActor
-public struct FineButton: Renderable {
+public struct FineButton: FinePrimitiveRenderable {
     private static let actionKey = "FineUIKit.FineButton.primaryAction"
 
     private let title: String?
     private let action: () -> Void
     private var image: UIImage?
     private var configuration: UIButton.Configuration?
+
+    public var body: any Renderable {
+        fatalError("Primitive Renderable body should not be evaluated")
+    }
 
     public init(title: String?, action: @escaping () -> Void) {
         self.title = title
@@ -38,15 +42,15 @@ public struct FineButton: Renderable {
         return copy
     }
 
-    public func _makeView() -> UIView {
+    func _makeView() -> UIView {
         UIButton(type: .system)
     }
 
-    public func _canUpdate(_ view: UIView) -> Bool {
+    func _canUpdate(_ view: UIView) -> Bool {
         view is UIButton
     }
 
-    public func _update(_ view: UIView) {
+    func _update(_ view: UIView, context: FineRenderContext) {
         guard let button = view as? UIButton else { return }
 
         if var configuration {
@@ -72,7 +76,7 @@ public struct FineButton: Renderable {
         }
     }
 
-    public var _modifierSignature: String {
+    var _modifierSignature: String {
         configuration == nil ? "" : "button.cfg"
     }
 }

@@ -8,26 +8,30 @@
 import UIKit
 
 @MainActor
-public struct FineSlider: Renderable {
+public struct FineSlider: FinePrimitiveRenderable {
     private static let actionKey = "FineUIKit.FineSlider.valueChanged"
 
     private let value: FineBinding<Float>
     private let range: ClosedRange<Float>
+
+    public var body: any Renderable {
+        fatalError("Primitive Renderable body should not be evaluated")
+    }
 
     public init(value: FineBinding<Float>, in range: ClosedRange<Float> = 0...1) {
         self.value = value
         self.range = range
     }
 
-    public func _makeView() -> UIView {
+    func _makeView() -> UIView {
         UISlider(frame: .zero)
     }
 
-    public func _canUpdate(_ view: UIView) -> Bool {
+    func _canUpdate(_ view: UIView) -> Bool {
         view is UISlider
     }
 
-    public func _update(_ view: UIView) {
+    func _update(_ view: UIView, context: FineRenderContext) {
         guard let slider = view as? UISlider else { return }
 
         if slider.minimumValue != range.lowerBound {

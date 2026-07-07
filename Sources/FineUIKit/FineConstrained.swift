@@ -16,20 +16,20 @@ struct FineConstraintSpec {
 }
 
 @MainActor
-struct FineConstrained: Renderable {
+struct FineConstrained: FinePrimitiveRenderable {
     let content: any Renderable
     let specs: [FineConstraintSpec]
 
     func _makeView() -> UIView {
-        content._makeView()
+        FineRenderer.primitive(for: content)._makeView()
     }
 
     func _canUpdate(_ view: UIView) -> Bool {
-        content._canUpdate(view)
+        FineRenderer.primitive(for: content)._canUpdate(view)
     }
 
-    func _update(_ view: UIView) {
-        content._update(view)
+    func _update(_ view: UIView, context: FineRenderContext) {
+        FineRenderer.primitive(for: content)._update(view, context: context)
 
         let activeKeys = Set(specs.map(\.key))
         var installed = view.fineInstalledConstraints
@@ -54,30 +54,30 @@ struct FineConstrained: Renderable {
     }
 
     var _modifierSignature: String {
-        content._modifierSignature + "|" + specs.map(\.key).joined(separator: "|")
+        FineRenderer.primitive(for: content)._modifierSignature + "|" + specs.map(\.key).joined(separator: "|")
     }
 
     var _key: AnyHashable? {
-        content._key
+        FineRenderer.primitive(for: content)._key
     }
 }
 
 @MainActor
-struct FineCustomConstrained: Renderable {
+struct FineCustomConstrained: FinePrimitiveRenderable {
     let content: any Renderable
     let id: String
     let make: @MainActor (UIView) -> [NSLayoutConstraint]
 
     func _makeView() -> UIView {
-        content._makeView()
+        FineRenderer.primitive(for: content)._makeView()
     }
 
     func _canUpdate(_ view: UIView) -> Bool {
-        content._canUpdate(view)
+        FineRenderer.primitive(for: content)._canUpdate(view)
     }
 
-    func _update(_ view: UIView) {
-        content._update(view)
+    func _update(_ view: UIView, context: FineRenderContext) {
+        FineRenderer.primitive(for: content)._update(view, context: context)
 
         let key = "custom:\(id)"
         var constraints = view.fineCustomConstraints
@@ -90,11 +90,11 @@ struct FineCustomConstrained: Renderable {
     }
 
     var _modifierSignature: String {
-        content._modifierSignature + "|custom:\(id)"
+        FineRenderer.primitive(for: content)._modifierSignature + "|custom:\(id)"
     }
 
     var _key: AnyHashable? {
-        content._key
+        FineRenderer.primitive(for: content)._key
     }
 }
 
