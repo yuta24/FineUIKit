@@ -154,6 +154,32 @@ struct FineListTests {
         }
     }
 
+    private func waitForRows(_ count: Int, in section: Int, of listView: UITableView) async {
+        for _ in 0..<10 where listView.numberOfSections <= section || listView.numberOfRows(inSection: section) != count {
+            await Task.yield()
+        }
+    }
+
+    private func waitForSections(_ count: Int, in listView: UITableView) async {
+        for _ in 0..<10 where listView.numberOfSections != count {
+            await Task.yield()
+        }
+    }
+
+    private func firstLabel(in view: UIView) -> UILabel? {
+        if let label = view as? UILabel {
+            return label
+        }
+
+        for subview in view.subviews {
+            if let label = firstLabel(in: subview) {
+                return label
+            }
+        }
+
+        return nil
+    }
+
     @Test func rendersRowsForElements() async throws {
         let items = [Item(title: "A"), Item(title: "B")]
         let view = FineRenderer.render(FineList(items) { FineLabel(text: $0.title) })
@@ -185,6 +211,119 @@ struct FineListTests {
 
         await waitForRows(2, in: listView)
         #expect(listView.numberOfRows(inSection: 0) == 2)
+    }
+
+    @Test func sectionsRenderRowsPerSection() async throws {
+        let first = Item(id: "a", title: "A")
+        let second = Item(id: "b", title: "B")
+        let third = Item(id: "c", title: "C")
+        let view = FineRenderer.render(FineList(sections: [
+            FineListSection(id: "one", items: [first, second]),
+            FineListSection(id: "two", items: [third]),
+        ]) { FineLabel(text: $0.title) })
+        let listView = try #require(view as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForSections(2, in: listView)
+        await waitForRows(2, in: 0, of: listView)
+        await waitForRows(1, in: 1, of: listView)
+
+        #expect(listView.numberOfSections == 2)
+        #expect(listView.numberOfRows(inSection: 0) == 2)
+        #expect(listView.numberOfRows(inSection: 1) == 1)
+        _ = window
+    }
+
+    @Test func headerAndFooterRenderRenderableContent() async throws {
+        let item = Item(id: "a", title: "A")
+        let view = FineRenderer.render(FineList(sections: [
+            FineListSection(
+                id: "main",
+                header: FineLabel(text: "Header"),
+                footer: FineLabel(text: "Footer"),
+                items: [item]
+            ),
+        ]) { FineLabel(text: $0.title) })
+        let listView = try #require(view as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForSections(1, in: listView)
+
+        let header = try #require(listView.delegate?.tableView?(listView, viewForHeaderInSection: 0) ?? nil)
+        let footer = try #require(listView.delegate?.tableView?(listView, viewForFooterInSection: 0) ?? nil)
+
+        #expect(firstLabel(in: header)?.text == "Header")
+        #expect(firstLabel(in: footer)?.text == "Footer")
+        _ = window
+    }
+
+    @Test func stringSectionHeaderRendersAsLabel() async throws {
+        let item = Item(id: "a", title: "A")
+        let view = FineRenderer.render(FineList(sections: [
+            FineListSection(id: "main", header: "Active", items: [item]),
+        ]) { FineLabel(text: $0.title) })
+        let listView = try #require(view as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForSections(1, in: listView)
+
+        let header = try #require(listView.delegate?.tableView?(listView, viewForHeaderInSection: 0) ?? nil)
+
+        #expect(firstLabel(in: header)?.text == "Active")
+        _ = window
+    }
+
+    @Test func onRefreshInstallsRunsAndRemovesRefreshControl() async throws {
+        let items = [Item(id: "a", title: "A")]
+        var refreshCount = 0
+        let first = FineRenderer.render(FineList(items) { FineLabel(text: $0.title) }
+            .onRefresh {
+                refreshCount += 1
+            })
+        let listView = try #require(first as? UITableView)
+        let refreshControl = try #require(listView.refreshControl)
+
+        refreshControl.sendActions(for: .valueChanged)
+
+        for _ in 0..<10 where refreshCount == 0 {
+            await Task.yield()
+        }
+
+        #expect(refreshCount == 1)
+
+        _ = FineRenderer.render(FineList(items) { FineLabel(text: $0.title) }, reusing: first)
+
+        #expect(listView.refreshControl == nil)
+    }
+
+    @Test func sectionAddAndRemoveUpdatesReusedTableView() async throws {
+        let firstItem = Item(id: "a", title: "A")
+        let secondItem = Item(id: "b", title: "B")
+        let first = FineRenderer.render(FineList(sections: [
+            FineListSection(id: "one", items: [firstItem]),
+        ]) { FineLabel(text: $0.title) })
+        let listView = try #require(first as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForSections(1, in: listView)
+
+        let second = FineRenderer.render(FineList(sections: [
+            FineListSection(id: "one", items: [firstItem]),
+            FineListSection(id: "two", items: [secondItem]),
+        ]) { FineLabel(text: $0.title) }, reusing: first)
+
+        #expect(second === first)
+        await waitForSections(2, in: listView)
+        await waitForRows(1, in: 1, of: listView)
+
+        _ = FineRenderer.render(FineList(sections: [
+            FineListSection(id: "two", items: [secondItem]),
+        ]) { FineLabel(text: $0.title) }, reusing: first)
+
+        await waitForSections(1, in: listView)
+        await waitForRows(1, in: 0, of: listView)
+        #expect(listView.numberOfSections == 1)
+        _ = window
     }
 
     @Test func selectionInvokesHandlerWithElement() async throws {

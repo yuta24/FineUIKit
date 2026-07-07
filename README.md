@@ -45,6 +45,16 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
 
 `body` 内で読んだ `@Observable` プロパティが変化すると自動で再レンダリングされます。ビューは作り直されず、互換なビューは in-place 更新されます。
 
+```swift
+FineList(sections: [
+    FineListSection(id: "active", header: "Active", items: activeItems),
+    FineListSection(id: "done", header: "Completed", items: completedItems),
+]) { item in
+    FineLabel(text: item.title)
+}
+.onRefresh { await viewModel.reload() }
+```
+
 ## コンポーネント
 
 | コンポーネント | ベース | 特記事項 |
@@ -53,7 +63,7 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
 | `FineButton` | `UIButton` | `action` クロージャ。`.image` / `.configuration(UIButton.Configuration)` |
 | `FineImage` | `UIImageView` | |
 | `FineStack` | `UIStackView` | `vertical` / `horizontal`、`spacing` / `alignment` / `distribution`。子は keyed + 位置ベースで差分適用 |
-| `FineList` | `UITableView` | diffable data source(`Identifiable`)。`.onSelect` / `.onDelete`(スワイプ削除) |
+| `FineList` | `UITableView` | diffable data source(`Identifiable`)。セクション / ヘッダー・フッター / `.onRefresh` / `.onSelect` / `.onDelete` |
 | `FineGrid` | `UICollectionView` | compositional layout。`columns: .count(n)` / `.adaptive(minimum:)`、`.onSelect` |
 | `FineTextField` | `UITextField` | `FineBinding<String>` で双方向。`.keyboardType` / `.returnKeyType` / `.secureTextEntry` / `.onSubmit` |
 | `FineToggle` | `UISwitch` | `FineBinding<Bool>` |

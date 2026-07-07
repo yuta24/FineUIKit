@@ -23,19 +23,34 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
     }
 
     override func body(_ viewModel: ToDoListViewModel) -> any Renderable {
-        FineStack.vertical(spacing: 8) {
+        func addTask() {
+            let title = viewModel.draft.isEmpty
+                ? "Task \(viewModel.items.count + 1)"
+                : viewModel.draft
+            viewModel.items.append(.init(title: title))
+            viewModel.draft = ""
+        }
+
+        let activeItems = viewModel.items.filter { !$0.completed }
+        let completedItems = viewModel.items.filter { $0.completed }
+        var listSections = [
+            FineListSection(id: "active", header: "Active", items: activeItems),
+        ]
+        if !completedItems.isEmpty {
+            listSections.append(.init(id: "completed", header: "Completed", items: completedItems))
+        }
+
+        return FineStack.vertical(spacing: 8) {
             FineLabel(text: "\(viewModel.items.count) items")
                 .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16))
             FineStack.horizontal(spacing: 8) {
                 FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
+                    .onSubmit { addTask() }
                     .accessibilityIdentifier("draft-field")
                 FineButton(title: "Add") {
-                    let title = viewModel.draft.isEmpty
-                        ? "Task \(viewModel.items.count + 1)"
-                        : viewModel.draft
-                    viewModel.items.append(.init(title: title))
-                    viewModel.draft = ""
+                    addTask()
                 }
+                .configuration(.filled())
                 .hugging(.defaultHigh, axis: .horizontal)
                 .accessibilityLabel("Add task")
                 .accessibilityHint("Adds a new task to the list")
@@ -57,7 +72,7 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
                     viewModel.items.removeAll { $0.id == item.id }
                 }
             } else {
-                FineList(viewModel.items) { item in
+                FineList(sections: listSections) { item in
                     FineStack.horizontal(spacing: 8) {
                         FineToggle(isOn: .init(item, \.completed))
                         FineLabel(text: item.title)
