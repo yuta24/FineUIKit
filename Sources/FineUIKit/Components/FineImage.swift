@@ -26,6 +26,8 @@ public struct FineImage: Renderable {
     public func _update(_ view: UIView) {
         guard let imageView = view as? UIImageView else { return }
 
-        imageView.image = image
+        if imageView.image !== image {
+            imageView.image = image
+        }
     }
 }

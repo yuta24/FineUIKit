@@ -126,6 +126,26 @@ struct FineButtonTests {
 
         #expect(tapCount == 1)
     }
+
+    @Test func buttonActionUsesLatestClosureAfterReuse() throws {
+        var firstTapCount = 0
+        var secondTapCount = 0
+        let first = FineRenderer.render(FineButton(title: "Tap") {
+            firstTapCount += 1
+        })
+        let button = try #require(first as? UIButton)
+
+        let second = FineRenderer.render(FineButton(title: "Tap") {
+            secondTapCount += 1
+        }, reusing: first)
+
+        #expect(second === first)
+
+        button.sendActions(for: .primaryActionTriggered)
+
+        #expect(firstTapCount == 0)
+        #expect(secondTapCount == 1)
+    }
 }
 
 @MainActor

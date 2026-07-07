@@ -128,72 +128,100 @@ public extension Renderable {
 
     func backgroundColor(_ color: UIColor) -> any Renderable {
         _styled("backgroundColor") { view in
-            view.backgroundColor = color
+            if view.backgroundColor?.isEqual(color) != true {
+                view.backgroundColor = color
+            }
         }
     }
 
     func cornerRadius(_ radius: CGFloat) -> any Renderable {
         _styled("cornerRadius") { view in
-            view.layer.cornerRadius = radius
-            view.clipsToBounds = true
+            if view.layer.cornerRadius != radius {
+                view.layer.cornerRadius = radius
+            }
+            if !view.clipsToBounds {
+                view.clipsToBounds = true
+            }
         }
     }
 
     func border(_ color: UIColor, width: CGFloat) -> any Renderable {
         _styled("border") { view in
-            view.layer.borderColor = color.cgColor
-            view.layer.borderWidth = width
+            if view.layer.borderColor != color.cgColor {
+                view.layer.borderColor = color.cgColor
+            }
+            if view.layer.borderWidth != width {
+                view.layer.borderWidth = width
+            }
         }
     }
 
     func opacity(_ value: CGFloat) -> any Renderable {
         _styled("opacity") { view in
-            view.alpha = value
+            if view.alpha != value {
+                view.alpha = value
+            }
         }
     }
 
     func tintColor(_ color: UIColor) -> any Renderable {
         _styled("tintColor") { view in
-            view.tintColor = color
+            if view.tintColor?.isEqual(color) != true {
+                view.tintColor = color
+            }
         }
     }
 
     func accessibilityLabel(_ label: String) -> any Renderable {
         _styled("axLabel") { view in
-            view.accessibilityLabel = label
-            view.isAccessibilityElement = true
+            if view.accessibilityLabel != label {
+                view.accessibilityLabel = label
+            }
+            if !view.isAccessibilityElement {
+                view.isAccessibilityElement = true
+            }
         }
     }
 
     func accessibilityValue(_ value: String) -> any Renderable {
         _styled("axValue") { view in
-            view.accessibilityValue = value
+            if view.accessibilityValue != value {
+                view.accessibilityValue = value
+            }
         }
     }
 
     func accessibilityHint(_ hint: String) -> any Renderable {
         _styled("axHint") { view in
-            view.accessibilityHint = hint
+            if view.accessibilityHint != hint {
+                view.accessibilityHint = hint
+            }
         }
     }
 
     func accessibilityTraits(_ traits: UIAccessibilityTraits) -> any Renderable {
         _styled("axTraits") { view in
-            view.accessibilityTraits = traits
+            if view.accessibilityTraits != traits {
+                view.accessibilityTraits = traits
+            }
         }
     }
 
     func accessibilityIdentifier(_ identifier: String) -> any Renderable {
         _styled("axIdentifier") { view in
-            view.accessibilityIdentifier = identifier
+            if view.accessibilityIdentifier != identifier {
+                view.accessibilityIdentifier = identifier
+            }
         }
     }
 
     func accessibilityHidden(_ hidden: Bool = true) -> any Renderable {
         _styled("axHidden") { view in
-            view.accessibilityElementsHidden = hidden
+            if view.accessibilityElementsHidden != hidden {
+                view.accessibilityElementsHidden = hidden
+            }
 
-            if hidden {
+            if hidden && view.isAccessibilityElement {
                 view.isAccessibilityElement = false
             }
         }

@@ -9,8 +9,8 @@ import UIKit
 
 @MainActor
 public struct FineTextField: Renderable {
-    private static let editingChangedActionIdentifier = UIAction.Identifier("FineUIKit.FineTextField.editingChanged")
-    private static let editingDidEndOnExitActionIdentifier = UIAction.Identifier("FineUIKit.FineTextField.editingDidEndOnExit")
+    private static let editingChangedActionKey = "FineUIKit.FineTextField.editingChanged"
+    private static let editingDidEndOnExitActionKey = "FineUIKit.FineTextField.editingDidEndOnExit"
 
     private let text: FineBinding<String>
     private let placeholder: String?
@@ -68,10 +68,22 @@ public struct FineTextField: Renderable {
     public func _update(_ view: UIView) {
         guard let textField = view as? UITextField else { return }
 
-        textField.placeholder = placeholder
-        textField.keyboardType = keyboardType ?? .default
-        textField.returnKeyType = returnKeyType ?? .default
-        textField.isSecureTextEntry = isSecureTextEntry ?? false
+        let resolvedKeyboardType = keyboardType ?? .default
+        let resolvedReturnKeyType = returnKeyType ?? .default
+        let resolvedSecureTextEntry = isSecureTextEntry ?? false
+
+        if textField.placeholder != placeholder {
+            textField.placeholder = placeholder
+        }
+        if textField.keyboardType != resolvedKeyboardType {
+            textField.keyboardType = resolvedKeyboardType
+        }
+        if textField.returnKeyType != resolvedReturnKeyType {
+            textField.returnKeyType = resolvedReturnKeyType
+        }
+        if textField.isSecureTextEntry != resolvedSecureTextEntry {
+            textField.isSecureTextEntry = resolvedSecureTextEntry
+        }
 
         // Only write when the value actually differs, so re-renders during
         // typing don't reset the cursor.
@@ -79,17 +91,17 @@ public struct FineTextField: Renderable {
             textField.text = text.value
         }
 
-        textField.removeAction(identifiedBy: Self.editingChangedActionIdentifier, for: .editingChanged)
-        textField.addAction(.init(identifier: Self.editingChangedActionIdentifier, handler: { [text] action in
-            guard let textField = action.sender as? UITextField else { return }
+        textField.fineSetHandler(Self.editingChangedActionKey, for: .editingChanged) { [text] control in
+            guard let textField = control as? UITextField else { return }
             text.value = textField.text ?? ""
-        }), for: .editingChanged)
+        }
 
-        textField.removeAction(identifiedBy: Self.editingDidEndOnExitActionIdentifier, for: .editingDidEndOnExit)
         if let onSubmit {
-            textField.addAction(.init(identifier: Self.editingDidEndOnExitActionIdentifier, handler: { _ in
+            textField.fineSetHandler(Self.editingDidEndOnExitActionKey, for: .editingDidEndOnExit) { [onSubmit] _ in
                 onSubmit()
-            }), for: .editingDidEndOnExit)
+            }
+        } else {
+            textField.fineSetHandler(Self.editingDidEndOnExitActionKey, for: .editingDidEndOnExit, handler: nil)
         }
     }
 }

@@ -9,7 +9,7 @@ import UIKit
 
 @MainActor
 public struct FineSlider: Renderable {
-    private static let actionIdentifier = UIAction.Identifier("FineUIKit.FineSlider.valueChanged")
+    private static let actionKey = "FineUIKit.FineSlider.valueChanged"
 
     private let value: FineBinding<Float>
     private let range: ClosedRange<Float>
@@ -30,17 +30,20 @@ public struct FineSlider: Renderable {
     public func _update(_ view: UIView) {
         guard let slider = view as? UISlider else { return }
 
-        slider.minimumValue = range.lowerBound
-        slider.maximumValue = range.upperBound
+        if slider.minimumValue != range.lowerBound {
+            slider.minimumValue = range.lowerBound
+        }
+        if slider.maximumValue != range.upperBound {
+            slider.maximumValue = range.upperBound
+        }
 
         if slider.value != value.value {
             slider.value = value.value
         }
 
-        slider.removeAction(identifiedBy: Self.actionIdentifier, for: .valueChanged)
-        slider.addAction(.init(identifier: Self.actionIdentifier, handler: { [value] action in
-            guard let slider = action.sender as? UISlider else { return }
+        slider.fineSetHandler(Self.actionKey, for: .valueChanged) { [value] control in
+            guard let slider = control as? UISlider else { return }
             value.value = slider.value
-        }), for: .valueChanged)
+        }
     }
 }

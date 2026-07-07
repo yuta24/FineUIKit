@@ -9,7 +9,7 @@ import UIKit
 
 @MainActor
 public struct FineButton: Renderable {
-    private static let actionIdentifier = UIAction.Identifier("FineUIKit.FineButton.primaryAction")
+    private static let actionKey = "FineUIKit.FineButton.primaryAction"
 
     private let title: String?
     private let action: () -> Void
@@ -52,18 +52,24 @@ public struct FineButton: Renderable {
         if var configuration {
             configuration.title = title
             configuration.image = image
-            button.configuration = configuration
+            if button.configuration != configuration {
+                button.configuration = configuration
+            }
         } else {
-            button.configuration = nil
-            button.setTitle(title, for: .normal)
-            button.setImage(image, for: .normal)
+            if button.configuration != nil {
+                button.configuration = nil
+            }
+            if button.title(for: .normal) != title {
+                button.setTitle(title, for: .normal)
+            }
+            if button.image(for: .normal) !== image {
+                button.setImage(image, for: .normal)
+            }
         }
 
-        // Replace the previous description's handler so actions don't stack up on reuse.
-        button.removeAction(identifiedBy: Self.actionIdentifier, for: .primaryActionTriggered)
-        button.addAction(.init(identifier: Self.actionIdentifier, handler: { [action] _ in
+        button.fineSetHandler(Self.actionKey, for: .primaryActionTriggered) { [action] _ in
             action()
-        }), for: .primaryActionTriggered)
+        }
     }
 
     public var _modifierSignature: String {

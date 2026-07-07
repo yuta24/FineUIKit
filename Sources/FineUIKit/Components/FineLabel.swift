@@ -54,10 +54,25 @@ public struct FineLabel: Renderable {
     public func _update(_ view: UIView) {
         guard let label = view as? UILabel else { return }
 
-        label.text = text
-        label.font = font ?? .systemFont(ofSize: UIFont.labelFontSize)
-        label.textColor = textColor ?? .label
-        label.textAlignment = textAlignment ?? .natural
-        label.numberOfLines = numberOfLines ?? 1
+        let resolvedFont = font ?? UIFont.systemFont(ofSize: UIFont.labelFontSize)
+        let resolvedTextColor = textColor ?? UIColor.label
+        let resolvedTextAlignment = textAlignment ?? NSTextAlignment.natural
+        let resolvedNumberOfLines = numberOfLines ?? 1
+
+        if label.text != text {
+            label.text = text
+        }
+        if !label.font.isEqual(resolvedFont) {
+            label.font = resolvedFont
+        }
+        if !label.textColor.isEqual(resolvedTextColor) {
+            label.textColor = resolvedTextColor
+        }
+        if label.textAlignment != resolvedTextAlignment {
+            label.textAlignment = resolvedTextAlignment
+        }
+        if label.numberOfLines != resolvedNumberOfLines {
+            label.numberOfLines = resolvedNumberOfLines
+        }
     }
 }

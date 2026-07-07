@@ -182,8 +182,8 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
 }
 
 extension FineList {
-    private static var refreshActionIdentifier: UIAction.Identifier {
-        .init("FineUIKit.FineList.refresh")
+    private static var refreshActionKey: String {
+        "FineUIKit.FineList.refresh"
     }
 
     @MainActor
@@ -238,7 +238,7 @@ extension FineList {
 
         func updateRefreshControl(on listView: FineListView) {
             guard onRefresh != nil else {
-                listView.refreshControl?.removeAction(identifiedBy: FineList<Element>.refreshActionIdentifier, for: .valueChanged)
+                listView.refreshControl?.fineSetHandler(FineList<Element>.refreshActionKey, for: .valueChanged, handler: nil)
                 listView.refreshControl = nil
                 return
             }
@@ -246,8 +246,7 @@ extension FineList {
             let refreshControl = listView.refreshControl ?? UIRefreshControl()
             listView.refreshControl = refreshControl
 
-            refreshControl.removeAction(identifiedBy: FineList<Element>.refreshActionIdentifier, for: .valueChanged)
-            refreshControl.addAction(.init(identifier: FineList<Element>.refreshActionIdentifier, handler: { [weak self, weak refreshControl] _ in
+            refreshControl.fineSetHandler(FineList<Element>.refreshActionKey, for: .valueChanged) { [weak self, weak refreshControl] _ in
                 guard let self, let refreshControl else { return }
 
                 Task { @MainActor in
@@ -256,7 +255,7 @@ extension FineList {
                     }
                     refreshControl.endRefreshing()
                 }
-            }), for: .valueChanged)
+            }
         }
 
         private func section(at index: Int) -> FineListSection<Element>? {

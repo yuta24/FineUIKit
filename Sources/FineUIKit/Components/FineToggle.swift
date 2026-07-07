@@ -9,7 +9,7 @@ import UIKit
 
 @MainActor
 public struct FineToggle: Renderable {
-    private static let actionIdentifier = UIAction.Identifier("FineUIKit.FineToggle.valueChanged")
+    private static let actionKey = "FineUIKit.FineToggle.valueChanged"
 
     private let isOn: FineBinding<Bool>
 
@@ -32,10 +32,9 @@ public struct FineToggle: Renderable {
             uiSwitch.isOn = isOn.value
         }
 
-        uiSwitch.removeAction(identifiedBy: Self.actionIdentifier, for: .valueChanged)
-        uiSwitch.addAction(.init(identifier: Self.actionIdentifier, handler: { [isOn] action in
-            guard let uiSwitch = action.sender as? UISwitch else { return }
+        uiSwitch.fineSetHandler(Self.actionKey, for: .valueChanged) { [isOn] control in
+            guard let uiSwitch = control as? UISwitch else { return }
             isOn.value = uiSwitch.isOn
-        }), for: .valueChanged)
+        }
     }
 }

@@ -58,10 +58,18 @@ public struct FineStack: Renderable {
     public func _update(_ view: UIView) {
         guard let stackView = view as? UIStackView else { return }
 
-        stackView.axis = axis
-        stackView.spacing = spacing
-        stackView.alignment = alignment
-        stackView.distribution = distribution
+        if stackView.axis != axis {
+            stackView.axis = axis
+        }
+        if stackView.spacing != spacing {
+            stackView.spacing = spacing
+        }
+        if stackView.alignment != alignment {
+            stackView.alignment = alignment
+        }
+        if stackView.distribution != distribution {
+            stackView.distribution = distribution
+        }
 
         let oldViews = stackView.arrangedSubviews
         var keyedOldViews: [AnyHashable: UIView] = [:]
@@ -98,7 +106,9 @@ public struct FineStack: Renderable {
         }
 
         for (index, newView) in newViews.enumerated() {
-            stackView.insertArrangedSubview(newView, at: index)
+            if index >= stackView.arrangedSubviews.count || stackView.arrangedSubviews[index] !== newView {
+                stackView.insertArrangedSubview(newView, at: index)
+            }
         }
     }
 }
