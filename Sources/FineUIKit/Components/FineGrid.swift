@@ -214,7 +214,10 @@ public struct FineGrid<Element: Identifiable>: Renderable where Element.ID: Send
         snapshot.reconfigureItems(reconfiguredIDs)
 
         coordinator.elementsByID = elementsByID
-        coordinator.dataSource.apply(snapshot, animatingDifferences: gridView.window != nil)
+        coordinator.dataSource.apply(
+            snapshot,
+            animatingDifferences: FineTransactionContext.allowsDiffAnimation(inWindow: gridView.window != nil)
+        )
     }
 
     private static func makeLayout(
@@ -489,17 +492,32 @@ final class FineGridHostCell: UICollectionViewCell {
         let expectedGeneration = generation
         guard let makeNode else { return }
 
-        let view = withObservationTracking {
-            FineRenderer.render(makeNode(), reusing: hostedView)
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self,
-                      self.generation == expectedGeneration,
-                      self.makeNode != nil
-                else { return }
+        let transaction = FineTransactionContext.current
+        let apply = { [self] in
+            withObservationTracking {
+                FineRenderer.render(makeNode(), reusing: self.hostedView)
+            } onChange: { [weak self] in
+                Task { @MainActor in
+                    guard let self,
+                          self.generation == expectedGeneration,
+                          self.makeNode != nil
+                    else { return }
 
-                self.renderTracked()
+                    self.renderTracked()
+                }
             }
+        }
+
+        let view: UIView
+        if case .animate(let animation) = transaction, hostedView != nil {
+            var rendered: UIView!
+            animation.animate {
+                rendered = apply()
+                self.layoutIfNeeded()
+            }
+            view = rendered
+        } else {
+            view = apply()
         }
 
         guard view !== hostedView else { return }

@@ -140,6 +140,30 @@ FineList(viewModel.items) { item in
 .keyboardDismissMode(.onDrag)
 ```
 
+## アニメーション
+
+`withFineAnimation` で状態変更を包むと、その変更で発生する次の再レンダリングが `UIView.animate` 内で差分適用されます。引数省略時は `.easeInOut(duration: 0.3)` です。
+
+```swift
+withFineAnimation {
+    viewModel.isExpanded.toggle()
+}
+
+withFineAnimation(.spring(duration: 0.5, bounce: 0.2)) {
+    viewModel.padding = 32
+}
+
+withFineAnimation(nil) {
+    viewModel.resetAll()
+}
+```
+
+対象は同じ `UIView` への in-place なプロパティ変更と、制約 constant の変更です。`opacity` / `backgroundColor` / `tintColor` / `cornerRadius` などは UIKit の通常のアニメーションとして動き、`padding` / `width` / `height` などのレイアウト変更は `layoutIfNeeded()` による frame アニメーションになります。
+
+ビューの作り直し、スタックへの挿入・削除、テキスト差し替えのクロスフェードは行いません。動かしたい変化は、同じビューに対する値変更として表現してください。
+
+`FineList` / `FineGrid` の diff は従来どおり window 上では自動アニメーションします。`withFineAnimation(nil)` の中で行った変更では、diff 適用のアニメーションも抑止されます。
+
 ## モディファイア
 
 ```swift

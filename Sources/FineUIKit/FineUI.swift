@@ -88,44 +88,73 @@ public final class FineUI<State> {
     private func render() {
         guard let container else { return }
 
-        // Render inside the tracking closure: component content closures
-        // (e.g. FineStack's children) read state lazily during _update, and
-        // those reads must be tracked too.
-        let view = withObservationTracking {
-            FineRenderer.render(body(state), reusing: rootView)
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                self?.render()
+        let transaction = FineTransactionContext.current
+        let apply = { [self] in
+            // Render inside the tracking closure: component content closures
+            // (e.g. FineStack's children) read state lazily during _update, and
+            // those reads must be tracked too.
+            withObservationTracking {
+                FineRenderer.render(self.body(self.state), reusing: self.rootView)
+            } onChange: { [weak self] in
+                Task { @MainActor in
+                    self?.render()
+                }
             }
+        }
+
+        let view: UIView
+        if case .animate(let animation) = transaction, rootView != nil {
+            var rendered: UIView!
+            animation.animate {
+                rendered = apply()
+                container.layoutIfNeeded()
+            }
+            view = rendered
+        } else {
+            view = apply()
         }
         guard view !== rootView else { return }
 
-        rootView?.removeFromSuperview()
-        rootView = view
+        UIView.performWithoutAnimation {
+            if case .animate = transaction {
+                removeAllAnimations(in: view)
+            }
 
-        view.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(view)
+            rootView?.removeFromSuperview()
+            rootView = view
 
-        let guide = container.safeAreaLayoutGuide
+            view.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(view)
 
-        // With no keyboard on screen, keyboardLayoutGuide's top edge matches
-        // the bottom safe area (usesBottomSafeArea defaults to true), so both
-        // anchors produce the same resting layout.
-        let bottomAnchor = avoidsKeyboard
-            ? container.keyboardLayoutGuide.topAnchor
-            : guide.bottomAnchor
+            let guide = container.safeAreaLayoutGuide
 
-        // Text-like content (hugging priority 251+) keeps its natural height;
-        // views with no intrinsic height (lists, images) expand to fill.
-        let fillBottom = view.bottomAnchor.constraint(equalTo: bottomAnchor)
-        fillBottom.priority = .defaultLow
+            // With no keyboard on screen, keyboardLayoutGuide's top edge matches
+            // the bottom safe area (usesBottomSafeArea defaults to true), so both
+            // anchors produce the same resting layout.
+            let bottomAnchor = avoidsKeyboard
+                ? container.keyboardLayoutGuide.topAnchor
+                : guide.bottomAnchor
 
-        NSLayoutConstraint.activate([
-            view.topAnchor.constraint(equalTo: guide.topAnchor),
-            view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
-            view.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
-            fillBottom,
-        ])
+            // Text-like content (hugging priority 251+) keeps its natural height;
+            // views with no intrinsic height (lists, images) expand to fill.
+            let fillBottom = view.bottomAnchor.constraint(equalTo: bottomAnchor)
+            fillBottom.priority = .defaultLow
+
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: guide.topAnchor),
+                view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
+                view.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
+                fillBottom,
+            ])
+            container.layoutIfNeeded()
+        }
+    }
+
+    private func removeAllAnimations(in view: UIView) {
+        view.layer.removeAllAnimations()
+        for subview in view.subviews {
+            removeAllAnimations(in: subview)
+        }
     }
 }

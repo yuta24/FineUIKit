@@ -1298,6 +1298,200 @@ struct FineUITests {
 }
 
 @MainActor
+struct FineAnimationTests {
+    @Observable
+    final class Model {
+        var opacity: CGFloat = 1
+        var padding: CGFloat = 4
+        var usesStyledRoot = false
+    }
+
+    private func attachToWindow(_ container: UIView, width: CGFloat = 320, height: CGFloat = 200) -> UIWindow {
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: width, height: height))
+        container.frame = window.bounds
+        window.addSubview(container)
+        window.isHidden = false
+        window.layoutIfNeeded()
+        return window
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<1000 where !condition() {
+            await Task.yield()
+        }
+    }
+
+    private func firstLabel(in view: UIView) -> UILabel? {
+        if let label = view as? UILabel {
+            return label
+        }
+
+        for subview in view.subviews {
+            if let label = firstLabel(in: subview) {
+                return label
+            }
+        }
+
+        return nil
+    }
+
+    private func animationKeys(in view: UIView) -> [String] {
+        let ownKeys = view.layer.animationKeys() ?? []
+        return view.subviews.reduce(ownKeys) { $0 + animationKeys(in: $1) }
+    }
+
+    @Test func animatedOpacityChangeAddsLayerAnimation() async throws {
+        let model = Model()
+        let container = UIView()
+        let ui = FineUI(model) { model in
+            FineLabel(text: "A").opacity(model.opacity)
+        }
+        let window = attachToWindow(container)
+        ui.build(to: container)
+        window.layoutIfNeeded()
+
+        let label = try #require(container.subviews.first as? UILabel)
+        label.layer.removeAllAnimations()
+
+        withFineAnimation(.linear(duration: 2)) {
+            model.opacity = 0.5
+        }
+
+        await waitUntil { label.alpha == 0.5 && (label.layer.animationKeys()?.contains("opacity") == true) }
+
+        #expect(label.layer.animationKeys()?.contains("opacity") == true)
+        _ = window
+    }
+
+    @Test func unanimatedOpacityChangeDoesNotAddLayerAnimation() async throws {
+        let model = Model()
+        let container = UIView()
+        let ui = FineUI(model) { model in
+            FineLabel(text: "A").opacity(model.opacity)
+        }
+        let window = attachToWindow(container)
+        ui.build(to: container)
+        window.layoutIfNeeded()
+
+        let label = try #require(container.subviews.first as? UILabel)
+        label.layer.removeAllAnimations()
+
+        model.opacity = 0.5
+
+        await waitUntil { label.alpha == 0.5 }
+
+        #expect((label.layer.animationKeys() ?? []).isEmpty)
+        _ = window
+    }
+
+    @Test func animatedPaddingChangeAddsLayoutAnimation() async throws {
+        let model = Model()
+        let container = UIView()
+        let ui = FineUI(model) { model in
+            FineLabel(text: "A").padding(model.padding)
+        }
+        let window = attachToWindow(container)
+        ui.build(to: container)
+        window.layoutIfNeeded()
+
+        let paddingView = try #require(container.subviews.first as? FinePaddingView)
+        let label = try #require(paddingView.hosted)
+        label.layer.removeAllAnimations()
+
+        withFineAnimation(.linear(duration: 2)) {
+            model.padding = 32
+        }
+
+        await waitUntil {
+            let keys = label.layer.animationKeys() ?? []
+            return keys.contains("position") || keys.contains("bounds")
+        }
+
+        let keys = label.layer.animationKeys() ?? []
+        #expect(keys.contains("position") || keys.contains("bounds"))
+        _ = window
+    }
+
+    @Test func transactionPropagatesIntoTaskAndNests() async {
+        let task = withFineAnimation(.linear()) {
+            Task { @MainActor in
+                if case .animate = FineTransactionContext.current {
+                    return true
+                }
+                return false
+            }
+        }
+
+        #expect(await task.value)
+
+        var values: [String] = []
+        withFineAnimation(.linear()) {
+            if case .animate = FineTransactionContext.current {
+                values.append("outer")
+            }
+            withFineAnimation(nil) {
+                if case .disabled = FineTransactionContext.current {
+                    values.append("inner")
+                }
+            }
+            if case .animate = FineTransactionContext.current {
+                values.append("restored")
+            }
+        }
+
+        #expect(values == ["outer", "inner", "restored"])
+        let hasNoTransaction: Bool
+        if case nil = FineTransactionContext.current {
+            hasNoTransaction = true
+        } else {
+            hasNoTransaction = false
+        }
+        #expect(hasNoTransaction)
+    }
+
+    @Test func animatedRootRebuildDoesNotAnimateNewRoot() async throws {
+        let model = Model()
+        let container = UIView()
+        let ui = FineUI(model) { model in
+            if model.usesStyledRoot {
+                FineLabel(text: "B").backgroundColor(.red)
+            } else {
+                FineLabel(text: "A")
+            }
+        }
+        let window = attachToWindow(container)
+        ui.build(to: container)
+        window.layoutIfNeeded()
+
+        let firstRoot = try #require(container.subviews.first)
+
+        withFineAnimation(.linear(duration: 2)) {
+            model.usesStyledRoot = true
+        }
+
+        await waitUntil { container.subviews.first !== firstRoot }
+
+        let newRoot = try #require(container.subviews.first)
+        #expect(animationKeys(in: newRoot).isEmpty)
+        #expect(firstLabel(in: newRoot)?.text == "B")
+        _ = window
+    }
+
+    @Test func disabledTransactionDisablesDiffAnimationDecision() {
+        #expect(FineTransactionContext.allowsDiffAnimation(inWindow: false) == false)
+        #expect(FineTransactionContext.allowsDiffAnimation(inWindow: true) == true)
+
+        FineTransactionContext.$current.withValue(.disabled) {
+            #expect(FineTransactionContext.allowsDiffAnimation(inWindow: true) == false)
+        }
+
+        withFineAnimation(.linear()) {
+            #expect(FineTransactionContext.allowsDiffAnimation(inWindow: true) == true)
+        }
+    }
+}
+
+@MainActor
 struct FineModifierTests {
     @Test func styleValueChangeReusesView() throws {
         let first = FineRenderer.render(FineLabel(text: "A").backgroundColor(.red))
