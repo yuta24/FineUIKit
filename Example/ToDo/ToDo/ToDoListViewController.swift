@@ -22,15 +22,25 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
         super.init(state: .init())
     }
 
-    override func body(_ viewModel: ToDoListViewModel) -> any Renderable {
-        func addTask() {
-            let title = viewModel.draft.isEmpty
-                ? "Task \(viewModel.items.count + 1)"
-                : viewModel.draft
-            viewModel.items.append(.init(title: title))
-            viewModel.draft = ""
-        }
+    private func addTask(_ viewModel: ToDoListViewModel) {
+        let title = viewModel.draft.isEmpty
+            ? "Task \(viewModel.items.count + 1)"
+            : viewModel.draft
+        viewModel.items.append(.init(title: title))
+        viewModel.draft = ""
+    }
 
+    override func navigation(_ viewModel: ToDoListViewModel) -> FineNavigation? {
+        FineNavigation(title: "ToDo (\(viewModel.items.count))")
+            .trailing(
+                FineBarButton(systemItem: .add) { [unowned self] in
+                    addTask(viewModel)
+                }
+                .enabled(!viewModel.draft.isEmpty)
+            )
+    }
+
+    override func body(_ viewModel: ToDoListViewModel) -> any Renderable {
         let activeItems = viewModel.items.filter { !$0.completed }
         let completedItems = viewModel.items.filter { $0.completed }
         var listSections = [
@@ -45,10 +55,10 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
                 .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16))
             FineStack.horizontal(spacing: 8) {
                 FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
-                    .onSubmit { addTask() }
+                    .onSubmit { [unowned self] in addTask(viewModel) }
                     .accessibilityIdentifier("draft-field")
-                FineButton(title: "Add") {
-                    addTask()
+                FineButton(title: "Add") { [unowned self] in
+                    addTask(viewModel)
                 }
                 .configuration(.filled())
                 .hugging(.defaultHigh, axis: .horizontal)
@@ -87,10 +97,10 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
 }
 
 struct TodoListWrapper: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> ToDoListViewController {
-        .init()
+    func makeUIViewController(context: Context) -> UINavigationController {
+        UINavigationController(rootViewController: ToDoListViewController())
     }
 
-    func updateUIViewController(_ uiViewController: UIViewControllerType, context: Context) {
+    func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {
     }
 }

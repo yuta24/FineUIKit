@@ -884,6 +884,159 @@ struct FineViewControllerTests {
 }
 
 @MainActor
+struct FineNavigationTests {
+    @Observable
+    final class NavigationState {
+        var title: String = "Inbox"
+        var isSaveEnabled: Bool = false
+        var usesSecondAction: Bool = false
+    }
+
+    final class NavigationViewController: FineViewController<NavigationState> {
+        var firstActionCount = 0
+        var secondActionCount = 0
+
+        override func body(_ state: NavigationState) -> any Renderable {
+            FineLabel(text: state.title)
+        }
+
+        override func navigation(_ state: NavigationState) -> FineNavigation? {
+            FineNavigation(title: state.title)
+                .leading(.init(title: "Close") {})
+                .trailing(
+                    .init(title: "Edit") {},
+                    .init(title: "Save") { [unowned self] in
+                        if state.usesSecondAction {
+                            secondActionCount += 1
+                        } else {
+                            firstActionCount += 1
+                        }
+                    }
+                    .enabled(state.isSaveEnabled)
+                )
+        }
+    }
+
+    final class ManualNavigationViewController: FineViewController<NavigationState> {
+        override func body(_ state: NavigationState) -> any Renderable {
+            FineLabel(text: state.title)
+        }
+    }
+
+    private func perform(_ item: UIBarButtonItem) {
+        guard let action = item.action else { return }
+        _ = item.target?.perform(action, with: item)
+    }
+
+    @Test func viewControllerAppliesNavigationDescription() throws {
+        let state = NavigationState()
+        let viewController = NavigationViewController(state: state)
+
+        viewController.loadViewIfNeeded()
+
+        let leading = try #require(viewController.navigationItem.leftBarButtonItems)
+        let trailing = try #require(viewController.navigationItem.rightBarButtonItems)
+
+        #expect(viewController.navigationItem.title == "Inbox")
+        #expect(leading.count == 1)
+        #expect(leading[0].title == "Close")
+        #expect(trailing.count == 2)
+        #expect(trailing[0].title == "Save")
+        #expect(trailing[0].isEnabled == false)
+        #expect(trailing[1].title == "Edit")
+    }
+
+    @Test func navigationUpdatesWhenObservedStateChanges() async throws {
+        let state = NavigationState()
+        let viewController = NavigationViewController(state: state)
+
+        viewController.loadViewIfNeeded()
+
+        state.title = "Archive"
+        state.isSaveEnabled = true
+
+        for _ in 0..<10 where viewController.navigationItem.title != "Archive" {
+            await Task.yield()
+        }
+
+        let trailing = try #require(viewController.navigationItem.rightBarButtonItems)
+        #expect(viewController.navigationItem.title == "Archive")
+        #expect(trailing[0].isEnabled == true)
+    }
+
+    @Test func barButtonActionUsesLatestClosureAfterRerender() async throws {
+        let state = NavigationState()
+        state.isSaveEnabled = true
+        let viewController = NavigationViewController(state: state)
+
+        viewController.loadViewIfNeeded()
+        let item = try #require(viewController.navigationItem.rightBarButtonItems?.first)
+
+        state.usesSecondAction = true
+        state.title = "Updated"
+        for _ in 0..<10 where viewController.navigationItem.title != "Updated" {
+            await Task.yield()
+        }
+
+        perform(item)
+
+        #expect(viewController.firstActionCount == 0)
+        #expect(viewController.secondActionCount == 1)
+    }
+
+    @Test func barButtonItemsReuseUntilSignatureChanges() throws {
+        let navigationItem = UINavigationItem()
+
+        FineNavigation(title: "A")
+            .trailing(.init(title: "One") {})
+            .apply(to: navigationItem)
+        let titleItem = try #require(navigationItem.rightBarButtonItems?.first)
+
+        FineNavigation(title: "B")
+            .trailing(.init(title: "Two") {})
+            .apply(to: navigationItem)
+        let updatedTitleItem = try #require(navigationItem.rightBarButtonItems?.first)
+
+        #expect(updatedTitleItem === titleItem)
+        #expect(updatedTitleItem.title == "Two")
+
+        FineNavigation(title: "B")
+            .trailing(.init(systemItem: .add) {})
+            .apply(to: navigationItem)
+        let systemItem = try #require(navigationItem.rightBarButtonItems?.first)
+
+        #expect(systemItem !== titleItem)
+    }
+
+    @Test func nilNavigationLeavesManualNavigationItemUntouched() {
+        let state = NavigationState()
+        let viewController = ManualNavigationViewController(state: state)
+        viewController.navigationItem.title = "Manual"
+        viewController.navigationItem.leftBarButtonItem = .init(title: "Manual Button", style: .plain, target: nil, action: nil)
+
+        viewController.loadViewIfNeeded()
+
+        #expect(viewController.navigationItem.title == "Manual")
+        #expect(viewController.navigationItem.leftBarButtonItem?.title == "Manual Button")
+    }
+
+    @Test func applyingSameNavigationTwiceIsStable() throws {
+        let navigationItem = UINavigationItem()
+        let navigation = FineNavigation(title: "Stable")
+            .trailing(.init(title: "Done") {})
+
+        navigation.apply(to: navigationItem)
+        let firstItem = try #require(navigationItem.rightBarButtonItems?.first)
+        navigation.apply(to: navigationItem)
+        let secondItem = try #require(navigationItem.rightBarButtonItems?.first)
+
+        #expect(navigationItem.title == "Stable")
+        #expect(navigationItem.rightBarButtonItems?.count == 1)
+        #expect(secondItem === firstItem)
+    }
+}
+
+@MainActor
 struct FineUITests {
     @Observable
     final class Counter {

@@ -38,13 +38,26 @@ open class FineViewController<State>: UIViewController {
         fatalError("Subclasses of FineViewController must override body(_:)")
     }
 
+    /// The navigation bar description for the current state.
+    ///
+    /// Return `nil` to leave `navigationItem` untouched so it can be managed
+    /// manually. Returning a value gives FineUIKit ownership of the managed
+    /// properties. This method is tracked and vtable-dispatched like `body(_:)`,
+    /// so observed state changes and hot reload update navigation as well.
+    open func navigation(_ state: State) -> FineNavigation? {
+        nil
+    }
+
     open override func viewDidLoad() {
         super.viewDidLoad()
 
         view.backgroundColor = .systemBackground
 
         let fineUI = FineUI(state) { [unowned self] state in
-            self.body(state)
+            if let navigation = self.navigation(state) {
+                navigation.apply(to: self.navigationItem)
+            }
+            return self.body(state)
         }
         fineUI.build(to: view)
         self.fineUI = fineUI

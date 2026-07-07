@@ -71,6 +71,30 @@ FineList(sections: [
 | `FineSpacer` | — | スタック内の余白吸収(`minLength:`) |
 | `FineScrollView` | `UIScrollView` | 縦横対応。`FineList` / `FineGrid` は自身がスクロールするので入れないこと |
 
+## ナビゲーション
+
+`FineViewController.navigation(_:)` を override すると、`body(_:)` と同じ observation / hot reload の流れで `navigationItem` を宣言できます。`nil` を返す既定実装では `navigationItem` に触らないため、手動管理もそのまま使えます。
+
+```swift
+override func navigation(_ state: ToDoListViewModel) -> FineNavigation? {
+    FineNavigation(title: "ToDo (\(state.items.count))")
+        .trailing(
+            FineBarButton(systemItem: .add) { [unowned self] in
+                addTask(state)
+            }
+            .enabled(!state.draft.isEmpty)
+        )
+}
+```
+
+画面遷移 DSL は持たず、従来どおり action 内で手続き的に書きます。
+
+```swift
+FineBarButton(title: "Detail") { [weak self] in
+    self?.navigationController?.pushViewController(DetailViewController(), animated: true)
+}
+```
+
 ## 双方向バインディング
 
 ```swift
