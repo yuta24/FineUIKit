@@ -51,7 +51,7 @@ public struct FineListSection<Element: Identifiable> {
     }
 }
 
-struct FineListSectionIdentifier: Hashable, @unchecked Sendable {
+struct FineSectionIdentifier: Hashable, @unchecked Sendable {
     let value: AnyHashable
 
     init(_ value: AnyHashable) {
@@ -151,7 +151,7 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
         var seenSectionIDs = Set<AnyHashable>()
         var seenIDs = Set<Element.ID>()
         var elementsByID: [Element.ID: Element] = [:]
-        var itemIDsBySectionID: [FineListSectionIdentifier: [Element.ID]] = [:]
+        var itemIDsBySectionID: [FineSectionIdentifier: [Element.ID]] = [:]
 
         for section in sections {
             guard seenSectionIDs.insert(section.id).inserted else {
@@ -160,7 +160,7 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
             }
 
             snapshotSections.append(section)
-            let sectionIdentifier = FineListSectionIdentifier(section.id)
+            let sectionIdentifier = FineSectionIdentifier(section.id)
 
             var sectionItemIDs: [Element.ID] = []
             for element in section.items {
@@ -180,8 +180,8 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
 
         let previousIDs = Set(coordinator.dataSource.snapshot().itemIdentifiers)
 
-        var snapshot = NSDiffableDataSourceSnapshot<FineListSectionIdentifier, Element.ID>()
-        let sectionIDs = snapshotSections.map { FineListSectionIdentifier($0.id) }
+        var snapshot = NSDiffableDataSourceSnapshot<FineSectionIdentifier, Element.ID>()
+        let sectionIDs = snapshotSections.map { FineSectionIdentifier($0.id) }
         snapshot.appendSections(sectionIDs)
         for sectionID in sectionIDs {
             snapshot.appendItems(itemIDsBySectionID[sectionID] ?? [], toSection: sectionID)
@@ -225,7 +225,7 @@ extension FineList {
     }
 
     @MainActor
-    final class DataSource: UITableViewDiffableDataSource<FineListSectionIdentifier, Element.ID> {
+    final class DataSource: UITableViewDiffableDataSource<FineSectionIdentifier, Element.ID> {
         var canEditRows = false
 
         override func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {

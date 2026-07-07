@@ -588,6 +588,22 @@ struct FineGridTests {
         }
     }
 
+    struct ValueItem: Identifiable, Equatable {
+        let id: String
+        var title: String
+    }
+
+    @Observable
+    final class ObservableItem: Identifiable {
+        let id: String
+        var title: String
+
+        init(id: String, title: String) {
+            self.id = id
+            self.title = title
+        }
+    }
+
     private func attachToWindow(_ collectionView: UICollectionView) -> UIWindow {
         let window = UIWindow(frame: .init(x: 0, y: 0, width: 400, height: 800))
         collectionView.frame = window.bounds
@@ -598,6 +614,44 @@ struct FineGridTests {
 
     private func waitForItems(_ count: Int, in collectionView: UICollectionView) async {
         for _ in 0..<10 where collectionView.numberOfItems(inSection: 0) != count {
+            await Task.yield()
+        }
+    }
+
+    private func waitForItems(_ count: Int, in section: Int, of collectionView: UICollectionView) async {
+        for _ in 0..<10 where collectionView.numberOfSections <= section || collectionView.numberOfItems(inSection: section) != count {
+            await Task.yield()
+        }
+    }
+
+    private func waitForSections(_ count: Int, in collectionView: UICollectionView) async {
+        for _ in 0..<10 where collectionView.numberOfSections != count {
+            await Task.yield()
+        }
+    }
+
+    private func firstLabel(in view: UIView) -> UILabel? {
+        if let label = view as? UILabel {
+            return label
+        }
+
+        for subview in view.subviews {
+            if let label = firstLabel(in: subview) {
+                return label
+            }
+        }
+
+        return nil
+    }
+
+    private func labelText(in collectionView: UICollectionView, item: Int, section: Int = 0) -> String? {
+        collectionView.layoutIfNeeded()
+        guard let cell = collectionView.cellForItem(at: .init(item: item, section: section)) else { return nil }
+        return firstLabel(in: cell)?.text
+    }
+
+    private func waitForLabelText(_ text: String, in collectionView: UICollectionView, item: Int, section: Int = 0) async {
+        for _ in 0..<10 where labelText(in: collectionView, item: item, section: section) != text {
             await Task.yield()
         }
     }
@@ -639,6 +693,40 @@ struct FineGridTests {
         _ = window
     }
 
+    @Test func changedItemsOnlyReconfiguresOnlyUnequalElements() async throws {
+        let initialItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B"),
+        ]
+        var renderedIDs: [String] = []
+        let grid = { (items: [ValueItem]) in
+            FineGrid(items) { item in
+                renderedIDs.append(item.id)
+                return FineLabel(text: item.title)
+            }
+            .reconfiguringOnlyChangedItems()
+        }
+        let first = FineRenderer.render(grid(initialItems))
+        let collectionView = try #require(first as? UICollectionView)
+        let window = attachToWindow(collectionView)
+
+        await waitForItems(2, in: collectionView)
+        collectionView.layoutIfNeeded()
+        renderedIDs.removeAll()
+
+        let updatedItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B2"),
+        ]
+        _ = FineRenderer.render(grid(updatedItems), reusing: first)
+
+        await waitForLabelText("B2", in: collectionView, item: 1)
+
+        #expect(renderedIDs == ["b"])
+        #expect(labelText(in: collectionView, item: 1) == "B2")
+        _ = window
+    }
+
     @Test func reconfigureUpdatesCellContentInPlace() async throws {
         let item = Item(id: "a", title: "A")
         let grid = { FineGrid([item]) { FineLabel(text: $0.title) } }
@@ -664,6 +752,111 @@ struct FineGridTests {
         let label = try #require(cell.contentView.subviews.first as? UILabel)
         #expect(label.text == "A2")
         _ = window
+    }
+
+    @Test func observableItemContentUpdatesThatCellWithoutGridRerender() async throws {
+        let firstItem = ObservableItem(id: "a", title: "A")
+        let secondItem = ObservableItem(id: "b", title: "B")
+        let view = FineRenderer.render(FineGrid([firstItem, secondItem]) { item in
+            FineLabel(text: item.title)
+        })
+        let collectionView = try #require(view as? UICollectionView)
+        let window = attachToWindow(collectionView)
+
+        await waitForItems(2, in: collectionView)
+        collectionView.layoutIfNeeded()
+
+        secondItem.title = "B2"
+
+        await waitForLabelText("B2", in: collectionView, item: 1)
+
+        #expect(labelText(in: collectionView, item: 0) == "A")
+        #expect(labelText(in: collectionView, item: 1) == "B2")
+        _ = window
+    }
+
+    @Test func obsoleteObservableItemDoesNotRerenderReusedCell() async throws {
+        let removedItem = ObservableItem(id: "a", title: "A")
+        let visibleItem = ObservableItem(id: "b", title: "B")
+        let first = FineRenderer.render(FineGrid([removedItem]) { item in
+            FineLabel(text: item.title)
+        })
+        let collectionView = try #require(first as? UICollectionView)
+        let window = attachToWindow(collectionView)
+
+        await waitForItems(1, in: collectionView)
+        collectionView.layoutIfNeeded()
+
+        _ = FineRenderer.render(FineGrid([visibleItem]) { item in
+            FineLabel(text: item.title)
+        }, reusing: first)
+
+        await waitForLabelText("B", in: collectionView, item: 0)
+
+        removedItem.title = "A2"
+        for _ in 0..<10 {
+            await Task.yield()
+        }
+
+        #expect(labelText(in: collectionView, item: 0) == "B")
+        _ = window
+    }
+
+    @Test func sectionsRenderItemsAndSupplementaryContent() async throws {
+        let first = Item(id: "a", title: "A")
+        let second = Item(id: "b", title: "B")
+        let third = Item(id: "c", title: "C")
+        let view = FineRenderer.render(FineGrid(sections: [
+            FineGridSection(id: "one", header: FineLabel(text: "Header"), items: [first, second]),
+            FineGridSection(id: "two", footer: FineLabel(text: "Footer"), items: [third]),
+        ]) { FineLabel(text: $0.title) })
+        let collectionView = try #require(view as? UICollectionView)
+        let window = attachToWindow(collectionView)
+
+        await waitForSections(2, in: collectionView)
+        await waitForItems(2, in: 0, of: collectionView)
+        await waitForItems(1, in: 1, of: collectionView)
+
+        let header = try #require(collectionView.dataSource?.collectionView?(
+            collectionView,
+            viewForSupplementaryElementOfKind: UICollectionView.elementKindSectionHeader,
+            at: .init(item: 0, section: 0)
+        ))
+        let footer = try #require(collectionView.dataSource?.collectionView?(
+            collectionView,
+            viewForSupplementaryElementOfKind: UICollectionView.elementKindSectionFooter,
+            at: .init(item: 0, section: 1)
+        ))
+
+        #expect(collectionView.numberOfSections == 2)
+        #expect(collectionView.numberOfItems(inSection: 0) == 2)
+        #expect(collectionView.numberOfItems(inSection: 1) == 1)
+        #expect(firstLabel(in: header)?.text == "Header")
+        #expect(firstLabel(in: footer)?.text == "Footer")
+        _ = window
+    }
+
+    @Test func onRefreshInstallsRunsAndRemovesRefreshControl() async throws {
+        let items = [Item(id: "a", title: "A")]
+        var refreshCount = 0
+        let first = FineRenderer.render(FineGrid(items) { FineLabel(text: $0.title) }
+            .onRefresh {
+                refreshCount += 1
+            })
+        let collectionView = try #require(first as? UICollectionView)
+        let refreshControl = try #require(collectionView.refreshControl)
+
+        refreshControl.sendActions(for: .valueChanged)
+
+        for _ in 0..<10 where refreshCount == 0 {
+            await Task.yield()
+        }
+
+        #expect(refreshCount == 1)
+
+        _ = FineRenderer.render(FineGrid(items) { FineLabel(text: $0.title) }, reusing: first)
+
+        #expect(collectionView.refreshControl == nil)
     }
 
     @Test func columnChangeReusesViewAndInvalidatesLayout() async throws {
@@ -704,6 +897,16 @@ struct FineGridTests {
         let plainCollectionView = try #require(plain as? UICollectionView)
         #expect(plainCollectionView.delegate?.collectionView?(plainCollectionView, shouldHighlightItemAt: indexPath) == false)
         _ = window
+    }
+
+    @Test func keyboardDismissModeApplies() throws {
+        let view = FineRenderer.render(
+            FineGrid([Item(id: "a", title: "A")]) { _ in FineLabel(text: "A") }
+                .keyboardDismissMode(.onDrag)
+        )
+        let collectionView = try #require(view as? UICollectionView)
+
+        #expect(collectionView.keyboardDismissMode == .onDrag)
     }
 }
 

@@ -64,7 +64,7 @@ FineList(sections: [
 | `FineImage` | `UIImageView` | |
 | `FineStack` | `UIStackView` | `vertical` / `horizontal`、`spacing` / `alignment` / `distribution`。子は keyed + 位置ベースで差分適用 |
 | `FineList` | `UITableView` | diffable data source(`Identifiable`)。セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedRows()` / `.onSelect` / `.onDelete` / `.keyboardDismissMode` |
-| `FineGrid` | `UICollectionView` | compositional layout。`columns: .count(n)` / `.adaptive(minimum:)`、`.onSelect` |
+| `FineGrid` | `UICollectionView` | compositional layout。`columns: .count(n)` / `.adaptive(minimum:)`、セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedItems()` / `.onSelect` / `.keyboardDismissMode` |
 | `FineTextField` | `UITextField` | `FineBinding<String>` で双方向。`.keyboardType` / `.returnKeyType` / `.secureTextEntry` / `.onSubmit` |
 | `FineToggle` | `UISwitch` | `FineBinding<Bool>` |
 | `FineSlider` | `UISlider` | `FineBinding<Float>` + `in:` レンジ |
@@ -131,7 +131,7 @@ FineLabel(text: detail.title)
 override var avoidsKeyboard: Bool { false }
 ```
 
-スクロールでキーボードを閉じるには `.keyboardDismissMode` を使います(`FineList` / `FineScrollView`)。
+スクロールでキーボードを閉じるには `.keyboardDismissMode` を使います(`FineList` / `FineGrid` / `FineScrollView`)。
 
 ```swift
 FineList(viewModel.items) { item in
@@ -204,8 +204,8 @@ FineStack.vertical(spacing: 8) {
 従来の配列リテラル構文(`{ [a, b] }` や配列連結)もそのまま動きます。
 
 `FineList` / `FineGrid` は `Identifiable` の ID で常に keyed です。
-`FineList` の `.reconfiguringOnlyChangedRows()` は値型要素向けの最適化で、表示に使う全プロパティを `==` が正確に反映することが前提です。
-行 content が読んだ `@Observable` プロパティは、リスト全体の再 render なしに行単位で自動更新されます。
+`FineList` の `.reconfiguringOnlyChangedRows()` と `FineGrid` の `.reconfiguringOnlyChangedItems()` は値型要素向けの最適化で、表示に使う全プロパティを `==` が正確に反映することが前提です。
+行 / item content が読んだ `@Observable` プロパティは、リスト / グリッド全体の再 render なしにセル単位で自動更新されます。
 
 ## アーキテクチャ
 
