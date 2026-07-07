@@ -103,6 +103,28 @@ final class RenderingPerformanceTests: XCTestCase {
         }
     }
 
+    func testListInsertionFineUIKitChangedRowsOnly() {
+        let window = makeWindow()
+        let baseItems = Self.listItems(startID: 0, count: 1_000)
+        let view = FineRenderer.render(Self.fineListChangedRowsOnly(items: baseItems))
+        _ = install(view, in: window)
+        window.layoutIfNeeded()
+
+        var iteration = 0
+        measureRendering {
+            let inserted = Self.listItems(startID: 10_000 + iteration * 10, count: 10)
+
+            // Same scenario as testListInsertionFineUIKit, with opt-in row
+            // equality filtering enabled for surviving IDs.
+            _ = FineRenderer.render(Self.fineListChangedRowsOnly(items: inserted + baseItems), reusing: view)
+            window.layoutIfNeeded()
+
+            _ = FineRenderer.render(Self.fineListChangedRowsOnly(items: baseItems), reusing: view)
+            window.layoutIfNeeded()
+            iteration += 1
+        }
+    }
+
     func testListInsertionSwiftUI() {
         let window = makeWindow()
         let baseItems = Self.listItems(startID: 0, count: 1_000)
@@ -172,6 +194,13 @@ final class RenderingPerformanceTests: XCTestCase {
         FineList(items) { item in
             FineLabel(text: item.title)
         }
+    }
+
+    private static func fineListChangedRowsOnly(items: [PerformanceItem]) -> some Renderable {
+        FineList(items) { item in
+            FineLabel(text: item.title)
+        }
+        .reconfiguringOnlyChangedRows()
     }
 
     private static func listItems(startID: Int, count: Int) -> [PerformanceItem] {

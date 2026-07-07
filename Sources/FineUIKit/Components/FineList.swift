@@ -5,6 +5,7 @@
 //  Created by nova on 2026/07/05.
 //
 
+import Observation
 import UIKit
 
 @MainActor
@@ -65,6 +66,7 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
     private var onSelect: (@MainActor (Element) -> Void)?
     private var onDelete: (@MainActor (Element) -> Void)?
     private var onRefresh: (@MainActor () async -> Void)?
+    private var areElementsEqual: ((Element, Element) -> Bool)?
     private var deleteActionTitle: String = "Delete"
 
     public init(_ elements: [Element], content: @escaping @MainActor (Element) -> any Renderable) {
@@ -163,7 +165,7 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
         }
 
         coordinator.sections = snapshotSections
-        coordinator.elementsByID = elementsByID
+        let previousElementsByID = coordinator.elementsByID
 
         let previousIDs = Set(coordinator.dataSource.snapshot().itemIdentifiers)
 
@@ -175,9 +177,34 @@ public struct FineList<Element: Identifiable>: Renderable where Element.ID: Send
         }
         // Rows whose identity survived may still have changed content;
         // reconfigure re-runs the cell provider, which updates hosted views in place.
-        snapshot.reconfigureItems(elementsByID.keys.filter(previousIDs.contains))
+        let reconfiguredIDs = elementsByID.keys.filter { id in
+            guard previousIDs.contains(id) else { return false }
+            guard let areElementsEqual,
+                  let previousElement = previousElementsByID[id],
+                  let currentElement = elementsByID[id]
+            else { return true }
 
+            return !areElementsEqual(previousElement, currentElement)
+        }
+        snapshot.reconfigureItems(reconfiguredIDs)
+
+        coordinator.elementsByID = elementsByID
         coordinator.dataSource.apply(snapshot, animatingDifferences: listView.window != nil)
+    }
+}
+
+public extension FineList where Element: Equatable {
+    /// Reconfigures only rows whose element compares unequal to the previous
+    /// render, instead of every surviving row.
+    ///
+    /// Requires `==` to cover every property the row content displays.
+    /// Intended for value-type elements: class elements mutated in place
+    /// compare equal to themselves and will never reconfigure. Rows that read
+    /// `@Observable` properties update through per-cell observation instead.
+    func reconfiguringOnlyChangedRows() -> FineList {
+        var copy = self
+        copy.areElementsEqual = { $0 == $1 }
+        return copy
     }
 }
 
@@ -226,7 +253,7 @@ extension FineList {
                 else { return cell }
 
                 cell.selectionStyle = coordinator.onSelect == nil ? .none : .default
-                cell.render(content(element))
+                cell.render { content(element) }
 
                 return cell
             }
@@ -336,9 +363,44 @@ final class FineListHostCell: UITableViewCell {
     static let reuseIdentifier = "FineListHostCell"
 
     private var hostedView: UIView?
+    private var makeNode: (@MainActor () -> any Renderable)?
+    private var generation = 0
 
-    func render(_ node: any Renderable) {
-        let view = FineRenderer.render(node, reusing: hostedView)
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        makeNode = nil
+        generation += 1
+    }
+
+    /// Renders row content under local observation tracking.
+    ///
+    /// This mirrors `FineUI`'s render tracking at cell scope: values read while
+    /// building and rendering the row can invalidate only this cell. Height
+    /// changes caused by observed updates do not ask `UITableView` to recalculate
+    /// row height; this is intended for height-stable updates.
+    func render(_ makeNode: @escaping @MainActor () -> any Renderable) {
+        self.makeNode = makeNode
+        renderTracked()
+    }
+
+    private func renderTracked() {
+        generation += 1
+        let expectedGeneration = generation
+        guard let makeNode else { return }
+
+        let view = withObservationTracking {
+            FineRenderer.render(makeNode(), reusing: hostedView)
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self,
+                      self.generation == expectedGeneration,
+                      self.makeNode != nil
+                else { return }
+
+                self.renderTracked()
+            }
+        }
+
         guard view !== hostedView else { return }
 
         hostedView?.removeFromSuperview()

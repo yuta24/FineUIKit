@@ -160,6 +160,22 @@ struct FineListTests {
         }
     }
 
+    struct ValueItem: Identifiable, Equatable {
+        let id: String
+        var title: String
+    }
+
+    @Observable
+    final class ObservableItem: Identifiable {
+        let id: String
+        var title: String
+
+        init(id: String, title: String) {
+            self.id = id
+            self.title = title
+        }
+    }
+
     private func attachToWindow(_ listView: UITableView) -> UIWindow {
         let window = UIWindow(frame: .init(x: 0, y: 0, width: 400, height: 800))
         listView.frame = window.bounds
@@ -200,6 +216,18 @@ struct FineListTests {
         return nil
     }
 
+    private func labelText(in listView: UITableView, row: Int, section: Int = 0) -> String? {
+        listView.layoutIfNeeded()
+        guard let cell = listView.cellForRow(at: .init(row: row, section: section)) else { return nil }
+        return firstLabel(in: cell)?.text
+    }
+
+    private func waitForLabelText(_ text: String, in listView: UITableView, row: Int, section: Int = 0) async {
+        for _ in 0..<10 where labelText(in: listView, row: row, section: section) != text {
+            await Task.yield()
+        }
+    }
+
     @Test func rendersRowsForElements() async throws {
         let items = [Item(title: "A"), Item(title: "B")]
         let view = FineRenderer.render(FineList(items) { FineLabel(text: $0.title) })
@@ -231,6 +259,122 @@ struct FineListTests {
 
         await waitForRows(2, in: listView)
         #expect(listView.numberOfRows(inSection: 0) == 2)
+    }
+
+    @Test func changedRowsOnlyReconfiguresOnlyUnequalElements() async throws {
+        let initialItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B"),
+        ]
+        var renderedIDs: [String] = []
+        let list = { (items: [ValueItem]) in
+            FineList(items) { item in
+                renderedIDs.append(item.id)
+                return FineLabel(text: item.title)
+            }
+            .reconfiguringOnlyChangedRows()
+        }
+        let first = FineRenderer.render(list(initialItems))
+        let listView = try #require(first as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForRows(2, in: listView)
+        listView.layoutIfNeeded()
+        renderedIDs.removeAll()
+
+        let updatedItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B2"),
+        ]
+        _ = FineRenderer.render(list(updatedItems), reusing: first)
+
+        await waitForLabelText("B2", in: listView, row: 1)
+
+        #expect(renderedIDs == ["b"])
+        #expect(labelText(in: listView, row: 1) == "B2")
+        _ = window
+    }
+
+    @Test func defaultReconfigureStillRunsAllSurvivingVisibleRows() async throws {
+        let initialItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B"),
+        ]
+        var renderedIDs: [String] = []
+        let list = { (items: [ValueItem]) in
+            FineList(items) { item in
+                renderedIDs.append(item.id)
+                return FineLabel(text: item.title)
+            }
+        }
+        let first = FineRenderer.render(list(initialItems))
+        let listView = try #require(first as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForRows(2, in: listView)
+        listView.layoutIfNeeded()
+        renderedIDs.removeAll()
+
+        let updatedItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B2"),
+        ]
+        _ = FineRenderer.render(list(updatedItems), reusing: first)
+
+        await waitForLabelText("B2", in: listView, row: 1)
+
+        #expect(renderedIDs.contains("a"))
+        #expect(renderedIDs.contains("b"))
+        #expect(labelText(in: listView, row: 1) == "B2")
+        _ = window
+    }
+
+    @Test func observableRowContentUpdatesThatCellWithoutListRerender() async throws {
+        let firstItem = ObservableItem(id: "a", title: "A")
+        let secondItem = ObservableItem(id: "b", title: "B")
+        let view = FineRenderer.render(FineList([firstItem, secondItem]) { item in
+            FineLabel(text: item.title)
+        })
+        let listView = try #require(view as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForRows(2, in: listView)
+        listView.layoutIfNeeded()
+
+        secondItem.title = "B2"
+
+        await waitForLabelText("B2", in: listView, row: 1)
+
+        #expect(labelText(in: listView, row: 0) == "A")
+        #expect(labelText(in: listView, row: 1) == "B2")
+        _ = window
+    }
+
+    @Test func obsoleteObservableRowDoesNotRerenderReusedCell() async throws {
+        let removedItem = ObservableItem(id: "a", title: "A")
+        let visibleItem = ObservableItem(id: "b", title: "B")
+        let first = FineRenderer.render(FineList([removedItem]) { item in
+            FineLabel(text: item.title)
+        })
+        let listView = try #require(first as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForRows(1, in: listView)
+        listView.layoutIfNeeded()
+
+        _ = FineRenderer.render(FineList([visibleItem]) { item in
+            FineLabel(text: item.title)
+        }, reusing: first)
+
+        await waitForLabelText("B", in: listView, row: 0)
+
+        removedItem.title = "A2"
+        for _ in 0..<10 {
+            await Task.yield()
+        }
+
+        #expect(labelText(in: listView, row: 0) == "B")
+        _ = window
     }
 
     @Test func sectionsRenderRowsPerSection() async throws {
