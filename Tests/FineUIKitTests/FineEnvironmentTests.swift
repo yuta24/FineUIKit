@@ -21,6 +21,11 @@ struct FineEnvironmentTests {
         var theme = "light"
     }
 
+    @Observable
+    final class CounterState {
+        var counter = 0
+    }
+
     private func firstLabel(in view: UIView) -> UILabel? {
         if let label = view as? UILabel {
             return label
@@ -93,5 +98,29 @@ struct FineEnvironmentTests {
         }
 
         #expect(label.text == "dark")
+    }
+
+    @Test func nodeLocalRerenderPreservesInjectedEnvironment() async throws {
+        let state = CounterState()
+        let container = UIView()
+        let fineUI = FineUI(state) { state in
+            FineEnvironmentReader { environment in
+                FineLabel(text: "\(environment.theme)-\(state.counter)")
+            }
+            .environment(\.theme, "injected")
+        }
+        fineUI.build(to: container)
+
+        let root = try #require(container.subviews.first)
+        let label = try #require(firstLabel(in: root))
+        #expect(label.text == "injected-0")
+
+        state.counter += 1
+
+        for _ in 0..<10 where label.text != "injected-1" {
+            await Task.yield()
+        }
+
+        #expect(label.text == "injected-1")
     }
 }
