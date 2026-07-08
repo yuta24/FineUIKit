@@ -10,10 +10,25 @@ import UIKit
 import SwiftUI
 import FineUIKit
 
+// Environment sample: an ambient accent color injected near the top of the
+// tree and read further down by `FineEnvironmentReader`, without threading it
+// through every `body` argument.
+private struct AccentColorKey: FineEnvironmentKey {
+    static let defaultValue: UIColor = .systemBlue
+}
+
+extension FineEnvironmentValues {
+    var accentColor: UIColor {
+        get { self[AccentColorKey.self] }
+        set { self[AccentColorKey.self] = newValue }
+    }
+}
+
 @Observable
 final class ToDoListViewModel {
     var draft: String = ""
     var showsGrid: Bool = false
+    var usesAlternateAccent: Bool = false
     var items: [ToDo] = []
 }
 
@@ -51,8 +66,54 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
         }
 
         return FineStack.vertical(spacing: 8) {
-            FineLabel(text: "\(viewModel.items.count) items")
-                .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16))
+            // Environment sample. The count badge is nested inside a
+            // `FineEnvironmentReader` and colors itself with the injected
+            // `accentColor`. Flipping the "Pink accent" switch changes the
+            // value injected by `.environment(_:_:)`, and the badge follows.
+            FineStack.horizontal(spacing: 8, alignment: .center) {
+                FineEnvironmentReader { environment in
+                    FineLabel(text: "\(viewModel.items.count)")
+                        .textColor(.white)
+                        .textAlignment(.center)
+                        .padding(.init(top: 2, leading: 10, bottom: 2, trailing: 10))
+                        .backgroundColor(environment.accentColor)
+                        .cornerRadius(11)
+                }
+                FineLabel(text: "items")
+                    .textColor(.secondaryLabel)
+                FineSpacer()
+                FineLabel(text: "Pink accent")
+                    .textColor(.secondaryLabel)
+                FineToggle(isOn: .init(viewModel, \.usesAlternateAccent))
+                    .hugging(.defaultHigh, axis: .horizontal)
+            }
+            .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16))
+            .environment(\.accentColor, viewModel.usesAlternateAccent ? .systemPink : .systemBlue)
+
+            // Local-state sample. The expand/collapse flag lives in the view
+            // tree (FineNode.localState via FineState), not in the view model.
+            // It survives the full re-renders that adding or completing tasks
+            // trigger, and animates with withFineAnimation.
+            FineState(false) { isExpanded in
+                FineStack.vertical(spacing: 4) {
+                    FineStack.horizontal(spacing: 0) {
+                        FineButton(title: isExpanded.value ? "▼ Tips" : "▶ Tips") {
+                            withFineAnimation {
+                                isExpanded.value.toggle()
+                            }
+                        }
+                        .hugging(.defaultHigh, axis: .horizontal)
+                        FineSpacer()
+                    }
+                    if isExpanded.value {
+                        FineLabel(text: "Swipe a row to delete. Toggle Grid view to switch between list and grid.")
+                            .numberOfLines(0)
+                            .textColor(.secondaryLabel)
+                    }
+                }
+                .padding(.init(top: 0, leading: 16, bottom: 0, trailing: 16))
+            }
+
             FineStack.horizontal(spacing: 8) {
                 FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
                     .onSubmit { [unowned self] in addTask(viewModel) }
