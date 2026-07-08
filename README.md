@@ -109,6 +109,57 @@ FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
 
 `FineBinding` は `get` / `set` のペアです。`get` はレンダリング中(observation スコープ内)に評価されるため、バインド先の変更で自動的に再レンダリングされます。UI 側の変更は `set` を通じて状態へ書き戻され、「現在値と異なるときだけビューに書く」ガードにより入力中のカーソルは保持されます。
 
+## ローカル状態
+
+外部の `@Observable` に持たせるまでもない一過性の UI 状態(開閉トグル、ローカルな下書きなど)は `FineState` でコンポーネント内に閉じ込められます。SwiftUI の `@State` / React の `useState` に相当します。
+
+```swift
+FineState(false) { isExpanded in
+    FineStack.vertical(spacing: 8) {
+        FineButton(title: isExpanded.value ? "Collapse" : "Expand") {
+            isExpanded.value.toggle()
+        }
+        if isExpanded.value {
+            FineLabel(text: "Details")
+        }
+    }
+}
+```
+
+状態は `FineBinding` として渡されます。`get` は読んだノードの observation スコープで追跡されるため、`value` を書き換えるとそのノードだけが再レンダリングされ、`body` 全体は再評価されません。
+
+状態はツリー(ビューを所有する `FineNode` 要素)に生き、**親の再レンダリングをまたいで保持**されます。`.key(_:)` / `FineForEach` で安定した identity を与えれば、並び替え・挿入・削除をまたいでも同じ論理項目の状態が追従します。ビューが作り直される(ビュー型・モディファイア署名・key のいずれかが変わる)ときは初期値から作り直されます。
+
+## Environment
+
+テーマ・ロケール・依存オブジェクトのようなアンビエントな値は、`body` の引数で配り歩かずに `.environment(_:_:)` でサブツリーへ暗黙に伝播できます。SwiftUI の `@Environment` / React Context に相当します。
+
+まず値のキーを定義し、`FineEnvironmentValues` に読み書き用のプロパティを生やします。
+
+```swift
+private struct ThemeKey: FineEnvironmentKey {
+    static let defaultValue = Theme.light
+}
+
+extension FineEnvironmentValues {
+    var theme: Theme {
+        get { self[ThemeKey.self] }
+        set { self[ThemeKey.self] = newValue }
+    }
+}
+```
+
+`.environment(\.theme, value)` で注入し、`FineEnvironmentReader` で読みます。
+
+```swift
+FineEnvironmentReader { environment in
+    FineLabel(text: environment.theme.title)
+}
+.environment(\.theme, currentTheme)
+```
+
+`.environment` は透過ラッパーでビューを増やさず、内側の記述の描画コンテキストへ値を差し込むだけです。ネストすると内側の注入が優先されます。注入元が `@Observable` プロパティなら、値の変化で `FineEnvironmentReader` が再レンダリングされます。
+
 ## ライフサイクルと非同期処理
 
 `.onAppear` / `.onDisappear` はビューが window に載った / 外れたタイミングで発火します。`.task` は表示時に async 処理を起動し、非表示になると自動でキャンセルします。
@@ -236,6 +287,7 @@ FineStack.vertical(spacing: 8) {
 - `Renderable` — UI 記述の公開プロトコル。アプリ側は `body` で組み込みコンポーネントを合成する
 - 内部プリミティブ — 組み込みコンポーネントが持つ `_makeView()` / `_canUpdate(_:)` / `_update(_:context:)` 契約。署名や全プロパティ書き戻しの規則は公開 API ではない
 - `FineRenderer` — 差分適用層。`body` を内部プリミティブへ解決し、「ビュー型互換 + モディファイア署名一致 + key 一致」のときだけ in-place 更新、それ以外は作り直し
+- `FineNode` — 各ビューに紐づく永続「要素」(Flutter の Element 相当)。モディファイア署名・key・ノード局所の観測状態(scheduler の generation / context)に加え、`FineState` のローカル状態を所有する。ビューと同寿命なので、状態は再レンダリングをまたいで保持される
 - `FineUI` — `withObservationTracking` で差分適用を駆動するランタイム。root の `body` は構造、コンテナの `content` はそのノード、`FineLabel.text` はラベルノード単位で再評価される
 - `FineViewController` — 上記をまとめた推奨インターフェース
 
