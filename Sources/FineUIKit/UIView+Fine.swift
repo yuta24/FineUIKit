@@ -10,27 +10,37 @@ import ObjectiveC
 
 @MainActor
 extension UIView {
-    nonisolated(unsafe) static var fineModifierSignatureKey: UInt8 = 0
-    nonisolated(unsafe) static var fineKeyKey: UInt8 = 0
+    nonisolated(unsafe) static var fineNodeKey: UInt8 = 0
     nonisolated(unsafe) static var fineInstalledConstraintsKey: UInt8 = 0
     nonisolated(unsafe) static var fineCustomConstraintsKey: UInt8 = 0
-    nonisolated(unsafe) static var fineNodeStateKey: UInt8 = 0
+
+    var fineNodeIfPresent: FineNode? {
+        objc_getAssociatedObject(self, &Self.fineNodeKey) as? FineNode
+    }
+
+    var fineNode: FineNode {
+        if let existing = fineNodeIfPresent { return existing }
+
+        let node = FineNode()
+        objc_setAssociatedObject(self, &Self.fineNodeKey, node, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        return node
+    }
 
     var fineModifierSignature: String {
         get {
-            objc_getAssociatedObject(self, &Self.fineModifierSignatureKey) as? String ?? ""
+            fineNodeIfPresent?.modifierSignature ?? ""
         }
         set {
-            objc_setAssociatedObject(self, &Self.fineModifierSignatureKey, newValue, .OBJC_ASSOCIATION_COPY_NONATOMIC)
+            fineNode.modifierSignature = newValue
         }
     }
 
     var fineKey: AnyHashable? {
         get {
-            objc_getAssociatedObject(self, &Self.fineKeyKey) as? AnyHashable
+            fineNodeIfPresent?.key
         }
         set {
-            objc_setAssociatedObject(self, &Self.fineKeyKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            fineNode.key = newValue
         }
     }
 
@@ -49,15 +59,6 @@ extension UIView {
         }
         set {
             objc_setAssociatedObject(self, &Self.fineCustomConstraintsKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-        }
-    }
-
-    var fineNodeState: FineNodeState? {
-        get {
-            objc_getAssociatedObject(self, &Self.fineNodeStateKey) as? FineNodeState
-        }
-        set {
-            objc_setAssociatedObject(self, &Self.fineNodeStateKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
     }
 }
