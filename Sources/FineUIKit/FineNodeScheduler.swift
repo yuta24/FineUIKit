@@ -9,13 +9,6 @@ import Observation
 import UIKit
 
 @MainActor
-final class FineNodeState {
-    var primitive: (any FinePrimitiveRenderable)?
-    var generation = 0
-    var context: FineRenderContext?
-}
-
-@MainActor
 final class FineNodeScheduler {
     private struct Job {
         weak var view: UIView?
@@ -37,18 +30,17 @@ final class FineNodeScheduler {
            existing.fineKey == primitive._key {
             view = existing
         } else {
-            existing?.fineNodeState?.generation += 1
+            existing?.fineNodeIfPresent?.generation += 1
             view = primitive._makeView()
         }
 
         view.fineModifierSignature = primitive._modifierSignature
         view.fineKey = primitive._key
 
-        let state = view.fineNodeState ?? FineNodeState()
+        let state = view.fineNode
         state.primitive = primitive
         state.context = context
         state.generation += 1
-        view.fineNodeState = state
 
         enqueue(view: view, generation: state.generation, primitive: primitive, context: context)
         return view
@@ -76,7 +68,7 @@ final class FineNodeScheduler {
     }
 
     private func enqueueExisting(_ view: UIView) {
-        guard let state = view.fineNodeState,
+        guard let state = view.fineNodeIfPresent,
               let primitive = state.primitive,
               let context = state.context
         else { return }
@@ -87,7 +79,7 @@ final class FineNodeScheduler {
 
     private func run(_ job: Job) {
         guard let view = job.view,
-              view.fineNodeState?.generation == job.generation
+              view.fineNodeIfPresent?.generation == job.generation
         else { return }
 
         let generation = job.generation
@@ -97,7 +89,7 @@ final class FineNodeScheduler {
             Task { @MainActor in
                 guard let self,
                       let view,
-                      view.fineNodeState?.generation == generation
+                      view.fineNodeIfPresent?.generation == generation
                 else { return }
 
                 let transaction = FineTransactionContext.current
