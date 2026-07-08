@@ -31,7 +31,6 @@ final class FineStateStorage<Value>: Observable {
 
 @MainActor
 final class FineStateReaderView: UIView {
-    var storage: AnyObject?
     var hosted: UIView?
 }
 
@@ -52,11 +51,11 @@ struct FineStateReader<Value>: FinePrimitiveRenderable {
         guard let host = view as? FineStateReaderView else { return }
 
         let storage: FineStateStorage<Value>
-        if let existing = host.storage as? FineStateStorage<Value> {
+        if let existing = host.fineNode.localState as? FineStateStorage<Value> {
             storage = existing
         } else {
             storage = FineStateStorage(initialValue)
-            host.storage = storage
+            host.fineNode.localState = storage
         }
 
         let binding = FineBinding<Value>(
