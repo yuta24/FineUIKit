@@ -12,6 +12,7 @@ public struct FineToggle: FinePrimitiveRenderable {
     private static let actionKey = "FineUIKit.FineToggle.valueChanged"
 
     private let isOn: FineBinding<Bool>
+    private var isEnabled = true
 
     public var body: any Renderable {
         fatalError("Primitive Renderable body should not be evaluated")
@@ -19,6 +20,13 @@ public struct FineToggle: FinePrimitiveRenderable {
 
     public init(isOn: FineBinding<Bool>) {
         self.isOn = isOn
+    }
+
+    /// Sets whether the toggle responds to user interaction.
+    public func enabled(_ isEnabled: Bool = true) -> FineToggle {
+        var copy = self
+        copy.isEnabled = isEnabled
+        return copy
     }
 
     func _makeView() -> UIView {
@@ -34,6 +42,9 @@ public struct FineToggle: FinePrimitiveRenderable {
 
         if uiSwitch.isOn != isOn.value {
             uiSwitch.isOn = isOn.value
+        }
+        if uiSwitch.isEnabled != isEnabled {
+            uiSwitch.isEnabled = isEnabled
         }
 
         uiSwitch.fineSetHandler(Self.actionKey, for: .valueChanged) { [isOn] control in

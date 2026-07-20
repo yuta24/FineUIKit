@@ -13,6 +13,18 @@ public enum FineGridColumns: Equatable {
     case adaptive(minimum: CGFloat)
 }
 
+enum FineGridLayoutMath {
+    /// Column count for `.adaptive`, accounting for inter-item spacing so
+    /// each resulting column is at least `minimum` wide.
+    static func adaptiveColumnCount(width: CGFloat, minimum: CGFloat, spacing: CGFloat) -> Int {
+        let minimum = max(minimum, 1)
+        // Clamp the per-column stride so a negative spacing can never zero
+        // the denominator (Int(CGFloat.infinity) traps).
+        let stride = max(minimum + spacing, 1)
+        return max(1, Int((width + spacing) / stride))
+    }
+}
+
 @MainActor
 public struct FineGridSection<Element: Identifiable> {
     public let id: AnyHashable
@@ -142,6 +154,7 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
         coordinator.content = content
         coordinator.onSelect = onSelect
         coordinator.onRefresh = onRefresh
+        coordinator.environmentStorage.update(context.environment)
         coordinator.updateRefreshControl(on: gridView)
 
         if gridView.keyboardDismissMode != keyboardDismissMode {
@@ -236,7 +249,11 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
             case .count(let count):
                 columnCount = max(1, count)
             case .adaptive(let minimum):
-                columnCount = max(1, Int(environment.container.effectiveContentSize.width / max(minimum, 1)))
+                columnCount = FineGridLayoutMath.adaptiveColumnCount(
+                    width: environment.container.effectiveContentSize.width,
+                    minimum: minimum,
+                    spacing: spacing
+                )
             }
 
             let itemSize = NSCollectionLayoutSize(
@@ -333,6 +350,10 @@ extension FineGrid {
         var columns: FineGridColumns
         var spacing: CGFloat
         var supplementarySignature: [SectionSupplementarySignature] = []
+        // Environment resolved at the grid's last render. Cells observe it,
+        // so `.environment(_:_:)` changes reach visible items even when no
+        // snapshot difference reconfigures them.
+        let environmentStorage = FineEnvironmentStorage()
 
         init(gridView: FineGridView, columns: FineGridColumns, spacing: CGFloat) {
             self.columns = columns
@@ -364,7 +385,7 @@ extension FineGrid {
                       let content = coordinator.content
                 else { return cell }
 
-                cell.render { content(element) }
+                cell.render(environment: coordinator.environmentStorage) { content(element) }
 
                 return cell
             }
@@ -394,7 +415,7 @@ extension FineGrid {
                 }
 
                 if let node {
-                    view.render(node)
+                    view.render(node, environment: coordinator.environmentStorage)
                 }
                 return view
             }
@@ -464,82 +485,79 @@ extension FineGrid {
 @MainActor
 final class FineGridView: UICollectionView {
     var coordinator: AnyObject?
+
+    private var isLayoutInvalidationScheduled = false
+
+    /// Coalesces self-sizing invalidation from concurrently re-rendered hosts
+    /// into one layout pass per main-actor turn, instead of a full
+    /// invalidateLayout per changed item. Inside a transaction the pass runs
+    /// in the animation block so item frames animate.
+    func fineScheduleLayoutInvalidation() {
+        guard !isLayoutInvalidationScheduled else { return }
+        isLayoutInvalidationScheduled = true
+
+        Task { @MainActor in
+            self.isLayoutInvalidationScheduled = false
+
+            if case .animate(let animation) = FineTransactionContext.current {
+                animation.animate {
+                    self.collectionViewLayout.invalidateLayout()
+                    self.layoutIfNeeded()
+                }
+            } else {
+                UIView.performWithoutAnimation {
+                    self.collectionViewLayout.invalidateLayout()
+                    self.layoutIfNeeded()
+                }
+            }
+        }
+    }
 }
 
 @MainActor
 final class FineGridHostCell: UICollectionViewCell {
     static let reuseIdentifier = "FineGridHostCell"
 
-    private var hostedView: UIView?
-    private var makeNode: (@MainActor () -> any Renderable)?
-    private var generation = 0
+    private var host: FineNodeHost?
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        makeNode = nil
-        generation += 1
+        host?.invalidate()
     }
 
     /// Renders item content under local observation tracking.
     ///
     /// This mirrors `FineUI`'s render tracking at cell scope: values read while
-    /// building and rendering the item can invalidate only this cell. Height
-    /// changes caused by observed updates do not ask `UICollectionView` to
-    /// recalculate item height; this is intended for height-stable updates.
-    func render(_ makeNode: @escaping @MainActor () -> any Renderable) {
-        self.makeNode = makeNode
-        renderTracked()
+    /// building and rendering the item can invalidate only this cell. When an
+    /// observed update changes the item's fitting height, the enclosing
+    /// collection view coalesces a layout invalidation.
+    func render(environment: FineEnvironmentStorage, _ makeNode: @escaping @MainActor () -> any Renderable) {
+        ensureHost().render(environment: environment, makeNode)
     }
 
-    private func renderTracked() {
-        generation += 1
-        let expectedGeneration = generation
-        guard let makeNode else { return }
+    private func ensureHost() -> FineNodeHost {
+        if let host { return host }
 
-        let transaction = FineTransactionContext.current
-        let apply = { [self] in
-            let context = FineRenderContext()
-            return withObservationTracking {
-                context.render(makeNode(), reusing: self.hostedView)
-            } onChange: { [weak self] in
-                Task { @MainActor in
-                    guard let self,
-                          self.generation == expectedGeneration,
-                          self.makeNode != nil
-                    else { return }
+        let host = FineNodeHost(owner: self) { [unowned self] view in
+            contentView.addSubview(view)
 
-                    self.renderTracked()
-                }
-            }
+            let guide = contentView.layoutMarginsGuide
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: guide.topAnchor),
+                view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
+                view.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
+            ])
         }
+        host.onObservedRerender = { [unowned self] in
+            guard contentView.fineNeedsHeightRemeasure,
+                  let gridView = fineEnclosing(FineGridView.self)
+            else { return }
 
-        let view: UIView
-        if case .animate(let animation) = transaction, hostedView != nil {
-            var rendered: UIView!
-            animation.animate {
-                rendered = apply()
-                self.layoutIfNeeded()
-            }
-            view = rendered
-        } else {
-            view = apply()
+            gridView.fineScheduleLayoutInvalidation()
         }
-
-        guard view !== hostedView else { return }
-
-        hostedView?.removeFromSuperview()
-        hostedView = view
-
-        view.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(view)
-
-        let guide = contentView.layoutMarginsGuide
-        NSLayoutConstraint.activate([
-            view.topAnchor.constraint(equalTo: guide.topAnchor),
-            view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
-            view.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
-        ])
+        self.host = host
+        return host
     }
 }
 
@@ -547,29 +565,44 @@ final class FineGridHostCell: UICollectionViewCell {
 final class FineGridHostSupplementaryView: UICollectionReusableView {
     static let reuseIdentifier = "FineGridHostSupplementaryView"
 
-    private var hostedView: UIView?
+    private var host: FineNodeHost?
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        hostedView?.removeFromSuperview()
-        hostedView = nil
+        // Tear the hosted view down so the provider's bail-out path (section
+        // resolution failure during a snapshot transition) returns a blank
+        // view instead of another section's stale content.
+        host?.reset()
     }
 
-    func render(_ node: any Renderable) {
-        let view = FineRenderContext().render(node, reusing: hostedView)
-        guard view !== hostedView else { return }
+    /// Renders supplementary content under local observation tracking, the
+    /// same way cells do: `@Observable` values read while rendering update
+    /// this view in place, and height changes coalesce a layout invalidation.
+    func render(_ node: any Renderable, environment: FineEnvironmentStorage) {
+        ensureHost().render(environment: environment) { node }
+    }
 
-        hostedView?.removeFromSuperview()
-        hostedView = view
+    private func ensureHost() -> FineNodeHost {
+        if let host { return host }
 
-        view.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(view)
+        let host = FineNodeHost(owner: self) { [unowned self] view in
+            addSubview(view)
 
-        NSLayoutConstraint.activate([
-            view.topAnchor.constraint(equalTo: topAnchor),
-            view.leadingAnchor.constraint(equalTo: leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: trailingAnchor),
-            view.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: topAnchor),
+                view.leadingAnchor.constraint(equalTo: leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: trailingAnchor),
+                view.bottomAnchor.constraint(equalTo: bottomAnchor),
+            ])
+        }
+        host.onObservedRerender = { [unowned self] in
+            guard fineNeedsHeightRemeasure,
+                  let gridView = fineEnclosing(FineGridView.self)
+            else { return }
+
+            gridView.fineScheduleLayoutInvalidation()
+        }
+        self.host = host
+        return host
     }
 }

@@ -62,6 +62,9 @@ public struct FineSpacer: FinePrimitiveRenderable {
             constraint.constant = minLength
         } else {
             let constraint = anchor.constraint(greaterThanOrEqualToConstant: minLength)
+            // 999 keeps the minimum from fighting required container
+            // constraints on the cross axis (same rule as width/height).
+            constraint.priority = .init(999)
             constraint.isActive = true
             constraints[key] = constraint
         }

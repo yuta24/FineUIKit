@@ -13,6 +13,7 @@ public struct FineSlider: FinePrimitiveRenderable {
 
     private let value: FineBinding<Float>
     private let range: ClosedRange<Float>
+    private var isEnabled = true
 
     public var body: any Renderable {
         fatalError("Primitive Renderable body should not be evaluated")
@@ -21,6 +22,13 @@ public struct FineSlider: FinePrimitiveRenderable {
     public init(value: FineBinding<Float>, in range: ClosedRange<Float> = 0...1) {
         self.value = value
         self.range = range
+    }
+
+    /// Sets whether the slider responds to user interaction.
+    public func enabled(_ isEnabled: Bool = true) -> FineSlider {
+        var copy = self
+        copy.isEnabled = isEnabled
+        return copy
     }
 
     func _makeView() -> UIView {
@@ -43,6 +51,9 @@ public struct FineSlider: FinePrimitiveRenderable {
 
         if slider.value != value.value {
             slider.value = value.value
+        }
+        if slider.isEnabled != isEnabled {
+            slider.isEnabled = isEnabled
         }
 
         slider.fineSetHandler(Self.actionKey, for: .valueChanged) { [value] control in

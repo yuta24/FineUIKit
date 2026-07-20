@@ -5,6 +5,7 @@
 //  Created by nova on 2026/07/08.
 //
 
+import Observation
 import UIKit
 
 public protocol FineEnvironmentKey {
@@ -24,6 +25,53 @@ public struct FineEnvironmentValues {
         }
         set {
             storage[ObjectIdentifier(key)] = newValue
+        }
+    }
+
+    /// Best-effort equality used to skip environment publishes that would
+    /// re-render observing cells: equal only when both hold the same keys and
+    /// every value pair compares equal via `Equatable`. Non-`Equatable`
+    /// values are conservatively treated as changed.
+    func fineIsApproximatelyEqual(to other: FineEnvironmentValues) -> Bool {
+        guard storage.count == other.storage.count else { return false }
+
+        for (key, value) in storage {
+            guard let otherValue = other.storage[key],
+                  let equatable = value as? any Equatable,
+                  equatable.fineIsEqual(to: otherValue)
+            else { return false }
+        }
+        return true
+    }
+}
+
+private extension Equatable {
+    func fineIsEqual(to other: Any) -> Bool {
+        guard let other = other as? Self else { return false }
+        return self == other
+    }
+}
+
+/// Observable box carrying the environment a list/grid resolved at its last
+/// render. Host cells read `values` inside their tracked render scope, so an
+/// environment change re-renders visible cells without a row reconfigure.
+@MainActor
+final class FineEnvironmentStorage: Observable {
+    private let observationRegistrar = ObservationRegistrar()
+    private var storedValues = FineEnvironmentValues()
+
+    var values: FineEnvironmentValues {
+        observationRegistrar.access(self, keyPath: \.values)
+        return storedValues
+    }
+
+    /// Publishes `values` only when they differ from the stored ones, so
+    /// unrelated list renders don't re-render every observing cell.
+    func update(_ values: FineEnvironmentValues) {
+        guard !storedValues.fineIsApproximatelyEqual(to: values) else { return }
+
+        observationRegistrar.withMutation(of: self, keyPath: \.values) {
+            storedValues = values
         }
     }
 }

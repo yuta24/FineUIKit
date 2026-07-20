@@ -15,6 +15,7 @@ public struct FineButton: FinePrimitiveRenderable {
     private let action: () -> Void
     private var image: UIImage?
     private var configuration: UIButton.Configuration?
+    private var isEnabled = true
 
     public var body: any Renderable {
         fatalError("Primitive Renderable body should not be evaluated")
@@ -39,6 +40,13 @@ public struct FineButton: FinePrimitiveRenderable {
     public func configuration(_ configuration: UIButton.Configuration) -> FineButton {
         var copy = self
         copy.configuration = configuration
+        return copy
+    }
+
+    /// Sets whether the button is enabled.
+    public func enabled(_ isEnabled: Bool = true) -> FineButton {
+        var copy = self
+        copy.isEnabled = isEnabled
         return copy
     }
 
@@ -69,6 +77,10 @@ public struct FineButton: FinePrimitiveRenderable {
             if button.image(for: .normal) !== image {
                 button.setImage(image, for: .normal)
             }
+        }
+
+        if button.isEnabled != isEnabled {
+            button.isEnabled = isEnabled
         }
 
         button.fineSetHandler(Self.actionKey, for: .primaryActionTriggered) { [action] _ in

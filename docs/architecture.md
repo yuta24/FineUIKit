@@ -115,6 +115,8 @@ flowchart LR
 
 これにより「アプリの記述 → 組み込み primitive」の変換が行われ、以降は primitive の `_makeView` / `_update` 契約だけを相手にします。
 
+なお、公開プロトコル `FineViewRepresentable`(任意の `UIView` をラップする拡張ポイント)は、デフォルトの `body` が内部アダプタ `FineRepresentableAdapter` を返すことでこの解決ループに自然に合流します(`FineViewRepresentable.swift`)。レンダラー側に特別な分岐はなく、準拠型が `body` を独自実装すればそちらが優先されます。署名には representable の具象型名が入るため、同じ `ViewType` を持つ別の representable と実体を共有することはありません。
+
 ---
 
 ## 4. 差分適用(reconciliation)

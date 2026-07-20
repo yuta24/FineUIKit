@@ -144,11 +144,24 @@ public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Ele
         coordinator.onDelete = onDelete
         coordinator.onRefresh = onRefresh
         coordinator.deleteActionTitle = deleteActionTitle
+        coordinator.environmentStorage.update(context.environment)
         coordinator.dataSource.canEditRows = onDelete != nil
         coordinator.updateRefreshControl(on: listView)
 
         if listView.keyboardDismissMode != keyboardDismissMode {
             listView.keyboardDismissMode = keyboardDismissMode
+        }
+
+        // The cell provider sets selectionStyle only when a cell is
+        // (re)configured; visible cells must follow onSelect changes even when
+        // no snapshot difference reconfigures them. Gated so the sweep runs
+        // only when the style actually flips, not on every render.
+        let selectionStyle = coordinator.selectionStyle
+        if coordinator.appliedSelectionStyle != selectionStyle {
+            coordinator.appliedSelectionStyle = selectionStyle
+            for cell in listView.visibleCells where cell.selectionStyle != selectionStyle {
+                cell.selectionStyle = selectionStyle
+            }
         }
 
         var snapshotSections: [FineListSection<Element>] = []
@@ -251,6 +264,15 @@ extension FineList {
         var onDelete: (@MainActor (Element) -> Void)?
         var onRefresh: (@MainActor () async -> Void)?
         var deleteActionTitle: String = "Delete"
+        // Environment resolved at the list's last render. Cells observe it,
+        // so `.environment(_:_:)` changes reach visible rows even when no
+        // snapshot difference reconfigures them.
+        let environmentStorage = FineEnvironmentStorage()
+        var appliedSelectionStyle: UITableViewCell.SelectionStyle?
+
+        var selectionStyle: UITableViewCell.SelectionStyle {
+            onSelect == nil ? .none : .default
+        }
 
         init(listView: FineListView) {
             listView.register(FineListHostCell.self, forCellReuseIdentifier: FineListHostCell.reuseIdentifier)
@@ -270,8 +292,8 @@ extension FineList {
                       let content = coordinator.content
                 else { return cell }
 
-                cell.selectionStyle = coordinator.onSelect == nil ? .none : .default
-                cell.render { content(element) }
+                cell.selectionStyle = coordinator.selectionStyle
+                cell.render(environment: coordinator.environmentStorage) { content(element) }
 
                 return cell
             }
@@ -321,7 +343,7 @@ extension FineList {
             )
 
             guard let view = view as? FineListHostHeaderFooterView else { return nil }
-            view.render(node)
+            view.render(node, environment: environmentStorage)
             return view
         }
 
@@ -374,82 +396,79 @@ extension FineList {
 @MainActor
 final class FineListView: UITableView {
     var coordinator: AnyObject?
+
+    private var isRowHeightInvalidationScheduled = false
+
+    /// Coalesces self-sizing invalidation from concurrently re-rendered hosts
+    /// into one height pass per main-actor turn, instead of one
+    /// beginUpdates/endUpdates per changed cell.
+    func fineScheduleRowHeightInvalidation() {
+        guard !isRowHeightInvalidationScheduled else { return }
+        isRowHeightInvalidationScheduled = true
+
+        Task { @MainActor in
+            self.isRowHeightInvalidationScheduled = false
+
+            if case .animate(let animation) = FineTransactionContext.current {
+                animation.animate {
+                    self.beginUpdates()
+                    self.endUpdates()
+                    self.layoutIfNeeded()
+                }
+            } else {
+                UIView.performWithoutAnimation {
+                    self.beginUpdates()
+                    self.endUpdates()
+                }
+            }
+        }
+    }
 }
 
 @MainActor
 final class FineListHostCell: UITableViewCell {
     static let reuseIdentifier = "FineListHostCell"
 
-    private var hostedView: UIView?
-    private var makeNode: (@MainActor () -> any Renderable)?
-    private var generation = 0
+    private var host: FineNodeHost?
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        makeNode = nil
-        generation += 1
+        host?.invalidate()
     }
 
     /// Renders row content under local observation tracking.
     ///
     /// This mirrors `FineUI`'s render tracking at cell scope: values read while
-    /// building and rendering the row can invalidate only this cell. Height
-    /// changes caused by observed updates do not ask `UITableView` to recalculate
-    /// row height; this is intended for height-stable updates.
-    func render(_ makeNode: @escaping @MainActor () -> any Renderable) {
-        self.makeNode = makeNode
-        renderTracked()
+    /// building and rendering the row can invalidate only this cell. When an
+    /// observed update changes the row's fitting height, the enclosing table
+    /// view coalesces a row-height recalculation.
+    func render(environment: FineEnvironmentStorage, _ makeNode: @escaping @MainActor () -> any Renderable) {
+        ensureHost().render(environment: environment, makeNode)
     }
 
-    private func renderTracked() {
-        generation += 1
-        let expectedGeneration = generation
-        guard let makeNode else { return }
+    private func ensureHost() -> FineNodeHost {
+        if let host { return host }
 
-        let transaction = FineTransactionContext.current
-        let apply = { [self] in
-            let context = FineRenderContext()
-            return withObservationTracking {
-                context.render(makeNode(), reusing: self.hostedView)
-            } onChange: { [weak self] in
-                Task { @MainActor in
-                    guard let self,
-                          self.generation == expectedGeneration,
-                          self.makeNode != nil
-                    else { return }
+        let host = FineNodeHost(owner: self) { [unowned self] view in
+            contentView.addSubview(view)
 
-                    self.renderTracked()
-                }
-            }
+            let guide = contentView.layoutMarginsGuide
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: guide.topAnchor),
+                view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
+                view.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
+            ])
         }
+        host.onObservedRerender = { [unowned self] in
+            guard contentView.fineNeedsHeightRemeasure,
+                  let listView = fineEnclosing(FineListView.self)
+            else { return }
 
-        let view: UIView
-        if case .animate(let animation) = transaction, hostedView != nil {
-            var rendered: UIView!
-            animation.animate {
-                rendered = apply()
-                self.layoutIfNeeded()
-            }
-            view = rendered
-        } else {
-            view = apply()
+            listView.fineScheduleRowHeightInvalidation()
         }
-
-        guard view !== hostedView else { return }
-
-        hostedView?.removeFromSuperview()
-        hostedView = view
-
-        view.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(view)
-
-        let guide = contentView.layoutMarginsGuide
-        NSLayoutConstraint.activate([
-            view.topAnchor.constraint(equalTo: guide.topAnchor),
-            view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
-            view.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
-        ])
+        self.host = host
+        return host
     }
 }
 
@@ -457,23 +476,41 @@ final class FineListHostCell: UITableViewCell {
 final class FineListHostHeaderFooterView: UITableViewHeaderFooterView {
     static let reuseIdentifier = "FineListHostHeaderFooterView"
 
-    private var hostedView: UIView?
+    private var host: FineNodeHost?
 
-    func render(_ node: any Renderable) {
-        let view = FineRenderContext().render(node, reusing: hostedView)
-        guard view !== hostedView else { return }
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        host?.invalidate()
+    }
 
-        hostedView?.removeFromSuperview()
-        hostedView = view
+    /// Renders supplementary content under local observation tracking, the
+    /// same way cells do: `@Observable` values read while rendering update
+    /// this view in place, and height changes coalesce a table re-measure.
+    func render(_ node: any Renderable, environment: FineEnvironmentStorage) {
+        ensureHost().render(environment: environment) { node }
+    }
 
-        view.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(view)
+    private func ensureHost() -> FineNodeHost {
+        if let host { return host }
 
-        NSLayoutConstraint.activate([
-            view.topAnchor.constraint(equalTo: contentView.topAnchor),
-            view.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            view.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-        ])
+        let host = FineNodeHost(owner: self) { [unowned self] view in
+            contentView.addSubview(view)
+
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: contentView.topAnchor),
+                view.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+                view.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            ])
+        }
+        host.onObservedRerender = { [unowned self] in
+            guard contentView.fineNeedsHeightRemeasure,
+                  let listView = fineEnclosing(FineListView.self)
+            else { return }
+
+            listView.fineScheduleRowHeightInvalidation()
+        }
+        self.host = host
+        return host
     }
 }

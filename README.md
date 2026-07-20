@@ -60,16 +60,18 @@ FineList(sections: [
 | コンポーネント | ベース | 特記事項 |
 |---|---|---|
 | `FineLabel` | `UILabel` | 型付きモディファイア: `.font` / `.textColor` / `.textAlignment` / `.numberOfLines` |
-| `FineButton` | `UIButton` | `action` クロージャ。`.image` / `.configuration(UIButton.Configuration)` |
+| `FineButton` | `UIButton` | `action` クロージャ。`.image` / `.configuration(UIButton.Configuration)` / `.enabled` |
 | `FineImage` | `UIImageView` | |
 | `FineStack` | `UIStackView` | `vertical` / `horizontal`、`spacing` / `alignment` / `distribution`。子は keyed + 位置ベースで差分適用 |
-| `FineList` | `UITableView` | diffable data source(`Identifiable`)。セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedRows()` / `.onSelect` / `.onDelete` / `.keyboardDismissMode` |
+| `FineList` | `UITableView` | diffable data source(`Identifiable`)。セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedRows()` / `.onSelect` / `.onDelete` / `.keyboardDismissMode`。行の高さは観測起因の変化に自動追従 |
 | `FineGrid` | `UICollectionView` | compositional layout。`columns: .count(n)` / `.adaptive(minimum:)`、セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedItems()` / `.onSelect` / `.keyboardDismissMode` |
-| `FineTextField` | `UITextField` | `FineBinding<String>` で双方向。`.keyboardType` / `.returnKeyType` / `.secureTextEntry` / `.onSubmit` |
-| `FineToggle` | `UISwitch` | `FineBinding<Bool>` |
-| `FineSlider` | `UISlider` | `FineBinding<Float>` + `in:` レンジ |
+| `FineTextField` | `UITextField` | `FineBinding<String>` で双方向。`.keyboardType` / `.returnKeyType` / `.secureTextEntry` / `.onSubmit` / `.enabled` / `.focused` |
+| `FineToggle` | `UISwitch` | `FineBinding<Bool>`。`.enabled` |
+| `FineSlider` | `UISlider` | `FineBinding<Float>` + `in:` レンジ。`.enabled` |
 | `FineSpacer` | — | スタック内の余白吸収(`minLength:`) |
 | `FineScrollView` | `UIScrollView` | 縦横対応。`.keyboardDismissMode`。`FineList` / `FineGrid` は自身がスクロールするので入れないこと |
+
+組み込みにないビューは `FineViewRepresentable` で任意の `UIView` をラップできます(後述)。
 
 ## ナビゲーション
 
@@ -108,6 +110,25 @@ FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
 ```
 
 `FineBinding` は `get` / `set` のペアです。`get` はレンダリング中(observation スコープ内)に評価されるため、バインド先の変更で自動的に再レンダリングされます。UI 側の変更は `set` を通じて状態へ書き戻され、「現在値と異なるときだけビューに書く」ガードにより入力中のカーソルは保持されます。
+
+## フォーカス管理
+
+`FineTextField` の `.focused(_:)` に `FineBinding<Bool>` を渡すと、first responder を状態から駆動できます。`true` を書くとフォーカス(キーボード表示)、`false` を書くと解除。ユーザー操作によるフォーカスの出入りもバインディングへ書き戻されます。
+
+```swift
+@Observable
+final class FormModel {
+    var name = ""
+    var isNameFocused = false
+}
+
+FineTextField(text: .init(model, \.name), placeholder: "Name")
+    .focused(.init(model, \.isNameFocused))
+
+FineButton(title: "Edit") { model.isNameFocused = true }
+```
+
+ビューが window に載る前の描画では、載った直後にフォーカスが適用されます。
 
 ## ローカル状態
 
@@ -230,6 +251,7 @@ FineButton(title: "Add") { viewModel.add() }
 
 - 外観系: `.backgroundColor` / `.cornerRadius` / `.border` / `.opacity` / `.tintColor`
 - レイアウト系: `.padding` / `.frame(width:height:alignment:)`
+- インタラクション系: `.onTap`(任意のビューにタップハンドラを付ける。ラベルや画像でも `isUserInteractionEnabled` を自動で有効化。タッチはビューにも届くため、コントロール自身のアクションと共存する。チェーンした `.onTap` は全て順に実行。`nil` を渡すとビューの identity を保ったままハンドラだけ外せる — 条件付きタップは `.onTap(cond ? handler : nil)` と書く)
 - アクセシビリティ系: `.accessibilityLabel` / `.accessibilityValue` / `.accessibilityHint` / `.accessibilityTraits` / `.accessibilityIdentifier` / `.accessibilityHidden`
 - ライフサイクル系: `.onAppear` / `.onDisappear` / `.task` / `.task(id:)`
 - 順序に意味があります(`.backgroundColor().padding()` は背景の外に余白、逆は余白ごと背景)
@@ -280,7 +302,53 @@ FineStack.vertical(spacing: 8) {
 
 `FineList` / `FineGrid` は `Identifiable` の ID で常に keyed です。
 `FineList` の `.reconfiguringOnlyChangedRows()` と `FineGrid` の `.reconfiguringOnlyChangedItems()` は値型要素向けの最適化で、表示に使う全プロパティを `==` が正確に反映することが前提です。
-行 / item content が読んだ `@Observable` プロパティは、リスト / グリッド全体の再 render なしにセル単位で自動更新されます。
+行 / item content が読んだ `@Observable` プロパティは、リスト / グリッド全体の再 render なしにセル単位で自動更新されます。ヘッダー・フッターも同様にセル単位の observation で更新されます。観測起因の更新で高さが変わった場合は、リスト / グリッド単位で1回に合流(coalesce)された高さ再計算が自動で走ります(ヘッダー・フッターも対象)。
+`.environment(_:_:)` で注入した値はセル・ヘッダー・フッターの content にも伝播します。環境値の変更は observation 経由で可視セルにも自動反映されるため、`.reconfiguringOnlyChangedRows()` 使用時も取り残されません。環境値には `Equatable` な型を推奨します(非 `Equatable` の値は毎レンダー「変更あり」とみなされ、可視セルの再描画が増えます)。
+
+## 任意の UIView のラップ(FineViewRepresentable)
+
+組み込みコンポーネントにないビュー(`WKWebView`、`MKMapView`、自作ビューなど)は `FineViewRepresentable` で宣言的ツリーに組み込めます。SwiftUI の `UIViewRepresentable` に相当します。
+
+```swift
+struct ProgressBar: FineViewRepresentable {
+    let progress: Float
+
+    func makeView() -> UIProgressView {
+        UIProgressView(progressViewStyle: .default)
+    }
+
+    func updateView(_ view: UIProgressView, environment: FineEnvironmentValues) {
+        if view.progress != progress {
+            view.progress = progress
+        }
+    }
+}
+
+// 通常のコンポーネントと同じように合成・修飾できる
+ProgressBar(progress: viewModel.progress)
+    .padding(16)
+```
+
+- `makeView()` はビューの identity が新しくなるときに1回だけ呼ばれ、以降の再レンダリングでは同じインスタンスに `updateView(_:environment:)` が呼ばれます
+- `updateView` は記述が管理する全プロパティを毎回書き戻してください(別の状態のあとに再利用されるため)。setter が重いプロパティは「現在値と異なるときだけ書く」ガードを推奨します
+- 再利用の判定は組み込みと同じ「型 + モディファイア署名 + key」です。`ViewType` が同じでも representable の型が異なればビューは共有されません
+
+## クロージャのキャプチャとメモリ管理
+
+`FineButton` の `action` などのクロージャは、node 単位の再レンダリングのためにビュー側(`FineNode`)に保持されます。このため **view controller の `self` を強参照でキャプチャすると循環参照になり、コントローラがリークします**(self → view → FineNode → クロージャ → self)。
+
+```swift
+// ❌ リーク: self を強参照キャプチャ
+FineButton(title: "Add") { self.addTask() }
+
+// ✅ 状態オブジェクトのキャプチャは安全(state は self を参照しない)
+FineButton(title: "Add") { viewModel.add() }
+
+// ✅ self のメソッドを呼ぶなら weak / unowned で
+FineButton(title: "Add") { [unowned self] in addTask() }
+```
+
+原則: **クロージャには状態(`@Observable` モデル)だけをキャプチャし、view controller 自身をキャプチャする場合は `[weak self]` / `[unowned self]` を付けてください。**
 
 ## アーキテクチャ
 
