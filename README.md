@@ -389,6 +389,10 @@ Scripts/injectionlite-xcode27-fix.sh ToDo   # ビルドのたびに実行(スキ
 
 新しいビルドを行うと壊れたログが最新になってしまうため、**ビルド後に毎回実行**が必要です。Xcode の Edit Scheme → Build → Post-actions に Run Script として登録しておくと自動化できます。
 
+### テストが検証している範囲
+
+`FineUITests.injectionRerenderDoesNotLeaveStaleObservationActive` は「注入完了通知を受け取ったら再レンダリングする」という `FineUI` 側の配線だけを検証しています(`NotificationCenter` で通知を手動 post するテストで、実際の dylib 差し替えは行いません)。InjectionLite/InjectionIII/InjectionNext が実際にコードを注入できるかどうかはビルド環境・ツールのバージョンに依存し、自動テストではカバーされていません(上記「既知の問題」参照)。ホットリロードが実際に機能するかどうかは、都度手元の環境で確認してください。
+
 ## 動作要件
 
 - iOS 17+(Observation フレームワーク前提)

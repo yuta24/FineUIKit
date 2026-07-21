@@ -485,6 +485,25 @@ sequenceDiagram
 
 ---
 
+## 17. 実ビュー階層の検証(Xcode View Debugger 互換性)
+
+FineUIKit が UIKit をそのまま描画に使う(SwiftUI バックエンドを介さない)設計上の利点は、「Xcode の View Debugger で個々のビューを検査できる」という点です。この利点は口頭の設計論ではなく、実機/シミュレータで以下の手順により実際に検証できます。
+
+```sh
+xcrun simctl launch <device-id> <bundle-id>          # 起動して PID を得る
+xcrun lldb
+(lldb) process attach --pid <pid>
+(lldb) po (id)[[[UIApplication sharedApplication] keyWindow] recursiveDescription]
+```
+
+`recursiveDescription` は Xcode の View Debugger が内部で使うのと同じ API で、実行中のビュー階層をテキストでダンプします。FineUIKit で組んだ画面をこの方法で確認すると、`UILabel`(実際の `text` 値付き)/ `UIButton` / `UIStackView`(`axis`/`distribution` 付き)/ `FineUIKit.FineListView`(`baseClass = UITableView`、実際の `dataSource` インスタンス付き)などが個別の実インスタンスとして現れ、SwiftUI の `_UIHostingView` のような不透明な1枚岩にはなりません。
+
+**注意**: この確認は FineUIKit 自身が描画する範囲に限った話です。OS 標準の `UINavigationBar` は(iOS 26 以降の "Liquid Glass" エフェクトのために)内部で `SwiftUI._UIInheritedView` / `SwiftUI.SDFLayer` 等を使っており、これは FineUIKit の採用有無に関わらずアプリの階層に現れます。「アプリ全体が SwiftUI に一切依存しない」という主張はできませんが、FineUIKit 自身のレンダリングパス(`Sources/FineUIKit/` 配下)が SwiftUI に依存しないことは `grep -rl "import SwiftUI" Sources/FineUIKit/` が空であることでも確認できます。
+
+このような「設計上こうなっているはず」という主張は、将来同種の判断(例えば再び SwiftUI バックエンド化を検討する場合など)をする際も、上記の手順で数分あれば実測できます。
+
+---
+
 ## 参考
 
 - 公開 API と使い方: [README](../README.md)
