@@ -50,9 +50,15 @@ struct FineTraitTests {
         }
     }
 
+    /// Pins the starting traits: a device already running at an accessibility
+    /// size would make an override to that size a no-op, and the test would
+    /// pass or fail on the environment rather than the code.
     private func makeWindow() -> (UIWindow, UIView) {
         let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 600))
         window.isHidden = false
+        window.traitOverrides.preferredContentSizeCategory = .large
+        window.traitOverrides.userInterfaceStyle = .light
+        window.traitOverrides.legibilityWeight = .regular
         let container = UIView(frame: window.bounds)
         window.addSubview(container)
         return (window, container)
@@ -131,7 +137,6 @@ struct FineTraitTests {
 
     @Test func descriptionReadsTraitsFromEnvironment() async throws {
         let (window, container) = makeWindow()
-        window.traitOverrides.userInterfaceStyle = .light
 
         let ui = FineUI(TraitState()) { _ in
             FineEnvironmentReader { environment in
@@ -176,7 +181,6 @@ struct FineTraitTests {
     /// element does not keep a cell on the old traits.
     @Test func traitChangeReachesVisibleCells() async throws {
         let (window, container) = makeWindow()
-        window.traitOverrides.userInterfaceStyle = .light
 
         let ui = FineUI(TraitState()) { _ in
             FineList([TraitRow(id: 1)]) { _ in
@@ -204,6 +208,36 @@ struct FineTraitTests {
         await waitUntil { cellText() == "dark" }
 
         #expect(cellText() == "dark")
+        _ = ui
+    }
+
+    /// Putting the trait collection in the environment must not make every
+    /// render republish it: that would re-render every visible cell, which is
+    /// exactly what skipping unchanged rows is meant to avoid.
+    @Test func unchangedTraitsDoNotRepublishToCells() async throws {
+        let (window, container) = makeWindow()
+        let state = TraitState()
+
+        let ui = FineUI(state) { state in
+            FineStack.vertical {
+                FineLabel(text: "\(state.value)")
+                FineList([TraitRow(id: 1)]) { _ in
+                    TraitCountingProbe(tag: "unchanged-traits")
+                }
+            }
+        }
+        ui.build(to: container)
+        window.layoutIfNeeded()
+        await waitTicks()
+
+        let base = traitRenderCounts.counts["unchanged-traits", default: 0]
+        // A root render whose traits did not change.
+        state.value += 1
+        await waitTicks()
+        window.layoutIfNeeded()
+        await waitTicks()
+
+        #expect(traitRenderCounts.counts["unchanged-traits", default: 0] - base == 0)
         _ = ui
     }
 

@@ -3,6 +3,16 @@ import Testing
 import UIKit
 @testable import FineUIKit
 
+@Observable
+private final class SupplementaryHeaderState {
+    var title = "H1"
+}
+
+@Observable
+private final class SupplementaryFooterState {
+    var caption = "F1"
+}
+
 private struct TestBadgeEnvironmentKey: FineEnvironmentKey {
     static let defaultValue = "default"
 }
@@ -115,6 +125,87 @@ struct FineListBehaviorTests {
         #expect(firstLabel(in: header)?.text == "H-injected")
         #expect(firstLabel(in: footer)?.text == "F-injected")
         _ = window
+    }
+
+    /// A header built from state that changed must not keep showing the old
+    /// description: nothing asks the table for a supplementary view it already
+    /// has, so the list refreshes visible ones itself.
+    @Test func headerFollowsStateChangeWithoutSectionChange() async throws {
+        let state = SupplementaryHeaderState()
+        let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 600))
+        let window = UIWindow(frame: container.frame)
+        window.addSubview(container)
+        window.isHidden = false
+
+        let ui = FineUI(state) { state in
+            let title = state.title
+            return FineList(sections: [
+                FineListSection(id: "s", header: FineLabel(text: title), items: [Item(id: "a", title: "A")]),
+            ]) { item in
+                FineLabel(text: item.title)
+            }
+        }
+        ui.build(to: container)
+        window.layoutIfNeeded()
+
+        let listView = try #require(container.subviews.compactMap { $0 as? UITableView }.first)
+        func headerText() -> String? {
+            listView.layoutIfNeeded()
+            guard let header = listView.headerView(forSection: 0) else { return nil }
+            return firstLabel(in: header)?.text
+        }
+
+        for _ in 0..<200 where headerText() != "H1" {
+            await Task.yield()
+        }
+        #expect(headerText() == "H1")
+
+        state.title = "H2"
+        for _ in 0..<200 where headerText() != "H2" {
+            await Task.yield()
+        }
+
+        #expect(headerText() == "H2")
+        _ = (window, ui)
+    }
+
+    @Test func footerFollowsStateChangeWithoutSectionChange() async throws {
+        let state = SupplementaryFooterState()
+        let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 600))
+        let window = UIWindow(frame: container.frame)
+        window.addSubview(container)
+        window.isHidden = false
+
+        let ui = FineUI(state) { state in
+            let caption = state.caption
+            return FineList(sections: [
+                FineListSection(id: "s", footer: FineLabel(text: caption), items: [Item(id: "a", title: "A")]),
+            ]) { item in
+                FineLabel(text: item.title)
+            }
+        }
+        ui.build(to: container)
+        window.layoutIfNeeded()
+
+        let listView = try #require(container.subviews.compactMap { $0 as? UITableView }.first)
+        func footerText() -> String? {
+            listView.layoutIfNeeded()
+            guard let footer = listView.footerView(forSection: 0) else { return nil }
+            return firstLabel(in: footer)?.text
+        }
+
+        for _ in 0..<200 where footerText() != "F1" {
+            await Task.yield()
+        }
+        #expect(footerText() == "F1")
+
+        state.caption = "F2"
+        for _ in 0..<200 where footerText() != "F2" {
+            await Task.yield()
+        }
+
+        #expect(footerText() == "F2")
+        _ = (window, ui)
     }
 
     @Test func headerObservableContentUpdatesInPlace() async throws {
@@ -344,7 +435,7 @@ struct FineGridBehaviorTests {
 
     @Test func supplementaryPrepareForReuseClearsHostedContent() {
         let view = FineGridHostSupplementaryView(frame: .init(x: 0, y: 0, width: 100, height: 40))
-        view.render(FineLabel(text: "X"), environment: FineEnvironmentStorage(), renderGate: nil)
+        view.render(environment: FineEnvironmentStorage(), renderGate: nil) { FineLabel(text: "X") }
 
         #expect(!view.subviews.isEmpty)
 

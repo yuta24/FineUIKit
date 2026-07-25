@@ -451,6 +451,8 @@ private func renderTracked() {
 
 これにより、行 content が読んだ `@Observable` プロパティは、**リスト全体の再 render なしにそのセルだけ**更新されます。`FineUI` の root 観測と同じ仕組みを、セルというスコープに縮小したものです。
 
+ヘッダー / フッター(supplementary)は行とは別扱いです。data source は行しか reconfigure せず、既に持っている supplementary view をテーブルが再要求することもないため、記述だけ更新しても画面には反映されません。そこで (1) supplementary の host は渡された記述を保持せず coordinator から**その時点の記述を引き**、(2) リスト / グリッドの `_update` が可視 supplementary を明示的に再描画します。
+
 生き残った行の reconfigure は既定で「要素が変化した行だけ」です。動的に `Equatable` 判定して `==` で比較し(`FineEquality.swift`)、比較できない型と**参照型**のときは安全側に倒して生き残った全行を reconfigure します。
 
 この判定が保証するのは「トップレベルが参照型でないこと」までで、**成立条件そのものは「比較の両辺が独立した値のスナップショットであること」**です。値型が内部に可変な参照を抱えている場合(`struct Row { let model: SomeClass }`)は両辺が同じインスタンスを指すため変化を検出できません。Swift でこの性質を自動判定する手段はないので、既定は「よくある取り違え(要素そのものが class)」を止める安全弁にとどめ、残りは公開ドキュメントの前提条件として明示しています(`FineListTests.elementHoldingMutableReferenceIsNotDetectedAsChanged` が境界を固定)。`.reconfiguringOnlyChangedRows()` は同じ動作の明示形、`.reconfiguringAllRows()` は「要素にも `@Observable` にも含まれない値を表示している」場合の強制再実行です。

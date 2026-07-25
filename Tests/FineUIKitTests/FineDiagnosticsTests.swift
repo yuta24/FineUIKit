@@ -8,6 +8,19 @@ private final class DiagnosticsState {
     var isRounded = false
 }
 
+/// A uniquely named view type, so an assertion on an asynchronous test cannot
+/// match a rebuild reported by a suite running in parallel.
+private final class DiagnosticsMarkerView: UILabel {}
+
+@MainActor
+private struct DiagnosticsMarker: FineViewRepresentable {
+    func makeView() -> DiagnosticsMarkerView {
+        DiagnosticsMarkerView()
+    }
+
+    func updateView(_ view: DiagnosticsMarkerView, environment: FineEnvironmentValues) {}
+}
+
 /// Rebuild reporting: the reconciler explains why a view could not be reused.
 @MainActor
 @Suite(.serialized)
@@ -111,8 +124,8 @@ struct FineDiagnosticsTests {
         let ui = FineUI(state) { state in
             FineStack.vertical {
                 state.isRounded
-                    ? FineLabel(text: "A").backgroundColor(.red).cornerRadius(8)
-                    : FineLabel(text: "A").backgroundColor(.red)
+                    ? DiagnosticsMarker().backgroundColor(.red).cornerRadius(8)
+                    : DiagnosticsMarker().backgroundColor(.red)
             }
         }
         ui.build(to: container)
@@ -121,11 +134,11 @@ struct FineDiagnosticsTests {
         // Changing the modifier composition rebuilds the child through the
         // scheduler, not through FineRenderer's synchronous path.
         state.isRounded = true
-        for _ in 0..<200 where messages.isEmpty {
+        for _ in 0..<200 where !messages.contains(where: { $0.contains("DiagnosticsMarkerView") }) {
             await Task.yield()
         }
 
-        #expect(messages.contains { $0.contains("modifier composition changed") })
+        #expect(messages.contains { $0.contains("DiagnosticsMarkerView") && $0.contains("modifier composition changed") })
         _ = ui
     }
 }

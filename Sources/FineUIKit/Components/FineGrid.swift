@@ -257,6 +257,7 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
         snapshot.reconfigureItems(reconfiguredIDs)
 
         coordinator.elementsByID = elementsByID
+        coordinator.refreshVisibleSupplementaryViews(in: gridView)
         coordinator.dataSource.apply(
             snapshot,
             animatingDifferences: FineTransactionContext.allowsDiffAnimation(inWindow: gridView.window != nil)
@@ -434,25 +435,15 @@ extension FineGrid {
 
                 guard let view = view as? FineGridHostSupplementaryView,
                       let coordinator = (collectionView as? FineGridView)?.coordinator as? Coordinator,
-                      let section = coordinator.section(at: indexPath.section)
+                      coordinator.supplementaryNode(at: indexPath.section, kind: kind) != nil
                 else { return view }
 
-                let node: (any Renderable)?
-                switch kind {
-                case UICollectionView.elementKindSectionHeader:
-                    node = section.header
-                case UICollectionView.elementKindSectionFooter:
-                    node = section.footer
-                default:
-                    node = nil
-                }
-
-                if let node {
-                    view.render(
-                        node,
-                        environment: coordinator.environmentStorage,
-                        renderGate: coordinator.renderGate
-                    )
+                let section = indexPath.section
+                view.render(
+                    environment: coordinator.environmentStorage,
+                    renderGate: coordinator.renderGate
+                ) { [weak coordinator] in
+                    coordinator?.supplementaryNode(at: section, kind: kind) ?? FineSpacer()
                 }
                 return view
             }
@@ -478,6 +469,46 @@ extension FineGrid {
                         await onRefresh()
                     }
                     refreshControl.endRefreshing()
+                }
+            }
+        }
+
+        /// The current description for a section's header or footer.
+        ///
+        /// Supplementary views re-render outside the data source — on an
+        /// environment change, say — so they read the description here rather
+        /// than keeping the one they were handed, which the next root render
+        /// has already replaced.
+        func supplementaryNode(at index: Int, kind: String) -> (any Renderable)? {
+            guard let section = section(at: index) else { return nil }
+
+            switch kind {
+            case UICollectionView.elementKindSectionHeader:
+                return section.header
+            case UICollectionView.elementKindSectionFooter:
+                return section.footer
+            default:
+                return nil
+            }
+        }
+
+        /// Re-renders on-screen headers and footers from the current sections.
+        ///
+        /// The data source reconfigures items, but nothing asks the collection
+        /// view for a supplementary view it already has, so a header built from
+        /// changed state would keep showing the old description.
+        func refreshVisibleSupplementaryViews(in gridView: UICollectionView) {
+            for kind in [UICollectionView.elementKindSectionHeader, UICollectionView.elementKindSectionFooter] {
+                for indexPath in gridView.indexPathsForVisibleSupplementaryElements(ofKind: kind) {
+                    guard let view = gridView.supplementaryView(forElementKind: kind, at: indexPath)
+                            as? FineGridHostSupplementaryView,
+                          supplementaryNode(at: indexPath.section, kind: kind) != nil
+                    else { continue }
+
+                    let section = indexPath.section
+                    view.render(environment: environmentStorage, renderGate: renderGate) { [weak self] in
+                        self?.supplementaryNode(at: section, kind: kind) ?? FineSpacer()
+                    }
                 }
             }
         }
@@ -619,8 +650,12 @@ final class FineGridHostSupplementaryView: UICollectionReusableView {
     /// Renders supplementary content under local observation tracking, the
     /// same way cells do: `@Observable` values read while rendering update
     /// this view in place, and height changes coalesce a layout invalidation.
-    func render(_ node: any Renderable, environment: FineEnvironmentStorage, renderGate: FineRenderGate?) {
-        ensureHost().render(environment: environment, renderGate: renderGate) { node }
+    func render(
+        environment: FineEnvironmentStorage,
+        renderGate: FineRenderGate?,
+        _ makeNode: @escaping @MainActor () -> any Renderable
+    ) {
+        ensureHost().render(environment: environment, renderGate: renderGate, makeNode)
     }
 
     private func ensureHost() -> FineNodeHost {

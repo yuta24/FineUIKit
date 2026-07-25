@@ -243,6 +243,7 @@ public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Ele
         snapshot.reconfigureItems(reconfiguredIDs)
 
         coordinator.elementsByID = elementsByID
+        coordinator.refreshVisibleSupplementaryViews(in: listView)
         coordinator.dataSource.apply(
             snapshot,
             animatingDifferences: FineTransactionContext.allowsDiffAnimation(inWindow: listView.window != nil)
@@ -367,27 +368,63 @@ extension FineList {
             return sections.first { $0.id == id.value }
         }
 
+        /// The current description for a section's header or footer.
+        ///
+        /// Supplementary views re-render outside the table's data source — on
+        /// an environment change, say — so they read the description here
+        /// rather than keeping the one they were handed, which the next root
+        /// render has already replaced.
+        func supplementaryNode(at index: Int, isHeader: Bool) -> (any Renderable)? {
+            guard let section = section(at: index) else { return nil }
+            return isHeader ? section.header : section.footer
+        }
+
+        /// Re-renders on-screen headers and footers from the current sections.
+        ///
+        /// The data source reconfigures rows, but nothing asks the table for a
+        /// supplementary view it already has, so a header built from changed
+        /// state would keep showing the old description.
+        func refreshVisibleSupplementaryViews(in tableView: UITableView) {
+            for index in 0..<tableView.numberOfSections {
+                render(tableView.headerView(forSection: index), at: index, isHeader: true)
+                render(tableView.footerView(forSection: index), at: index, isHeader: false)
+            }
+        }
+
+        private func render(_ view: UITableViewHeaderFooterView?, at index: Int, isHeader: Bool) {
+            guard let view = view as? FineListHostHeaderFooterView,
+                  supplementaryNode(at: index, isHeader: isHeader) != nil
+            else { return }
+
+            view.render(environment: environmentStorage, renderGate: renderGate) { [weak self] in
+                self?.supplementaryNode(at: index, isHeader: isHeader) ?? FineSpacer()
+            }
+        }
+
         private func supplementaryView(
             in tableView: UITableView,
-            for node: (any Renderable)?
+            at index: Int,
+            isHeader: Bool
         ) -> UIView? {
-            guard let node else { return nil }
+            guard supplementaryNode(at: index, isHeader: isHeader) != nil else { return nil }
 
             let view = tableView.dequeueReusableHeaderFooterView(
                 withIdentifier: FineListHostHeaderFooterView.reuseIdentifier
             )
 
             guard let view = view as? FineListHostHeaderFooterView else { return nil }
-            view.render(node, environment: environmentStorage, renderGate: renderGate)
+            view.render(environment: environmentStorage, renderGate: renderGate) { [weak self] in
+                self?.supplementaryNode(at: index, isHeader: isHeader) ?? FineSpacer()
+            }
             return view
         }
 
         func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-            supplementaryView(in: tableView, for: self.section(at: section)?.header)
+            supplementaryView(in: tableView, at: section, isHeader: true)
         }
 
         func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
-            supplementaryView(in: tableView, for: self.section(at: section)?.footer)
+            supplementaryView(in: tableView, at: section, isHeader: false)
         }
 
         func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
@@ -525,8 +562,12 @@ final class FineListHostHeaderFooterView: UITableViewHeaderFooterView {
     /// Renders supplementary content under local observation tracking, the
     /// same way cells do: `@Observable` values read while rendering update
     /// this view in place, and height changes coalesce a table re-measure.
-    func render(_ node: any Renderable, environment: FineEnvironmentStorage, renderGate: FineRenderGate?) {
-        ensureHost().render(environment: environment, renderGate: renderGate) { node }
+    func render(
+        environment: FineEnvironmentStorage,
+        renderGate: FineRenderGate?,
+        _ makeNode: @escaping @MainActor () -> any Renderable
+    ) {
+        ensureHost().render(environment: environment, renderGate: renderGate, makeNode)
     }
 
     private func ensureHost() -> FineNodeHost {
