@@ -70,6 +70,13 @@ public struct FineLabel: FinePrimitiveRenderable {
         if !label.font.isEqual(resolvedFont) {
             label.font = resolvedFont
         }
+        // Preferred fonts carry metrics, so UIKit rescales them in place when
+        // the content size category changes. The runtime also re-renders on
+        // that change, which recomputes `resolvedFont` — the two agree, and
+        // without this the label would not scale between renders.
+        if !label.adjustsFontForContentSizeCategory {
+            label.adjustsFontForContentSizeCategory = true
+        }
         if !label.textColor.isEqual(resolvedTextColor) {
             label.textColor = resolvedTextColor
         }

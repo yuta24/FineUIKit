@@ -24,10 +24,7 @@ final class FineNodeScheduler {
         let primitive = FineRenderer.primitive(for: node)
         let view: UIView
 
-        if let existing,
-           primitive._canUpdate(existing),
-           existing.fineModifierSignature == primitive._modifierSignature,
-           existing.fineKey == primitive._key {
+        if let existing, FineRenderer.reuses(existing, for: primitive) {
             view = existing
         } else {
             existing?.fineNodeIfPresent?.generation += 1

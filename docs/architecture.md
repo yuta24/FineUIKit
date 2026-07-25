@@ -72,6 +72,7 @@ flowchart TB
 | `FineUI.swift` | root の `body` を観測して差分適用を駆動するランタイム |
 | `FineObservedScope.swift` | ビュー木に属さない観測スコープ(navigationItem の適用) |
 | `FineRenderGate.swift` | 画面が隠れている間、観測起因の再レンダリングを止める |
+| `FineDiagnostics.swift` | ビューが作り直された理由の報告 |
 | `FineEquality.swift` | 静的に `Equatable` と分からない値の動的比較 |
 | `UIView+Fine.swift` | `UIView` に `FineNode` を紐づける associated object |
 
@@ -299,6 +300,14 @@ flowchart TD
 
 > **注意**: 粒度が最小になるのは、値が primitive の `@autoclosure` 引数を通る場合です。`.backgroundColor(state.isOn ? .red : .blue)` のように**モディファイアの引数として先に評価される**読み取りは、記述を構築しているスコープ(=囲むコンテナのノード、または root)に登録されるため、そのコンテナの子が再差分されます。
 
+### trait 変化(`UITraitCollection`)
+
+`FineUI` は container に `registerForTraitChanges` し、記述が分岐しうる trait の変化で `render()` します(`FineUI.swift` の `FineObservedTraits`)。`UIFont.preferredFont(forTextStyle:)` は記述構築時のカテゴリで解決されるため、再評価しないと古いサイズが残るからです。ゲートを通るので、隠れている画面では catch-up に合流します。
+
+trait 自体は `FineEnvironmentValues.traitCollection` として environment に載ります。これにより (1) 記述から size class 等を読んで分岐でき、(2) リスト / グリッドの可視セルへは既存の `FineEnvironmentStorage` 経由で届きます(要素が変化していない行も更新される)。`UITraitCollection` の等価判定は値ベースなので、変化していないレンダーで無駄な publish は起きません。
+
+> **設計判断**: 当初は environment の伝播そのものを `UITraitCollection` のカスタム trait に載せ替える案を検討しましたが、実測の結果**却下**しました。`traitOverrides` の設定はレイアウトパスまで子孫に伝播せず(設定直後に子孫を読むと旧値が返る)、同期的に値を解決する必要があるレンダーパスの土台にはできません。environment の伝播は `FineRenderContext` のまま、trait は「読み取れる値 + 再レンダリングのきっかけ」として統合しています。
+
 ### 可視性ゲート(`FineRenderGate`)
 
 画面外のツリーにも observation コールバックは届きます。`FineRenderGate`(`FineRenderGate.swift`)は、**観測起因**の作業だけを通す関門で、`FineUI.render` の onChange・`FineNodeScheduler.run` の onChange・`FineNodeHost`(セル)の onChange の3経路がここを通ります。
@@ -461,6 +470,12 @@ public func withFineAnimation<R>(_ animation: FineAnimation? = .default, _ body:
 状態変更をこれで包むと、その変更が誘発する**次の再レンダリング**が `UIView.animate` の中で差分適用されます。root(`FineUI.render`)・ノード(`FineNodeScheduler.run` の onChange)・セル(`FineListHostCell`)のいずれの再描画経路もトランザクション値を見て、同じビューへの in-place なプロパティ変更や制約 constant の変化をアニメーションします。ビューの作り直しや、スタックへの挿入・削除のクロスフェードは行いません。
 
 なお、この「挿入・削除をアニメーションしない」は `FineRenderer` のビュー木差分(root / ノード / セルの in-place 経路)の話です。`FineList` / `FineGrid` の**行・アイテムの挿入・削除・移動は別機構**で、`NSDiffableDataSourceSnapshot` の適用によりウィンドウ上では自動でスライドアニメーションします(§13)。`withFineAnimation(nil)` で包んだ変更ではその diff アニメーションも抑止されます。
+
+---
+
+## 14.5 診断
+
+差分適用の判定は `FineRenderer.reuses(_:for:)` 1箇所に集約されており(同期パスと scheduler パスの両方がここを通る)、再利用できなかったときに `FineDiagnostics` へ理由を報告します。理由は「ビュー型が非互換」「モディファイア構成の変化(旧署名 → 新署名)」「key の変化」の3種類で、判定の3条件とそのまま対応します。既定は無効で、`FineDiagnostics.logsViewReuse` または環境変数 `FINEUIKIT_LOG_REUSE=1` で有効になります。
 
 ---
 

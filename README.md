@@ -183,6 +183,28 @@ FineEnvironmentReader { environment in
 
 `.environment` は透過ラッパーでビューを増やさず、内側の記述の描画コンテキストへ値を差し込むだけです。ネストすると内側の注入が優先されます。注入元が `@Observable` プロパティなら、値の変化で `FineEnvironmentReader` が再レンダリングされます。
 
+## Dynamic Type と trait
+
+`FineLabel` は Dynamic Type に追従します。`.font(.preferredFont(forTextStyle:))` を渡しておけば、文字サイズ設定の変更でラベルが拡大縮小します。
+
+さらにランタイムは、記述が分岐しうる trait の変化で**ツリーを再評価**します。`UIFont.preferredFont(forTextStyle:)` は「記述を作った時点」のカテゴリで解決されるため、再評価しないと古いサイズの記述が残るからです。観測している trait は次の7つです。
+
+`preferredContentSizeCategory` / `userInterfaceStyle` / `horizontalSizeClass` / `verticalSizeClass` / `layoutDirection` / `accessibilityContrast` / `legibilityWeight`
+
+trait は environment から読めるので、記述の中で分岐できます。
+
+```swift
+FineEnvironmentReader { environment in
+    environment.traitCollection.horizontalSizeClass == .compact
+        ? FineStack.vertical { … }
+        : FineStack.horizontal { … }
+}
+```
+
+`traitCollection` は environment 値なので、リスト / グリッドの可視セルにも既存の伝播経路でそのまま届きます(要素が変化していない行も更新されます)。画面が隠れている間の trait 変化は、他の変更と同じく再表示時の catch-up にまとまります。
+
+上記7つ以外の trait も `environment.traitCollection` から読めますが、その変化では自動で再レンダリングされません。
+
 ## ライフサイクルと非同期処理
 
 `.onAppear` / `.onDisappear` はビューが window に載った / 外れたタイミングで発火します。`.task` は表示時に async 処理を起動し、非表示になると自動でキャンセルします。
@@ -383,6 +405,24 @@ FineButton(title: "Add") { [unowned self] in addTask() }
 ```
 
 原則: **クロージャには状態(`@Observable` モデル)だけをキャプチャし、view controller 自身をキャプチャする場合は `[weak self]` / `[unowned self]` を付けてください。**
+
+## 診断(なぜビューが作り直されたか)
+
+差分適用は「型 + モディファイア署名 + key」が一致したときだけ in-place 更新し、それ以外はビューを作り直します。作り直し自体は正しい動作ですが、意図しない作り直しはフォーカス・スクロール位置・`FineState` を失わせます。原因を知りたいときは診断を有効にしてください。
+
+```swift
+FineDiagnostics.logsViewReuse = true
+```
+
+スキームの環境変数 `FINEUIKIT_LOG_REUSE=1` でも有効になります。出力例:
+
+```
+FineUIKit rebuilt UILabel for FineStyled: modifier composition changed ("|backgroundColor" → "|backgroundColor|cornerRadius")
+FineUIKit rebuilt UITextField for FineKeyed: key changed (a → b)
+FineUIKit rebuilt UILabel for FineImage: view type is incompatible
+```
+
+既定では `OSLog` に出力します。`FineDiagnostics.handler` を差し替えれば、テストや自前のコンソールへ流せます。
 
 ## アーキテクチャ
 
