@@ -70,6 +70,9 @@ flowchart TB
 | `FineNodeScheduler.swift` | ノード単位の `withObservationTracking` による再更新 |
 | `FineRenderContext.swift` | scheduler と environment を子孫へ運ぶ |
 | `FineUI.swift` | root の `body` を観測して差分適用を駆動するランタイム |
+| `FineObservedScope.swift` | ビュー木に属さない観測スコープ(navigationItem の適用) |
+| `FineRenderGate.swift` | 画面が隠れている間、観測起因の再レンダリングを止める |
+| `FineEquality.swift` | 静的に `Equatable` と分からない値の動的比較 |
 | `UIView+Fine.swift` | `UIView` に `FineNode` を紐づける associated object |
 
 ---
@@ -276,7 +279,7 @@ private func render() {
 }
 ```
 
-### 再レンダリングの3階層
+### 再レンダリングのスコープ
 
 「どこで `@Observable` を読んだか」で再評価の粒度が決まります。これが FineUIKit の効率の肝です。
 
@@ -284,13 +287,29 @@ private func render() {
 flowchart TD
     Change["@Observable プロパティが変化"] --> Where{"どこで読まれた?"}
     Where -->|"root body 内で直接<br/>(例: 構造分岐の条件)"| Root["FineUI.render()<br/>body 全体を再評価 → 構造差分"]
+    Where -->|"navigation(_:) 内<br/>(例: タイトル / ボタンの enabled)"| Nav["FineObservedScope<br/>navigationItem だけ再適用"]
     Where -->|"あるノードの _update 内<br/>(例: FineLabel.text の autoclosure)"| Node["FineNodeScheduler<br/>そのノードだけ _update 再実行"]
     Where -->|"List/Grid のセル content 内"| Cell["セルのローカル観測<br/>そのセルだけ再描画"]
 ```
 
 - **root**: `body(state)` の中で `state.flag` を直接読み、`if state.flag { A } else { B }` のように**構造**が変われば、`render()` が丸ごと走り差分適用される。
+- **navigation**: `FineViewController.navigation(_:)` は `FineObservedScope`(`FineObservedScope.swift`)という独立した観測スコープで実行される。タイトルやボタンの `enabled` の変化は `navigationItem` の更新だけで済み、ツリーには触らない。ここを root の body スコープに同居させると、タイトル1文字の変化が全画面の再差分を引き起こす。
 - **ノード**: `FineLabel(text: state.title)` は `text` が `@autoclosure`(`FineLabel.swift`)なので、`state.title` の読み取りはラベルの `_update` 内で起きる。→ ラベルノードだけ再更新。
 - **セル**: `FineList` / `FineGrid` のセルは独自の観測スコープで content を描画するため、行の内容変更はそのセルだけを更新する(後述)。
+
+> **注意**: 粒度が最小になるのは、値が primitive の `@autoclosure` 引数を通る場合です。`.backgroundColor(state.isOn ? .red : .blue)` のように**モディファイアの引数として先に評価される**読み取りは、記述を構築しているスコープ(=囲むコンテナのノード、または root)に登録されるため、そのコンテナの子が再差分されます。
+
+### 可視性ゲート(`FineRenderGate`)
+
+画面外のツリーにも observation コールバックは届きます。`FineRenderGate`(`FineRenderGate.swift`)は、**観測起因**の作業だけを通す関門で、`FineUI.render` の onChange・`FineNodeScheduler.run` の onChange・`FineNodeHost`(セル)の onChange の3経路がここを通ります。
+
+- 抑止中に届いた変更は「flush が必要」というフラグだけを立てて破棄される。
+- catch-up は `.disabled` トランザクション内で実行される。リスト / グリッドは「トランザクションが否定しない限り」snapshot をアニメーション適用するため、これがないと非表示中に増えた行が復帰時にスライドインしてしまう。
+- `resume()` で **1回だけ** `render()` が走り、現在の状態に追いつく。root とノードの観測は抑止中に失効するが、この全体レンダリングがツリーを歩いて再登録する。
+- **セルは例外**。`FineNodeHost` の観測スコープは diffable data source の reconfigure でしか再実行されず、要素が変化していない行は catch-up でも reconfigure されない。そのままだと行が永久に stale になる(観測も失効済み)ため、抑止されたセルは `deferObservedWork` に自分の復帰処理を預け、`resume()` が catch-up の後にそれを実行する。世代チェックにより、catch-up で既に再描画されたセルは二重に走らない。
+- 初回の `build(to:)` は通す(画面外のコンテナに構築したツリーも中身を持つ)。catch-up はアニメーションしない。
+
+`FineViewController` は `viewDidDisappear` で `suspend()`、`viewIsAppearing` で `resume()` を呼びます(`suspendsWhenDisappeared` で無効化可)。ゲートは `FineRenderContext` に載ってツリー全体(リスト / グリッドのセルを含む)へ配られます。
 
 ---
 
@@ -423,7 +442,9 @@ private func renderTracked() {
 
 これにより、行 content が読んだ `@Observable` プロパティは、**リスト全体の再 render なしにそのセルだけ**更新されます。`FineUI` の root 観測と同じ仕組みを、セルというスコープに縮小したものです。
 
-`.reconfiguringOnlyChangedRows()`(値型要素向け)は、生き残った行のうち `==` で不一致のものだけ reconfigure する最適化です。
+生き残った行の reconfigure は既定で「要素が変化した行だけ」です。動的に `Equatable` 判定して `==` で比較し(`FineEquality.swift`)、比較できない型と**参照型**のときは安全側に倒して生き残った全行を reconfigure します。
+
+この判定が保証するのは「トップレベルが参照型でないこと」までで、**成立条件そのものは「比較の両辺が独立した値のスナップショットであること」**です。値型が内部に可変な参照を抱えている場合(`struct Row { let model: SomeClass }`)は両辺が同じインスタンスを指すため変化を検出できません。Swift でこの性質を自動判定する手段はないので、既定は「よくある取り違え(要素そのものが class)」を止める安全弁にとどめ、残りは公開ドキュメントの前提条件として明示しています(`FineListTests.elementHoldingMutableReferenceIsNotDetectedAsChanged` が境界を固定)。`.reconfiguringOnlyChangedRows()` は同じ動作の明示形、`.reconfiguringAllRows()` は「要素にも `@Observable` にも含まれない値を表示している」場合の強制再実行です。
 
 ---
 

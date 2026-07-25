@@ -37,18 +37,10 @@ public struct FineEnvironmentValues {
 
         for (key, value) in storage {
             guard let otherValue = other.storage[key],
-                  let equatable = value as? any Equatable,
-                  equatable.fineIsEqual(to: otherValue)
+                  fineDynamicEquals(value, otherValue) == true
             else { return false }
         }
         return true
-    }
-}
-
-private extension Equatable {
-    func fineIsEqual(to other: Any) -> Bool {
-        guard let other = other as? Self else { return false }
-        return self == other
     }
 }
 

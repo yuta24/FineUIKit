@@ -25,6 +25,13 @@ public final class FineUI<State> {
     private weak var container: UIView?
     private var rootView: UIView?
     private var generation = 0
+    private let renderGate = FineRenderGate()
+
+    #if DEBUG
+    /// Runs after an injection-triggered re-render so owners can refresh
+    /// tracked work that lives outside the view tree (navigation items).
+    var onInjectionReload: (@MainActor () -> Void)?
+    #endif
 
     #if DEBUG
     // nonisolated(unsafe): only written on the main actor; deinit reads it
@@ -63,11 +70,33 @@ public final class FineUI<State> {
     /// Renders the tree into `container` and starts observing `state`.
     public func build(to container: UIView) {
         self.container = container
+        renderGate.onFlush = { [weak self] in
+            self?.render()
+        }
         render()
 
         #if DEBUG
         observeInjection()
         #endif
+    }
+
+    /// Stops re-rendering in response to observed state changes.
+    ///
+    /// Use this while the tree is off screen: a covered or detached hierarchy
+    /// still receives observation callbacks, and acting on them re-diffs views
+    /// nobody can see. Changes that arrive while suspended are recorded, and
+    /// `resume()` applies them in a single render.
+    ///
+    /// Suspension only affects observation-driven renders. `build(to:)` always
+    /// renders, and a catch-up render is never animated, because animating
+    /// changes that happened off screen is not meaningful.
+    public func suspend() {
+        renderGate.suspend()
+    }
+
+    /// Resumes re-rendering, applying any change recorded while suspended.
+    public func resume() {
+        renderGate.resume()
     }
 
     #if DEBUG
@@ -86,6 +115,7 @@ public final class FineUI<State> {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.render()
+                self?.onInjectionReload?()
             }
         }
     }
@@ -102,7 +132,8 @@ public final class FineUI<State> {
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self,
-                      self.generation == expectedGeneration
+                      self.generation == expectedGeneration,
+                      self.renderGate.allowsObservedWork()
                 else { return }
 
                 self.render()
@@ -110,7 +141,7 @@ public final class FineUI<State> {
         }
 
         let scheduler = FineNodeScheduler()
-        let context = FineRenderContext(nodeScheduler: scheduler)
+        let context = FineRenderContext(nodeScheduler: scheduler, renderGate: renderGate)
         let apply = { [self] in
             let rendered = FineRenderer.render(description, reusing: self.rootView, context: context)
             scheduler.drain()

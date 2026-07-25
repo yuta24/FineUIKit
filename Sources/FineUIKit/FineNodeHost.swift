@@ -21,6 +21,7 @@ final class FineNodeHost {
     private(set) var hostedView: UIView?
     private var makeNode: (@MainActor () -> any Renderable)?
     private var environment: FineEnvironmentStorage?
+    private var renderGate: FineRenderGate?
     private var generation = 0
 
     private weak var owner: UIView?
@@ -51,9 +52,14 @@ final class FineNodeHost {
         hostedView = nil
     }
 
-    func render(environment: FineEnvironmentStorage, _ makeNode: @escaping @MainActor () -> any Renderable) {
+    func render(
+        environment: FineEnvironmentStorage,
+        renderGate: FineRenderGate?,
+        _ makeNode: @escaping @MainActor () -> any Renderable
+    ) {
         self.makeNode = makeNode
         self.environment = environment
+        self.renderGate = renderGate
         renderTracked()
     }
 
@@ -68,7 +74,10 @@ final class FineNodeHost {
                 // Reading environment values inside the tracked scope
                 // registers them, so an environment change re-renders this
                 // host with the current values.
-                let context = FineRenderContext(environment: environment?.values ?? .init())
+                let context = FineRenderContext(
+                    renderGate: renderGate,
+                    environment: environment?.values ?? .init()
+                )
                 return context.render(makeNode(), reusing: self.hostedView)
             } onChange: { [weak self] in
                 Task { @MainActor in
@@ -76,6 +85,24 @@ final class FineNodeHost {
                           self.generation == expectedGeneration,
                           self.makeNode != nil
                     else { return }
+
+                    if let renderGate = self.renderGate, !renderGate.allowsObservedWork() {
+                        // This scope is now unregistered, and the catch-up
+                        // render reaches a cell only when its row reconfigures,
+                        // which an unchanged element does not. Recover here
+                        // instead — unless something else re-rendered this host
+                        // first, which the generation check detects.
+                        renderGate.deferObservedWork { [weak self] in
+                            guard let self,
+                                  self.generation == expectedGeneration,
+                                  self.makeNode != nil
+                            else { return }
+
+                            self.renderTracked()
+                            self.onObservedRerender?()
+                        }
+                        return
+                    }
 
                     self.renderTracked()
                     self.onObservedRerender?()

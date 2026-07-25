@@ -201,6 +201,48 @@ struct FineListTests {
         var title: String
     }
 
+    /// Deliberately not `Equatable`: exercises the conservative reconfigure path.
+    struct PlainItem: Identifiable {
+        let id: String
+        var title: String
+    }
+
+    /// A mutable model shared by both sides of an element comparison.
+    final class MutableBox: Equatable {
+        var title: String
+
+        init(title: String) {
+            self.title = title
+        }
+
+        static func == (lhs: MutableBox, rhs: MutableBox) -> Bool {
+            lhs.title == rhs.title
+        }
+    }
+
+    /// A value type that holds a reference: `==` compares the same instance
+    /// against itself, so it cannot report a mutation.
+    struct BoxedItem: Identifiable, Equatable {
+        let id: String
+        let box: MutableBox
+    }
+
+    /// `Equatable` *and* a reference type: mutated in place, both sides of the
+    /// comparison are the same instance, so equality cannot see the change.
+    final class EquatableReferenceItem: Identifiable, Equatable {
+        let id: String
+        var title: String
+
+        init(id: String, title: String) {
+            self.id = id
+            self.title = title
+        }
+
+        static func == (lhs: EquatableReferenceItem, rhs: EquatableReferenceItem) -> Bool {
+            lhs.id == rhs.id && lhs.title == rhs.title
+        }
+    }
+
     @Observable
     final class ObservableItem: Identifiable {
         let id: String
@@ -331,7 +373,7 @@ struct FineListTests {
         _ = window
     }
 
-    @Test func defaultReconfigureStillRunsAllSurvivingVisibleRows() async throws {
+    @Test func defaultSkipsSurvivingRowsWhoseElementIsUnchanged() async throws {
         let initialItems = [
             ValueItem(id: "a", title: "A"),
             ValueItem(id: "b", title: "B"),
@@ -359,9 +401,200 @@ struct FineListTests {
 
         await waitForLabelText("B2", in: listView, row: 1)
 
+        // Elements are `Equatable`, so the unchanged row is not re-run even
+        // without opting in.
+        #expect(renderedIDs == ["b"])
+        #expect(labelText(in: listView, row: 1) == "B2")
+        _ = window
+    }
+
+    @Test func nonComparableElementsStillReconfigureSurvivingRows() async throws {
+        let initialItems = [
+            PlainItem(id: "a", title: "A"),
+            PlainItem(id: "b", title: "B"),
+        ]
+        var renderedIDs: [String] = []
+        let list = { (items: [PlainItem]) in
+            FineList(items) { item in
+                renderedIDs.append(item.id)
+                return FineLabel(text: item.title)
+            }
+        }
+        let first = FineRenderer.render(list(initialItems))
+        let listView = try #require(first as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForRows(2, in: listView)
+        listView.layoutIfNeeded()
+        renderedIDs.removeAll()
+
+        let updatedItems = [
+            PlainItem(id: "a", title: "A"),
+            PlainItem(id: "b", title: "B2"),
+        ]
+        _ = FineRenderer.render(list(updatedItems), reusing: first)
+
+        await waitForLabelText("B2", in: listView, row: 1)
+
+        // Equality cannot be decided, so every surviving row is re-run.
         #expect(renderedIDs.contains("a"))
         #expect(renderedIDs.contains("b"))
         #expect(labelText(in: listView, row: 1) == "B2")
+        _ = window
+    }
+
+    @Test func reconfiguringAllRowsRunsEverySurvivingRow() async throws {
+        let initialItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B"),
+        ]
+        var renderedIDs: [String] = []
+        let list = { (items: [ValueItem]) in
+            FineList(items) { item in
+                renderedIDs.append(item.id)
+                return FineLabel(text: item.title)
+            }
+            .reconfiguringAllRows()
+        }
+        let first = FineRenderer.render(list(initialItems))
+        let listView = try #require(first as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForRows(2, in: listView)
+        listView.layoutIfNeeded()
+        renderedIDs.removeAll()
+
+        let updatedItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B2"),
+        ]
+        _ = FineRenderer.render(list(updatedItems), reusing: first)
+
+        await waitForLabelText("B2", in: listView, row: 1)
+
+        #expect(renderedIDs.contains("a"))
+        #expect(renderedIDs.contains("b"))
+        _ = window
+    }
+
+    @Test func equatableReferenceElementsStillReconfigure() async throws {
+        let items = [
+            EquatableReferenceItem(id: "a", title: "A"),
+            EquatableReferenceItem(id: "b", title: "B"),
+        ]
+        var renderedIDs: [String] = []
+        let list = {
+            FineList(items) { item in
+                renderedIDs.append(item.id)
+                return FineLabel(text: item.title)
+            }
+        }
+        let first = FineRenderer.render(list())
+        let listView = try #require(first as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForRows(2, in: listView)
+        listView.layoutIfNeeded()
+        renderedIDs.removeAll()
+
+        // Mutated in place: `==` reports the element unchanged, so skipping it
+        // would leave the row stale.
+        items[1].title = "B2"
+        _ = FineRenderer.render(list(), reusing: first)
+
+        await waitForLabelText("B2", in: listView, row: 1)
+
+        #expect(renderedIDs.contains("b"))
+        #expect(labelText(in: listView, row: 1) == "B2")
+        _ = window
+    }
+
+    @Test func lastReconfigurePolicyWins() async throws {
+        let initialItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B"),
+        ]
+        var renderedIDs: [String] = []
+        let list = { (items: [ValueItem]) in
+            FineList(items) { item in
+                renderedIDs.append(item.id)
+                return FineLabel(text: item.title)
+            }
+            .reconfiguringAllRows()
+            .reconfiguringOnlyChangedRows()
+        }
+        let first = FineRenderer.render(list(initialItems))
+        let listView = try #require(first as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForRows(2, in: listView)
+        listView.layoutIfNeeded()
+        renderedIDs.removeAll()
+
+        let updatedItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B2"),
+        ]
+        _ = FineRenderer.render(list(updatedItems), reusing: first)
+
+        await waitForLabelText("B2", in: listView, row: 1)
+
+        #expect(renderedIDs == ["b"])
+        _ = window
+    }
+
+    /// Documents the boundary of the default: skipping is only sound when the
+    /// two elements are independent snapshots. A value type holding a mutable
+    /// reference is not, so its change is missed — `reconfiguringAllRows()` (or
+    /// an `@Observable` model, which updates the cell through its own
+    /// observation) is required for such rows.
+    @Test func elementHoldingMutableReferenceIsNotDetectedAsChanged() async throws {
+        let items = [BoxedItem(id: "a", box: .init(title: "A"))]
+        var renderedIDs: [String] = []
+        let list = {
+            FineList(items) { item in
+                renderedIDs.append(item.id)
+                return FineLabel(text: item.box.title)
+            }
+        }
+        let first = FineRenderer.render(list())
+        let listView = try #require(first as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForRows(1, in: listView)
+        listView.layoutIfNeeded()
+        renderedIDs.removeAll()
+
+        items[0].box.title = "A2"
+        _ = FineRenderer.render(list(), reusing: first)
+        await waitForRows(1, in: listView)
+        listView.layoutIfNeeded()
+
+        #expect(renderedIDs.isEmpty)
+        #expect(labelText(in: listView, row: 0) == "A")
+        _ = window
+    }
+
+    @Test func reconfiguringAllRowsCoversElementsHoldingMutableReferences() async throws {
+        let items = [BoxedItem(id: "a", box: .init(title: "A"))]
+        let list = {
+            FineList(items) { item in
+                FineLabel(text: item.box.title)
+            }
+            .reconfiguringAllRows()
+        }
+        let first = FineRenderer.render(list())
+        let listView = try #require(first as? UITableView)
+        let window = attachToWindow(listView)
+
+        await waitForRows(1, in: listView)
+        listView.layoutIfNeeded()
+
+        items[0].box.title = "A2"
+        _ = FineRenderer.render(list(), reusing: first)
+
+        await waitForLabelText("A2", in: listView, row: 0)
+        #expect(labelText(in: listView, row: 0) == "A2")
         _ = window
     }
 
@@ -760,6 +993,106 @@ struct FineGridTests {
 
         #expect(renderedIDs == ["b"])
         #expect(labelText(in: collectionView, item: 1) == "B2")
+        _ = window
+    }
+
+    @Test func defaultSkipsSurvivingItemsWhoseElementIsUnchanged() async throws {
+        let initialItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B"),
+        ]
+        var renderedIDs: [String] = []
+        let grid = { (items: [ValueItem]) in
+            FineGrid(items) { item in
+                renderedIDs.append(item.id)
+                return FineLabel(text: item.title)
+            }
+        }
+        let first = FineRenderer.render(grid(initialItems))
+        let collectionView = try #require(first as? UICollectionView)
+        let window = attachToWindow(collectionView)
+
+        await waitForItems(2, in: collectionView)
+        collectionView.layoutIfNeeded()
+        renderedIDs.removeAll()
+
+        let updatedItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B2"),
+        ]
+        _ = FineRenderer.render(grid(updatedItems), reusing: first)
+
+        await waitForLabelText("B2", in: collectionView, item: 1)
+
+        #expect(renderedIDs == ["b"])
+        _ = window
+    }
+
+    @Test func reconfiguringAllItemsRunsEverySurvivingItem() async throws {
+        let initialItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B"),
+        ]
+        var renderedIDs: [String] = []
+        let grid = { (items: [ValueItem]) in
+            FineGrid(items) { item in
+                renderedIDs.append(item.id)
+                return FineLabel(text: item.title)
+            }
+            .reconfiguringAllItems()
+        }
+        let first = FineRenderer.render(grid(initialItems))
+        let collectionView = try #require(first as? UICollectionView)
+        let window = attachToWindow(collectionView)
+
+        await waitForItems(2, in: collectionView)
+        collectionView.layoutIfNeeded()
+        renderedIDs.removeAll()
+
+        let updatedItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B2"),
+        ]
+        _ = FineRenderer.render(grid(updatedItems), reusing: first)
+
+        await waitForLabelText("B2", in: collectionView, item: 1)
+
+        #expect(renderedIDs.contains("a"))
+        #expect(renderedIDs.contains("b"))
+        _ = window
+    }
+
+    @Test func lastReconfigurePolicyWinsForItems() async throws {
+        let initialItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B"),
+        ]
+        var renderedIDs: [String] = []
+        let grid = { (items: [ValueItem]) in
+            FineGrid(items) { item in
+                renderedIDs.append(item.id)
+                return FineLabel(text: item.title)
+            }
+            .reconfiguringAllItems()
+            .reconfiguringOnlyChangedItems()
+        }
+        let first = FineRenderer.render(grid(initialItems))
+        let collectionView = try #require(first as? UICollectionView)
+        let window = attachToWindow(collectionView)
+
+        await waitForItems(2, in: collectionView)
+        collectionView.layoutIfNeeded()
+        renderedIDs.removeAll()
+
+        let updatedItems = [
+            ValueItem(id: "a", title: "A"),
+            ValueItem(id: "b", title: "B2"),
+        ]
+        _ = FineRenderer.render(grid(updatedItems), reusing: first)
+
+        await waitForLabelText("B2", in: collectionView, item: 1)
+
+        #expect(renderedIDs == ["b"])
         _ = window
     }
 

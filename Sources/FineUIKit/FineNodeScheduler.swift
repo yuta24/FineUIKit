@@ -83,13 +83,15 @@ final class FineNodeScheduler {
         else { return }
 
         let generation = job.generation
+        let renderGate = job.context.renderGate
         withObservationTracking {
             job.primitive._update(view, context: job.context)
         } onChange: { [weak self, weak view] in
             Task { @MainActor in
                 guard let self,
                       let view,
-                      view.fineNodeIfPresent?.generation == generation
+                      view.fineNodeIfPresent?.generation == generation,
+                      renderGate?.allowsObservedWork() != false
                 else { return }
 
                 let transaction = FineTransactionContext.current
