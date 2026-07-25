@@ -72,8 +72,30 @@ open class FineViewController<State>: UIViewController {
     ///
     /// Navigation is never paused, because the title of a covered controller
     /// still shows as the back-button label of the screen above it.
+    ///
+    /// Pausing is driven by `viewIsAppearing(_:)` and `viewDidDisappear(_:)`.
+    /// An override of either **must call `super`**: without the resume, the
+    /// controller renders once and then silently stops updating. UIKit also
+    /// reports no disappearance for a controller covered by an
+    /// `.overFullScreen` or `.overCurrentContext` presentation, or for one that
+    /// was loaded but never shown — call `suspendRendering()` for those.
     open var suspendsWhenDisappeared: Bool {
         true
+    }
+
+    /// Pauses rendering until `resumeRendering()`.
+    ///
+    /// Appearance transitions drive this automatically. Call it for the cases
+    /// they cannot see: a controller covered by an `.overFullScreen` or
+    /// `.overCurrentContext` presentation, which UIKit does not report as a
+    /// disappearance, or one that is loaded and driven without ever appearing.
+    public func suspendRendering() {
+        fineUI?.suspend()
+    }
+
+    /// Resumes rendering, applying in one render whatever changed while paused.
+    public func resumeRendering() {
+        fineUI?.resume()
     }
 
     open override func viewDidLoad() {
@@ -105,12 +127,16 @@ open class FineViewController<State>: UIViewController {
         #endif
     }
 
+    /// Resumes rendering. An override must call `super`, or the controller
+    /// never resumes after its first disappearance.
     open override func viewIsAppearing(_ animated: Bool) {
         super.viewIsAppearing(animated)
 
         fineUI?.resume()
     }
 
+    /// Pauses rendering when `suspendsWhenDisappeared` is `true`. An override
+    /// must call `super`, or an off-screen controller keeps re-rendering.
     open override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
 

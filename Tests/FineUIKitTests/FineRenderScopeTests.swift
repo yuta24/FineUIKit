@@ -312,6 +312,26 @@ struct FineRenderScopeTests {
         _ = window
     }
 
+    @Test func controllerExposesManualSuspendAndResume() async throws {
+        let state = ScopeState()
+        let controller = ScopedViewController(state: state, tag: "manual-controller")
+        let window = present(controller)
+        await waitTicks()
+
+        let base = renderCounts.counts["manual-controller", default: 0]
+        // The remedy documented for presentations UIKit reports no
+        // disappearance for must be reachable from the controller itself.
+        controller.suspendRendering()
+        state.bodyValue += 1
+        await waitTicks()
+        #expect(rewrites("manual-controller", since: base) == 0)
+
+        controller.resumeRendering()
+        await waitUntil { self.rewrites("manual-controller", since: base) == 1 }
+        #expect(rewrites("manual-controller", since: base) == 1)
+        _ = window
+    }
+
     @Test func suspendsWhenDisappearedFalseKeepsRendering() async throws {
         let state = ScopeState()
         let covered = ScopedViewController(state: state, tag: "no-suspend")
@@ -551,6 +571,41 @@ struct FineRenderScopeTests {
 
         #expect(rewrites("double-render", since: base) == 1)
         #expect(cellText(in: container) == "R2-B")
+        _ = window
+    }
+
+    /// A cell-local change is exactly what per-cell observation exists to keep
+    /// cheap, so it must not escalate into a whole-tree render at `resume()`.
+    @Test func cellOnlyChangeWhileSuspendedDoesNotForceFullRender() async throws {
+        let model = RowModel()
+        let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
+        let window = UIWindow(frame: container.frame)
+        window.addSubview(container)
+        window.isHidden = false
+
+        let ui = FineUI(model) { model in
+            FineStack.vertical {
+                CountingProbe(tag: "outside-list")
+                FineList([KeyedRow(id: 1)]) { _ in
+                    FineLabel(text: model.title)
+                }
+            }
+        }
+        ui.build(to: container)
+        window.layoutIfNeeded()
+        await waitTicks()
+
+        let base = renderCounts.counts["outside-list", default: 0]
+        ui.suspend()
+        model.title = "B"
+        await waitTicks()
+
+        ui.resume()
+        await waitUntil { self.cellText(in: container) == "B" }
+
+        #expect(cellText(in: container) == "B")
+        // Nothing outside the cell changed, so nothing outside the cell re-ran.
+        #expect(rewrites("outside-list", since: base) == 0)
         _ = window
     }
 

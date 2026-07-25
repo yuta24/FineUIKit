@@ -332,13 +332,6 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
 }
 
 public extension FineGrid where Element: Equatable {
-    /// Reconfigures only items whose element compares unequal to the previous
-    /// render, instead of every surviving item.
-    ///
-    /// Requires `==` to cover every property the item content displays.
-    /// Intended for value-type elements: class elements mutated in place
-    /// compare equal to themselves and will never reconfigure. Items that read
-    /// `@Observable` properties update through per-cell observation instead.
     /// States explicitly that surviving items reconfigure only when their
     /// element compares unequal.
     ///

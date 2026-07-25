@@ -209,10 +209,12 @@ override var suspendsWhenDisappeared: Bool { false }   // 隠れている間も�
 
 `FineUI` を直接使う場合は `suspend()` / `resume()` を呼びます。`build(to:)` の初回レンダリングは止まりません。また catch-up レンダリングはアニメーションしません(画面外で起きた変化をアニメーションする意味がないため)。
 
-判定は `viewDidDisappear` / `viewIsAppearing` に基づくため、次の2つは自動では止まりません。必要なら `FineUI.suspend()` を手動で呼んでください。
+判定は `viewDidDisappear` / `viewIsAppearing` に基づくため、次の2つは自動では止まりません。必要なら `suspendRendering()` / `resumeRendering()` を手動で呼んでください(`FineUI` を直接使う場合は `suspend()` / `resume()`)。
 
 - **`.overFullScreen` / `.overCurrentContext` でモーダルを被せた場合** — UIKit は下の画面に `viewDidDisappear` を送りません(部分的に見えている可能性があるため)。通常の `.fullScreen` presentation なら送られるので自動で止まります
 - **ロードしたが一度も表示していない画面** — 表示前は動き続けます。`loadViewIfNeeded()` してから状態を流し込み、表示せずにビュー階層を検証する使い方(テストなど)を壊さないための意図的な選択です
+
+`viewIsAppearing(_:)` / `viewDidDisappear(_:)` を override する場合は **`super` の呼び出しが必須**です。呼ばないと初回表示のあと再開されず、画面が黙って更新されなくなります。
 
 ## キーボード
 
@@ -324,6 +326,8 @@ FineStack.vertical(spacing: 8) {
 **生き残った行の再構築**: リスト / グリッドが再レンダリングされたとき、ID が生き残った行の content は**要素が変化した行だけ**再実行されます。
 
 この最適化が成立する条件は「**比較の両辺が独立した値のスナップショットであること**」です。要素が `Equatable` でない場合と、要素が**参照型**(class)の場合は、安全側に倒して生き残った全行を再実行します。参照型で比較をスキップさせたい場合だけ `.reconfiguringOnlyChangedRows()` を明示してください。
+
+> **既存コードからの移行**: 以前は生き残った行を毎回すべて再実行していました。値型で `Equatable` な要素を使い、かつ行 content が「要素にも `@Observable` にも含まれない値」(`body` で読んだ素の `let` をキャプチャしている等)を表示している場合、**コンパイルエラーなしで表示が古いまま**になります。該当する場合は `.reconfiguringAllRows()` / `.reconfiguringAllItems()` を付けてください。
 
 ⚠️ **値型でも、内部に可変な参照(class)を持っている場合は変化を検出できません**。`struct Row { let model: SomeClass }` のような要素は、比較の両辺が同じインスタンスを指すため、どんな `==` でも「等しい」と答えます。この場合は次のどちらかにしてください。
 

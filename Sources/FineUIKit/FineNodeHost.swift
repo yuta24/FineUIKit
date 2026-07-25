@@ -86,7 +86,11 @@ final class FineNodeHost {
                           self.makeNode != nil
                     else { return }
 
-                    if let renderGate = self.renderGate, !renderGate.allowsObservedWork() {
+                    // Asking `isSuspended` rather than `allowsObservedWork()`
+                    // deliberately does not ask for a catch-up render: this host
+                    // recovers on its own below, and a cell-local change has no
+                    // reason to re-diff the whole tree at `resume()`.
+                    if let renderGate = self.renderGate, renderGate.isSuspended {
                         // This scope is now unregistered, and the catch-up
                         // render reaches a cell only when its row reconfigures,
                         // which an unchanged element does not. Recover here
