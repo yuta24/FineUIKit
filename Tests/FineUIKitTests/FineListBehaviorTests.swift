@@ -344,7 +344,7 @@ struct FineGridBehaviorTests {
 
     @Test func supplementaryPrepareForReuseClearsHostedContent() {
         let view = FineGridHostSupplementaryView(frame: .init(x: 0, y: 0, width: 100, height: 40))
-        view.render(FineLabel(text: "X"), environment: FineEnvironmentStorage())
+        view.render(FineLabel(text: "X"), environment: FineEnvironmentStorage(), renderGate: nil)
 
         #expect(!view.subviews.isEmpty)
 

@@ -67,6 +67,7 @@ public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Ele
     private var onDelete: (@MainActor (Element) -> Void)?
     private var onRefresh: (@MainActor () async -> Void)?
     private var areElementsEqual: ((Element, Element) -> Bool)?
+    private var reconfiguresAllRows = false
     private var deleteActionTitle: String = "Delete"
     private var keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
 
@@ -111,6 +112,19 @@ public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Ele
         return copy
     }
 
+    /// Re-runs row content for every surviving row on each list render, instead
+    /// of only for rows whose element changed.
+    ///
+    /// Needed when row content displays values that are neither part of the
+    /// element nor `@Observable` — a plain captured flag, say — because nothing
+    /// else signals that those rows are stale.
+    public func reconfiguringAllRows() -> FineList {
+        var copy = self
+        copy.reconfiguresAllRows = true
+        copy.areElementsEqual = nil
+        return copy
+    }
+
     func _makeView() -> UIView {
         let listView = FineListView(frame: .zero, style: .plain)
         listView.sectionHeaderHeight = UITableView.automaticDimension
@@ -145,6 +159,7 @@ public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Ele
         coordinator.onRefresh = onRefresh
         coordinator.deleteActionTitle = deleteActionTitle
         coordinator.environmentStorage.update(context.environment)
+        coordinator.renderGate = context.renderGate
         coordinator.dataSource.canEditRows = onDelete != nil
         coordinator.updateRefreshControl(on: listView)
 
@@ -204,15 +219,26 @@ public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Ele
             snapshot.appendItems(itemIDsBySectionID[sectionID] ?? [], toSection: sectionID)
         }
         // Rows whose identity survived may still have changed content;
-        // reconfigure re-runs the cell provider, which updates hosted views in place.
+        // reconfigure re-runs the cell provider, which updates hosted views in
+        // place. Rows whose element is unchanged are skipped: `@Observable`
+        // reads inside row content update their own cell through per-cell
+        // observation, so re-running every surviving row is wasted work.
         let reconfiguredIDs = elementsByID.keys.filter { id in
             guard previousIDs.contains(id) else { return false }
-            guard let areElementsEqual,
+            guard !reconfiguresAllRows,
                   let previousElement = previousElementsByID[id],
                   let currentElement = elementsByID[id]
             else { return true }
 
-            return !areElementsEqual(previousElement, currentElement)
+            if let areElementsEqual {
+                return !areElementsEqual(previousElement, currentElement)
+            }
+            // Reference elements mutated in place are the same instance on both
+            // sides, so no `==` can see the change: only an explicit comparator
+            // opts them into skipping.
+            guard !fineIsReference(currentElement) else { return true }
+            // Elements that cannot be compared are conservatively reconfigured.
+            return fineDynamicEquals(previousElement, currentElement) != true
         }
         snapshot.reconfigureItems(reconfiguredIDs)
 
@@ -225,16 +251,19 @@ public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Ele
 }
 
 public extension FineList where Element: Equatable {
-    /// Reconfigures only rows whose element compares unequal to the previous
-    /// render, instead of every surviving row.
+    /// States explicitly that surviving rows reconfigure only when their
+    /// element compares unequal.
     ///
-    /// Requires `==` to cover every property the row content displays.
-    /// Intended for value-type elements: class elements mutated in place
-    /// compare equal to themselves and will never reconfigure. Rows that read
-    /// `@Observable` properties update through per-cell observation instead.
+    /// This is also the default for `Equatable` elements, so calling it is
+    /// optional; it documents the requirement that `==` covers every property
+    /// the row content displays. Class elements mutated in place compare equal
+    /// to themselves and never reconfigure — rows that read `@Observable`
+    /// properties update through per-cell observation instead, and rows that
+    /// display neither need `reconfiguringAllRows()`.
     func reconfiguringOnlyChangedRows() -> FineList {
         var copy = self
         copy.areElementsEqual = { $0 == $1 }
+        copy.reconfiguresAllRows = false
         return copy
     }
 }
@@ -268,6 +297,9 @@ extension FineList {
         // so `.environment(_:_:)` changes reach visible rows even when no
         // snapshot difference reconfigures them.
         let environmentStorage = FineEnvironmentStorage()
+        // Gate of the tree this list belongs to, so cell-local re-renders stop
+        // while the screen is off screen.
+        var renderGate: FineRenderGate?
         var appliedSelectionStyle: UITableViewCell.SelectionStyle?
 
         var selectionStyle: UITableViewCell.SelectionStyle {
@@ -293,7 +325,10 @@ extension FineList {
                 else { return cell }
 
                 cell.selectionStyle = coordinator.selectionStyle
-                cell.render(environment: coordinator.environmentStorage) { content(element) }
+                cell.render(
+                    environment: coordinator.environmentStorage,
+                    renderGate: coordinator.renderGate
+                ) { content(element) }
 
                 return cell
             }
@@ -343,7 +378,7 @@ extension FineList {
             )
 
             guard let view = view as? FineListHostHeaderFooterView else { return nil }
-            view.render(node, environment: environmentStorage)
+            view.render(node, environment: environmentStorage, renderGate: renderGate)
             return view
         }
 
@@ -442,8 +477,12 @@ final class FineListHostCell: UITableViewCell {
     /// building and rendering the row can invalidate only this cell. When an
     /// observed update changes the row's fitting height, the enclosing table
     /// view coalesces a row-height recalculation.
-    func render(environment: FineEnvironmentStorage, _ makeNode: @escaping @MainActor () -> any Renderable) {
-        ensureHost().render(environment: environment, makeNode)
+    func render(
+        environment: FineEnvironmentStorage,
+        renderGate: FineRenderGate?,
+        _ makeNode: @escaping @MainActor () -> any Renderable
+    ) {
+        ensureHost().render(environment: environment, renderGate: renderGate, makeNode)
     }
 
     private func ensureHost() -> FineNodeHost {
@@ -486,8 +525,8 @@ final class FineListHostHeaderFooterView: UITableViewHeaderFooterView {
     /// Renders supplementary content under local observation tracking, the
     /// same way cells do: `@Observable` values read while rendering update
     /// this view in place, and height changes coalesce a table re-measure.
-    func render(_ node: any Renderable, environment: FineEnvironmentStorage) {
-        ensureHost().render(environment: environment) { node }
+    func render(_ node: any Renderable, environment: FineEnvironmentStorage, renderGate: FineRenderGate?) {
+        ensureHost().render(environment: environment, renderGate: renderGate) { node }
     }
 
     private func ensureHost() -> FineNodeHost {

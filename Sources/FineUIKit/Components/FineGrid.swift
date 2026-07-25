@@ -77,6 +77,7 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
     private var onSelect: (@MainActor (Element) -> Void)?
     private var onRefresh: (@MainActor () async -> Void)?
     private var areElementsEqual: ((Element, Element) -> Bool)?
+    private var reconfiguresAllItems = false
     private var keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
 
     public var body: any Renderable {
@@ -125,6 +126,19 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
         return copy
     }
 
+    /// Re-runs item content for every surviving item on each grid render,
+    /// instead of only for items whose element changed.
+    ///
+    /// Needed when item content displays values that are neither part of the
+    /// element nor `@Observable` — a plain captured flag, say — because nothing
+    /// else signals that those items are stale.
+    public func reconfiguringAllItems() -> FineGrid {
+        var copy = self
+        copy.reconfiguresAllItems = true
+        copy.areElementsEqual = nil
+        return copy
+    }
+
     func _makeView() -> UIView {
         let gridView = FineGridView(frame: .zero, collectionViewLayout: Self.makeLayout())
         let layout = Self.makeLayout { [weak gridView] in
@@ -155,6 +169,7 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
         coordinator.onSelect = onSelect
         coordinator.onRefresh = onRefresh
         coordinator.environmentStorage.update(context.environment)
+        coordinator.renderGate = context.renderGate
         coordinator.updateRefreshControl(on: gridView)
 
         if gridView.keyboardDismissMode != keyboardDismissMode {
@@ -218,15 +233,26 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
             snapshot.appendItems(itemIDsBySectionID[sectionID] ?? [], toSection: sectionID)
         }
         // Items whose identity survived may still have changed content;
-        // reconfigure re-runs the cell provider, which updates hosted views in place.
+        // reconfigure re-runs the cell provider, which updates hosted views in
+        // place. Items whose element is unchanged are skipped: `@Observable`
+        // reads inside item content update their own cell through per-cell
+        // observation, so re-running every surviving item is wasted work.
         let reconfiguredIDs = elementsByID.keys.filter { id in
             guard previousIDs.contains(id) else { return false }
-            guard let areElementsEqual,
+            guard !reconfiguresAllItems,
                   let previousElement = previousElementsByID[id],
                   let currentElement = elementsByID[id]
             else { return true }
 
-            return !areElementsEqual(previousElement, currentElement)
+            if let areElementsEqual {
+                return !areElementsEqual(previousElement, currentElement)
+            }
+            // Reference elements mutated in place are the same instance on both
+            // sides, so no `==` can see the change: only an explicit comparator
+            // opts them into skipping.
+            guard !fineIsReference(currentElement) else { return true }
+            // Elements that cannot be compared are conservatively reconfigured.
+            return fineDynamicEquals(previousElement, currentElement) != true
         }
         snapshot.reconfigureItems(reconfiguredIDs)
 
@@ -306,16 +332,17 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
 }
 
 public extension FineGrid where Element: Equatable {
-    /// Reconfigures only items whose element compares unequal to the previous
-    /// render, instead of every surviving item.
+    /// States explicitly that surviving items reconfigure only when their
+    /// element compares unequal.
     ///
-    /// Requires `==` to cover every property the item content displays.
-    /// Intended for value-type elements: class elements mutated in place
-    /// compare equal to themselves and will never reconfigure. Items that read
-    /// `@Observable` properties update through per-cell observation instead.
+    /// This is also the default for `Equatable` elements, so calling it is
+    /// optional; it documents the requirement that `==` covers every property
+    /// the item content displays. Items that display values outside the element
+    /// and outside `@Observable` state need `reconfiguringAllItems()`.
     func reconfiguringOnlyChangedItems() -> FineGrid {
         var copy = self
         copy.areElementsEqual = { $0 == $1 }
+        copy.reconfiguresAllItems = false
         return copy
     }
 }
@@ -354,6 +381,9 @@ extension FineGrid {
         // so `.environment(_:_:)` changes reach visible items even when no
         // snapshot difference reconfigures them.
         let environmentStorage = FineEnvironmentStorage()
+        // Gate of the tree this grid belongs to, so cell-local re-renders stop
+        // while the screen is off screen.
+        var renderGate: FineRenderGate?
 
         init(gridView: FineGridView, columns: FineGridColumns, spacing: CGFloat) {
             self.columns = columns
@@ -385,7 +415,10 @@ extension FineGrid {
                       let content = coordinator.content
                 else { return cell }
 
-                cell.render(environment: coordinator.environmentStorage) { content(element) }
+                cell.render(
+                    environment: coordinator.environmentStorage,
+                    renderGate: coordinator.renderGate
+                ) { content(element) }
 
                 return cell
             }
@@ -415,7 +448,11 @@ extension FineGrid {
                 }
 
                 if let node {
-                    view.render(node, environment: coordinator.environmentStorage)
+                    view.render(
+                        node,
+                        environment: coordinator.environmentStorage,
+                        renderGate: coordinator.renderGate
+                    )
                 }
                 return view
             }
@@ -531,8 +568,12 @@ final class FineGridHostCell: UICollectionViewCell {
     /// building and rendering the item can invalidate only this cell. When an
     /// observed update changes the item's fitting height, the enclosing
     /// collection view coalesces a layout invalidation.
-    func render(environment: FineEnvironmentStorage, _ makeNode: @escaping @MainActor () -> any Renderable) {
-        ensureHost().render(environment: environment, makeNode)
+    func render(
+        environment: FineEnvironmentStorage,
+        renderGate: FineRenderGate?,
+        _ makeNode: @escaping @MainActor () -> any Renderable
+    ) {
+        ensureHost().render(environment: environment, renderGate: renderGate, makeNode)
     }
 
     private func ensureHost() -> FineNodeHost {
@@ -578,8 +619,8 @@ final class FineGridHostSupplementaryView: UICollectionReusableView {
     /// Renders supplementary content under local observation tracking, the
     /// same way cells do: `@Observable` values read while rendering update
     /// this view in place, and height changes coalesce a layout invalidation.
-    func render(_ node: any Renderable, environment: FineEnvironmentStorage) {
-        ensureHost().render(environment: environment) { node }
+    func render(_ node: any Renderable, environment: FineEnvironmentStorage, renderGate: FineRenderGate?) {
+        ensureHost().render(environment: environment, renderGate: renderGate) { node }
     }
 
     private func ensureHost() -> FineNodeHost {

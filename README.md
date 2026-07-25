@@ -77,6 +77,8 @@ FineList(sections: [
 
 `FineViewController.navigation(_:)` を override すると、`body(_:)` と同じ observation / hot reload の流れで `navigationItem` を宣言できます。`nil` を返す既定実装では `navigationItem` に触らないため、手動管理もそのまま使えます。
 
+ナビゲーションは `body(_:)` とは**別の observation スコープ**で追跡されます。`navigation(_:)` だけが読んだ値(タイトル、ボタンの `.enabled` など)が変わったときは `navigationItem` だけが更新され、ツリーの再評価・再差分は起きません。下の例で `draft` が1文字変わるたびに全画面が再差分されることはありません。
+
 ```swift
 override func navigation(_ state: ToDoListViewModel) -> FineNavigation? {
     FineNavigation(title: "ToDo (\(state.items.count))")
@@ -195,6 +197,25 @@ FineLabel(text: detail.title)
 
 再レンダリングで実行中の task が再起動されることはありません(再起動は `id` の変化時のみ)。`.onAppear` は window への着脱のたびに発火します。
 
+## 画面が隠れている間のレンダリング
+
+`FineViewController` は、画面が隠れている間(push で覆われた、タブが切り替わった)は再レンダリングを止めます。その間に届いた状態変更は記録され、再表示時(`viewIsAppearing`)に**1回の catch-up レンダリング**でまとめて反映されます。共有ストアを持つ画面スタックで、見えていない画面が変更ごとに再差分されることはありません。
+
+ナビゲーションは止まりません。覆われた画面のタイトルは上の画面の戻るボタンとして見えているためです。
+
+```swift
+override var suspendsWhenDisappeared: Bool { false }   // 隠れている間も更新し続ける
+```
+
+`FineUI` を直接使う場合は `suspend()` / `resume()` を呼びます。`build(to:)` の初回レンダリングは止まりません。また catch-up レンダリングはアニメーションしません(画面外で起きた変化をアニメーションする意味がないため)。
+
+判定は `viewDidDisappear` / `viewIsAppearing` に基づくため、次の2つは自動では止まりません。必要なら `suspendRendering()` / `resumeRendering()` を手動で呼んでください(`FineUI` を直接使う場合は `suspend()` / `resume()`)。
+
+- **`.overFullScreen` / `.overCurrentContext` でモーダルを被せた場合** — UIKit は下の画面に `viewDidDisappear` を送りません(部分的に見えている可能性があるため)。通常の `.fullScreen` presentation なら送られるので自動で止まります
+- **ロードしたが一度も表示していない画面** — 表示前は動き続けます。`loadViewIfNeeded()` してから状態を流し込み、表示せずにビュー階層を検証する使い方(テストなど)を壊さないための意図的な選択です
+
+`viewIsAppearing(_:)` / `viewDidDisappear(_:)` を override する場合は **`super` の呼び出しが必須**です。呼ばないと初回表示のあと再開されず、画面が黙って更新されなくなります。
+
 ## キーボード
 
 ルートビューの下端は既定で `keyboardLayoutGuide` に追従するため、キーボード表示中はコンテンツがその上に詰まり、隠れません(キーボード非表示時は safe area 下端と一致し、レイアウトは従来どおり)。無効にする場合は `FineViewController` の `avoidsKeyboard` を override します(`FineUI` 直接利用なら `init(_:avoidsKeyboard:body:)`)。
@@ -301,7 +322,20 @@ FineStack.vertical(spacing: 8) {
 従来の配列リテラル構文(`{ [a, b] }` や配列連結)もそのまま動きます。
 
 `FineList` / `FineGrid` は `Identifiable` の ID で常に keyed です。
-`FineList` の `.reconfiguringOnlyChangedRows()` と `FineGrid` の `.reconfiguringOnlyChangedItems()` は値型要素向けの最適化で、表示に使う全プロパティを `==` が正確に反映することが前提です。
+
+**生き残った行の再構築**: リスト / グリッドが再レンダリングされたとき、ID が生き残った行の content は**要素が変化した行だけ**再実行されます。
+
+この最適化が成立する条件は「**比較の両辺が独立した値のスナップショットであること**」です。要素が `Equatable` でない場合と、要素が**参照型**(class)の場合は、安全側に倒して生き残った全行を再実行します。参照型で比較をスキップさせたい場合だけ `.reconfiguringOnlyChangedRows()` を明示してください。
+
+> **既存コードからの移行**: 以前は生き残った行を毎回すべて再実行していました。値型で `Equatable` な要素を使い、かつ行 content が「要素にも `@Observable` にも含まれない値」(`body` で読んだ素の `let` をキャプチャしている等)を表示している場合、**コンパイルエラーなしで表示が古いまま**になります。該当する場合は `.reconfiguringAllRows()` / `.reconfiguringAllItems()` を付けてください。
+
+⚠️ **値型でも、内部に可変な参照(class)を持っている場合は変化を検出できません**。`struct Row { let model: SomeClass }` のような要素は、比較の両辺が同じインスタンスを指すため、どんな `==` でも「等しい」と答えます。この場合は次のどちらかにしてください。
+
+- モデルを `@Observable` にする(セル単位の observation が変化を拾います。FineUIKit ではこちらが素直です)
+- `.reconfiguringAllRows()` / `.reconfiguringAllItems()` で毎回再実行させる
+`.reconfiguringOnlyChangedRows()` / `.reconfiguringOnlyChangedItems()` は値型では既定と同じ動作の明示形で、参照型では「同一インスタンスの比較でもスキップする」というオプトインになります(「表示に使う全プロパティを `==` が反映する」ことが前提)。
+
+要素にも `@Observable` にも含まれない値(row content がキャプチャしただけの素の `Bool` など)を表示している場合は、変化を知らせる経路がないため `.reconfiguringAllRows()` / `.reconfiguringAllItems()` で毎回再実行させてください。
 行 / item content が読んだ `@Observable` プロパティは、リスト / グリッド全体の再 render なしにセル単位で自動更新されます。ヘッダー・フッターも同様にセル単位の observation で更新されます。観測起因の更新で高さが変わった場合は、リスト / グリッド単位で1回に合流(coalesce)された高さ再計算が自動で走ります(ヘッダー・フッターも対象)。
 `.environment(_:_:)` で注入した値はセル・ヘッダー・フッターの content にも伝播します。環境値の変更は observation 経由で可視セルにも自動反映されるため、`.reconfiguringOnlyChangedRows()` 使用時も取り残されません。環境値には `Equatable` な型を推奨します(非 `Equatable` の値は毎レンダー「変更あり」とみなされ、可視セルの再描画が増えます)。
 
@@ -356,8 +390,8 @@ FineButton(title: "Add") { [unowned self] in addTask() }
 - 内部プリミティブ — 組み込みコンポーネントが持つ `_makeView()` / `_canUpdate(_:)` / `_update(_:context:)` 契約。署名や全プロパティ書き戻しの規則は公開 API ではない
 - `FineRenderer` — 差分適用層。`body` を内部プリミティブへ解決し、「ビュー型互換 + モディファイア署名一致 + key 一致」のときだけ in-place 更新、それ以外は作り直し
 - `FineNode` — 各ビューに紐づく永続「要素」(Flutter の Element 相当)。モディファイア署名・key・ノード局所の観測状態(scheduler の generation / context)に加え、`FineState` のローカル状態を所有する。ビューと同寿命なので、状態は再レンダリングをまたいで保持される
-- `FineUI` — `withObservationTracking` で差分適用を駆動するランタイム。root の `body` は構造、コンテナの `content` はそのノード、`FineLabel.text` はラベルノード単位で再評価される
-- `FineViewController` — 上記をまとめた推奨インターフェース
+- `FineUI` — `withObservationTracking` で差分適用を駆動するランタイム。root の `body` は構造、コンテナの `content` はそのノード、`FineLabel.text` はラベルノード単位で再評価される。画面が隠れている間は `suspend()` で観測起因のレンダリングを止め、`resume()` で1回だけ catch-up する
+- `FineViewController` — 上記をまとめた推奨インターフェース。`body(_:)` と `navigation(_:)` を別の observation スコープで追跡し、表示状態に応じて `FineUI` を suspend / resume する
 
 ## ホットリロード
 
