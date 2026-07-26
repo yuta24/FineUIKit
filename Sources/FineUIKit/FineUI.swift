@@ -44,6 +44,10 @@ public final class FineUI<State> {
 
     private weak var container: UIView?
     private var rootView: UIView?
+    /// Constraints pinning `rootView` to `container`. Held so that moving the
+    /// tree to another container can take them down: they reference the former
+    /// container's layout guides, which the new hierarchy cannot satisfy.
+    private var rootConstraints: [NSLayoutConstraint] = []
     private var generation = 0
     private let renderGate = FineRenderGate()
     private var traitRegistration: (any UITraitChangeRegistration)?
@@ -90,6 +94,11 @@ public final class FineUI<State> {
     }
 
     /// Renders the tree into `container` and starts observing `state`.
+    ///
+    /// Calling this again with a different container moves the tree: the root
+    /// view is re-parented and re-constrained, and trait observation follows
+    /// the new container. Calling it again with the same container re-renders
+    /// without disturbing the hierarchy.
     public func build(to container: UIView) {
         self.container = container
         renderGate.onFlush = { [weak self] in
@@ -210,17 +219,28 @@ public final class FineUI<State> {
         } else {
             view = apply()
         }
-        guard view !== rootView else { return }
+        // Already installed here: the render was enough. A reused root view
+        // still has to be attached when `build(to:)` named a different
+        // container, which is why the superview is checked too.
+        guard view !== rootView || view.superview !== container else { return }
 
         UIView.performWithoutAnimation {
             if case .animate = transaction {
                 removeAllAnimations(in: view)
             }
 
-            rootView?.removeFromSuperview()
+            // These reference the previous container's layout guides, so they
+            // go before the view moves.
+            NSLayoutConstraint.deactivate(rootConstraints)
+            rootConstraints = []
+
+            if rootView !== view {
+                rootView?.removeFromSuperview()
+            }
             rootView = view
 
             view.translatesAutoresizingMaskIntoConstraints = false
+            // Re-parents the view when it still belongs to another container.
             container.addSubview(view)
 
             let guide = container.safeAreaLayoutGuide
@@ -237,13 +257,14 @@ public final class FineUI<State> {
             let fillBottom = view.bottomAnchor.constraint(equalTo: bottomAnchor)
             fillBottom.priority = .defaultLow
 
-            NSLayoutConstraint.activate([
+            rootConstraints = [
                 view.topAnchor.constraint(equalTo: guide.topAnchor),
                 view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
                 view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
                 view.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
                 fillBottom,
-            ])
+            ]
+            NSLayoutConstraint.activate(rootConstraints)
             container.layoutIfNeeded()
         }
     }
