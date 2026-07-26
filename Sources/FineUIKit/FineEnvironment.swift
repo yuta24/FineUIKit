@@ -143,6 +143,32 @@ struct FineEnvironmentReaderPrimitive: FinePrimitiveRenderable {
     }
 }
 
+/// Carries the hosting view's traits. Declared as a computed property so the
+/// default costs nothing until a tree without a host reads it.
+private struct FineTraitCollectionKey: FineEnvironmentKey {
+    static var defaultValue: UITraitCollection { UITraitCollection() }
+}
+
+public extension FineEnvironmentValues {
+    /// Traits of the view hosting the tree: content size category, interface
+    /// style, size classes, layout direction.
+    ///
+    /// The runtime keeps this current and re-renders the tree when one of the
+    /// traits it observes changes, so a description can branch on it:
+    ///
+    /// ```swift
+    /// FineEnvironmentReader { environment in
+    ///     environment.traitCollection.horizontalSizeClass == .compact
+    ///         ? FineStack.vertical { … }
+    ///         : FineStack.horizontal { … }
+    /// }
+    /// ```
+    var traitCollection: UITraitCollection {
+        get { self[FineTraitCollectionKey.self] }
+        set { self[FineTraitCollectionKey.self] = newValue }
+    }
+}
+
 public extension Renderable {
     func environment<Value>(
         _ keyPath: WritableKeyPath<FineEnvironmentValues, Value>,

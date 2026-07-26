@@ -3,6 +3,33 @@ import Testing
 import UIKit
 @testable import FineUIKit
 
+@Observable
+private final class SupplementaryHeaderState {
+    var title = "H1"
+}
+
+@Observable
+private final class SupplementaryFooterState {
+    var caption = "F1"
+}
+
+@Observable
+private final class SupplementarySectionsState {
+    var showsFirstSection = true
+    var secondHeader = "B1"
+}
+
+@Observable
+private final class SupplementaryHeightState {
+    var title = "short"
+}
+
+@Observable
+private final class SupplementaryReorderState {
+    var reversed = false
+    var suffix = "1"
+}
+
 private struct TestBadgeEnvironmentKey: FineEnvironmentKey {
     static let defaultValue = "default"
 }
@@ -115,6 +142,245 @@ struct FineListBehaviorTests {
         #expect(firstLabel(in: header)?.text == "H-injected")
         #expect(firstLabel(in: footer)?.text == "F-injected")
         _ = window
+    }
+
+    /// A header built from state that changed must not keep showing the old
+    /// description: nothing asks the table for a supplementary view it already
+    /// has, so the list refreshes visible ones itself.
+    @Test func headerFollowsStateChangeWithoutSectionChange() async throws {
+        let state = SupplementaryHeaderState()
+        let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 600))
+        let window = UIWindow(frame: container.frame)
+        window.addSubview(container)
+        window.isHidden = false
+
+        let ui = FineUI(state) { state in
+            let title = state.title
+            return FineList(sections: [
+                FineListSection(id: "s", header: FineLabel(text: title), items: [Item(id: "a", title: "A")]),
+            ]) { item in
+                FineLabel(text: item.title)
+            }
+        }
+        ui.build(to: container)
+        window.layoutIfNeeded()
+
+        let listView = try #require(container.subviews.compactMap { $0 as? UITableView }.first)
+        func headerText() -> String? {
+            listView.layoutIfNeeded()
+            guard let header = listView.headerView(forSection: 0) else { return nil }
+            return firstLabel(in: header)?.text
+        }
+
+        for _ in 0..<200 where headerText() != "H1" {
+            await Task.yield()
+        }
+        #expect(headerText() == "H1")
+
+        state.title = "H2"
+        for _ in 0..<200 where headerText() != "H2" {
+            await Task.yield()
+        }
+
+        #expect(headerText() == "H2")
+        _ = (window, ui)
+    }
+
+    @Test func footerFollowsStateChangeWithoutSectionChange() async throws {
+        let state = SupplementaryFooterState()
+        let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 600))
+        let window = UIWindow(frame: container.frame)
+        window.addSubview(container)
+        window.isHidden = false
+
+        let ui = FineUI(state) { state in
+            let caption = state.caption
+            return FineList(sections: [
+                FineListSection(id: "s", footer: FineLabel(text: caption), items: [Item(id: "a", title: "A")]),
+            ]) { item in
+                FineLabel(text: item.title)
+            }
+        }
+        ui.build(to: container)
+        window.layoutIfNeeded()
+
+        let listView = try #require(container.subviews.compactMap { $0 as? UITableView }.first)
+        func footerText() -> String? {
+            listView.layoutIfNeeded()
+            guard let footer = listView.footerView(forSection: 0) else { return nil }
+            return firstLabel(in: footer)?.text
+        }
+
+        for _ in 0..<200 where footerText() != "F1" {
+            await Task.yield()
+        }
+        #expect(footerText() == "F1")
+
+        state.caption = "F2"
+        for _ in 0..<200 where footerText() != "F2" {
+            await Task.yield()
+        }
+
+        #expect(footerText() == "F2")
+        _ = (window, ui)
+    }
+
+    /// A section removed above a visible header shifts its index. The header
+    /// must keep rendering its own section, not the one that took its place —
+    /// and not blank out because the old index no longer resolves.
+    @Test func headerSurvivesSectionRemovalAboveIt() async throws {
+        let state = SupplementarySectionsState()
+        let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 600))
+        let window = UIWindow(frame: container.frame)
+        window.addSubview(container)
+        window.isHidden = false
+
+        let ui = FineUI(state) { state in
+            let showsFirst = state.showsFirstSection
+            let secondHeader = state.secondHeader
+            var sections: [FineListSection<Item>] = []
+            if showsFirst {
+                sections.append(.init(id: "a", header: FineLabel(text: "A"), items: [Item(id: "a1", title: "A1")]))
+            }
+            sections.append(.init(id: "b", header: FineLabel(text: secondHeader), items: [Item(id: "b1", title: "B1")]))
+            return FineList(sections: sections) { item in
+                FineLabel(text: item.title)
+            }
+        }
+        ui.build(to: container)
+        window.layoutIfNeeded()
+
+        let listView = try #require(container.subviews.compactMap { $0 as? UITableView }.first)
+        func headerText(_ section: Int) -> String? {
+            listView.layoutIfNeeded()
+            guard let header = listView.headerView(forSection: section) else { return nil }
+            return firstLabel(in: header)?.text
+        }
+
+        for _ in 0..<200 where headerText(1) != "B1" {
+            await Task.yield()
+        }
+        #expect(headerText(1) == "B1")
+
+        state.showsFirstSection = false
+        for _ in 0..<200 where listView.numberOfSections != 1 {
+            await Task.yield()
+        }
+        listView.layoutIfNeeded()
+
+        // The surviving header renders its own section at its new index, and a
+        // later change to that section still reaches it.
+        #expect(headerText(0) == "B1")
+
+        state.secondHeader = "B2"
+        for _ in 0..<200 where headerText(0) != "B2" {
+            await Task.yield()
+        }
+        #expect(headerText(0) == "B2")
+        _ = (window, ui)
+    }
+
+    /// Refreshing a visible header renders it directly, which bypasses the
+    /// host's observation callback — the path that normally re-measures the
+    /// table. Growing content must still get a taller header.
+    @Test func headerHeightFollowsGrowingContent() async throws {
+        let state = SupplementaryHeightState()
+        let container = UIView(frame: .init(x: 0, y: 0, width: 200, height: 600))
+        let window = UIWindow(frame: container.frame)
+        window.addSubview(container)
+        window.isHidden = false
+
+        let ui = FineUI(state) { state in
+            let title = state.title
+            return FineList(sections: [
+                FineListSection(
+                    id: "s",
+                    header: FineLabel(text: title).numberOfLines(0),
+                    items: [Item(id: "a", title: "A")]
+                ),
+            ]) { item in
+                FineLabel(text: item.title)
+            }
+        }
+        ui.build(to: container)
+        window.layoutIfNeeded()
+
+        let listView = try #require(container.subviews.compactMap { $0 as? UITableView }.first)
+        for _ in 0..<200 where listView.headerView(forSection: 0) == nil {
+            await Task.yield()
+        }
+        listView.layoutIfNeeded()
+        let shortHeight = try #require(listView.headerView(forSection: 0)?.bounds.height)
+
+        state.title = String(repeating: "long wrapping header text ", count: 6)
+        for _ in 0..<200 where (listView.headerView(forSection: 0)?.bounds.height ?? 0) <= shortHeight {
+            listView.layoutIfNeeded()
+            await Task.yield()
+        }
+
+        let tallHeight = try #require(listView.headerView(forSection: 0)?.bounds.height)
+        #expect(tallHeight > shortHeight)
+        _ = (window, ui)
+    }
+
+    /// Reordering sections keeps every header with its own section: a view
+    /// that stays on screen at a new index must not start rendering the
+    /// description of whatever section moved into its old position.
+    @Test func headersFollowTheirSectionThroughAReorder() async throws {
+        let state = SupplementaryReorderState()
+        let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 600))
+        let window = UIWindow(frame: container.frame)
+        window.addSubview(container)
+        window.isHidden = false
+
+        let ui = FineUI(state) { state in
+            let reversed = state.reversed
+            let suffix = state.suffix
+            let a = FineListSection(
+                id: "a",
+                header: FineLabel(text: "A\(suffix)"),
+                items: [Item(id: "a1", title: "A1")]
+            )
+            let b = FineListSection(
+                id: "b",
+                header: FineLabel(text: "B\(suffix)"),
+                items: [Item(id: "b1", title: "B1")]
+            )
+            return FineList(sections: reversed ? [b, a] : [a, b]) { item in
+                FineLabel(text: item.title)
+            }
+        }
+        ui.build(to: container)
+        window.layoutIfNeeded()
+
+        let listView = try #require(container.subviews.compactMap { $0 as? UITableView }.first)
+        func headerText(_ section: Int) -> String? {
+            listView.layoutIfNeeded()
+            guard let header = listView.headerView(forSection: section) else { return nil }
+            return firstLabel(in: header)?.text
+        }
+
+        for _ in 0..<200 where headerText(0) != "A1" {
+            await Task.yield()
+        }
+        #expect(headerText(0) == "A1")
+        #expect(headerText(1) == "B1")
+
+        state.reversed = true
+        for _ in 0..<200 where headerText(0) != "B1" {
+            await Task.yield()
+        }
+        #expect(headerText(0) == "B1")
+        #expect(headerText(1) == "A1")
+
+        // A later change must reach each header through its own section.
+        state.suffix = "2"
+        for _ in 0..<200 where headerText(0) != "B2" {
+            await Task.yield()
+        }
+        #expect(headerText(0) == "B2")
+        #expect(headerText(1) == "A2")
+        _ = (window, ui)
     }
 
     @Test func headerObservableContentUpdatesInPlace() async throws {
@@ -344,7 +610,7 @@ struct FineGridBehaviorTests {
 
     @Test func supplementaryPrepareForReuseClearsHostedContent() {
         let view = FineGridHostSupplementaryView(frame: .init(x: 0, y: 0, width: 100, height: 40))
-        view.render(FineLabel(text: "X"), environment: FineEnvironmentStorage(), renderGate: nil)
+        view.render(environment: FineEnvironmentStorage(), renderGate: nil) { FineLabel(text: "X") }
 
         #expect(!view.subviews.isEmpty)
 

@@ -8,6 +8,26 @@
 import Observation
 import UIKit
 
+/// Traits a description can branch on, and whose change therefore has to
+/// re-evaluate it.
+///
+/// `UIFont.preferredFont(forTextStyle:)` resolves against the content size
+/// category at the moment the description is built, so without re-rendering, a
+/// Dynamic Type change would leave the tree describing the old sizes. Reading
+/// any other trait through `environment.traitCollection` works, but only these
+/// re-render on their own.
+enum FineObservedTraits {
+    static let all: [any UITraitDefinition.Type] = [
+        UITraitPreferredContentSizeCategory.self,
+        UITraitUserInterfaceStyle.self,
+        UITraitHorizontalSizeClass.self,
+        UITraitVerticalSizeClass.self,
+        UITraitLayoutDirection.self,
+        UITraitAccessibilityContrast.self,
+        UITraitLegibilityWeight.self,
+    ]
+}
+
 /// Drives a `Renderable` tree from an observable state object.
 ///
 /// `FineUI` re-evaluates the smallest tracked description it can: root `body`
@@ -26,6 +46,8 @@ public final class FineUI<State> {
     private var rootView: UIView?
     private var generation = 0
     private let renderGate = FineRenderGate()
+    private var traitRegistration: (any UITraitChangeRegistration)?
+    private weak var traitRegistrationTarget: UIView?
 
     #if DEBUG
     /// Runs after an injection-triggered re-render so owners can refresh
@@ -73,11 +95,34 @@ public final class FineUI<State> {
         renderGate.onFlush = { [weak self] in
             self?.render()
         }
+        observeTraitChanges(of: container)
         render()
 
         #if DEBUG
         observeInjection()
         #endif
+    }
+
+    /// Re-renders when a trait the tree can branch on changes.
+    ///
+    /// Trait changes reach cells through the environment: the trait collection
+    /// is an environment value, so a list republishes it to its visible rows.
+    private func observeTraitChanges(of container: UIView) {
+        // A registration outlives the token that represents it, so building
+        // into a second container would otherwise leave the first one
+        // re-rendering this tree on its own trait changes.
+        if let traitRegistration, let traitRegistrationTarget {
+            traitRegistrationTarget.unregisterForTraitChanges(traitRegistration)
+        }
+
+        traitRegistrationTarget = container
+        traitRegistration = container.registerForTraitChanges(FineObservedTraits.all) { [weak self] (_: UIView, _) in
+            guard let self,
+                  self.renderGate.allowsObservedWork()
+            else { return }
+
+            self.render()
+        }
     }
 
     /// Stops re-rendering in response to observed state changes.
@@ -141,7 +186,13 @@ public final class FineUI<State> {
         }
 
         let scheduler = FineNodeScheduler()
-        let context = FineRenderContext(nodeScheduler: scheduler, renderGate: renderGate)
+        var environment = FineEnvironmentValues()
+        environment.traitCollection = container.traitCollection
+        let context = FineRenderContext(
+            nodeScheduler: scheduler,
+            renderGate: renderGate,
+            environment: environment
+        )
         let apply = { [self] in
             let rendered = FineRenderer.render(description, reusing: self.rootView, context: context)
             scheduler.drain()
