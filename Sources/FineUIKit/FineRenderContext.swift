@@ -33,10 +33,17 @@ struct FineRenderContext {
     }
 
     func render(_ node: any Renderable, reusing existing: UIView?) -> UIView {
+        render(resolved: FineRenderer.primitive(for: node), reusing: existing)
+    }
+
+    /// Renders a description whose primitive the caller already resolved, so a
+    /// caller that had to inspect the primitive first does not pay for a second
+    /// walk through `body`.
+    func render(resolved primitive: any FinePrimitiveRenderable, reusing existing: UIView?) -> UIView {
         if let nodeScheduler {
-            return nodeScheduler.renderChild(node, reusing: existing, context: self)
+            return nodeScheduler.renderChild(resolved: primitive, reusing: existing, context: self)
         }
 
-        return FineRenderer.render(node, reusing: existing, context: self)
+        return FineRenderer.render(resolved: primitive, reusing: existing, context: self)
     }
 }

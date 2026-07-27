@@ -21,18 +21,29 @@ final class FineNodeScheduler {
     private var isDraining = false
 
     func renderChild(_ node: any Renderable, reusing existing: UIView?, context: FineRenderContext) -> UIView {
-        let primitive = FineRenderer.primitive(for: node)
+        renderChild(resolved: FineRenderer.primitive(for: node), reusing: existing, context: context)
+    }
+
+    func renderChild(
+        resolved primitive: any FinePrimitiveRenderable,
+        reusing existing: UIView?,
+        context: FineRenderContext
+    ) -> UIView {
+        // Read once and reuse: both walk `body` down to the content primitive,
+        // so asking twice re-evaluates the description.
+        let signature = primitive._modifierSignature
+        let key = primitive._key
         let view: UIView
 
-        if let existing, FineRenderer.reuses(existing, for: primitive) {
+        if let existing, FineRenderer.reuses(existing, for: primitive, signature: signature, key: key) {
             view = existing
         } else {
             existing?.fineNodeIfPresent?.generation += 1
             view = primitive._makeView()
         }
 
-        view.fineModifierSignature = primitive._modifierSignature
-        view.fineKey = primitive._key
+        view.fineModifierSignature = signature
+        view.fineKey = key
 
         let state = view.fineNode
         state.primitive = primitive

@@ -89,20 +89,23 @@ public struct FineStack: FinePrimitiveRenderable {
 
         var seenKeys = Set<AnyHashable>()
         var unkeyedIndex = 0
+        // The primitive is resolved once and handed to `render`: resolving walks
+        // `body`, and looking the key up here only to let the renderer resolve
+        // the same node again would rebuild every child's subtree twice.
         let newViews = content().map { node in
             let primitive = FineRenderer.primitive(for: node)
             if let key = primitive._key {
                 guard seenKeys.insert(key).inserted else {
                     assertionFailure("Duplicate FineUIKit key: \(key)")
-                    return context.render(node, reusing: nil)
+                    return context.render(resolved: primitive, reusing: nil)
                 }
 
-                return context.render(node, reusing: keyedOldViews.removeValue(forKey: key))
+                return context.render(resolved: primitive, reusing: keyedOldViews.removeValue(forKey: key))
             }
 
             let reusable = unkeyedIndex < unkeyedOldViews.count ? unkeyedOldViews[unkeyedIndex] : nil
             unkeyedIndex += 1
-            return context.render(node, reusing: reusable)
+            return context.render(resolved: primitive, reusing: reusable)
         }
 
         // Membership through a set: scanning `newViews` for every old view
