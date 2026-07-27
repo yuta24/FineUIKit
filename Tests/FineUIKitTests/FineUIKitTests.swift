@@ -1496,6 +1496,11 @@ struct FineNavigationTests {
     }
 
     private func perform(_ item: UIBarButtonItem) {
+        if let primaryAction = item.primaryAction {
+            primaryAction.performWithSender(nil, target: nil)
+            return
+        }
+
         guard let action = item.action else { return }
         _ = item.target?.perform(action, with: item)
     }

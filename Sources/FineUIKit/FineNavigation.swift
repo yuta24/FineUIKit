@@ -181,31 +181,31 @@ public struct FineBarButton {
             return item
         }
 
-        let box = FineBarButtonHandlerBox(handler: action)
         let item: UIBarButtonItem
         switch kind {
         case let .title(title):
-            item = .init(title: title, style: style, target: box, action: #selector(FineBarButtonHandlerBox.invoke(_:)))
+            item = .init(title: title, style: style, target: nil, action: nil)
         case let .image(image):
-            item = .init(image: image, style: style, target: box, action: #selector(FineBarButtonHandlerBox.invoke(_:)))
+            item = .init(image: image, style: style, target: nil, action: nil)
         case let .systemItem(systemItem):
-            item = .init(barButtonSystemItem: systemItem, target: box, action: #selector(FineBarButtonHandlerBox.invoke(_:)))
+            item = .init(barButtonSystemItem: systemItem, target: nil, action: nil)
             if item.style != style {
                 item.style = style
             }
         }
 
         item.fineBarButtonSignature = signature
-        item.fineBarButtonHandlerBox = box
         update(item)
         return item
     }
 
     fileprivate func update(_ item: UIBarButtonItem) {
         item.fineBarButtonSignature = signature
-        item.fineBarButtonHandlerBox?.handler = action
-        item.target = item.fineBarButtonHandlerBox
-        item.action = #selector(FineBarButtonHandlerBox.invoke(_:))
+        // The action deliberately carries no title or image. Those are written
+        // below instead, because UIKit only copies them across when they are
+        // non-nil — a nil title would leave a stale one in place — and ignores
+        // both for a system item.
+        item.primaryAction = UIAction { [action] _ in action() }
 
         switch kind {
         case let .title(title):
@@ -233,38 +233,18 @@ public struct FineBarButton {
 }
 
 @MainActor
-private final class FineBarButtonHandlerBox: NSObject {
-    var handler: @MainActor () -> Void
-
-    init(handler: @escaping @MainActor () -> Void) {
-        self.handler = handler
-    }
-
-    @objc func invoke(_ sender: UIBarButtonItem) {
-        handler()
-    }
-}
-
-@MainActor
 private extension UIBarButtonItem {
     nonisolated(unsafe) static var fineBarButtonSignatureKey: UInt8 = 0
-    nonisolated(unsafe) static var fineBarButtonHandlerBoxKey: UInt8 = 0
 
+    /// Which kind and style the item was built for. An item can be reused and
+    /// rewritten only while these match; a title item cannot become a system
+    /// item in place.
     var fineBarButtonSignature: String {
         get {
             objc_getAssociatedObject(self, &Self.fineBarButtonSignatureKey) as? String ?? ""
         }
         set {
             objc_setAssociatedObject(self, &Self.fineBarButtonSignatureKey, newValue, .OBJC_ASSOCIATION_COPY_NONATOMIC)
-        }
-    }
-
-    var fineBarButtonHandlerBox: FineBarButtonHandlerBox? {
-        get {
-            objc_getAssociatedObject(self, &Self.fineBarButtonHandlerBoxKey) as? FineBarButtonHandlerBox
-        }
-        set {
-            objc_setAssociatedObject(self, &Self.fineBarButtonHandlerBoxKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
     }
 }

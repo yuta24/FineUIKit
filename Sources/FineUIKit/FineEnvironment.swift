@@ -48,23 +48,23 @@ public struct FineEnvironmentValues {
 /// render. Host cells read `values` inside their tracked render scope, so an
 /// environment change re-renders visible cells without a row reconfigure.
 @MainActor
-final class FineEnvironmentStorage: Observable {
-    private let observationRegistrar = ObservationRegistrar()
-    private var storedValues = FineEnvironmentValues()
+@Observable
+final class FineEnvironmentStorage {
+    private(set) var values = FineEnvironmentValues()
 
-    var values: FineEnvironmentValues {
-        observationRegistrar.access(self, keyPath: \.values)
-        return storedValues
-    }
+    /// What `values` was last set to, compared against without going through
+    /// the observed property. `update(_:)` runs inside the list's own tracked
+    /// render, where reading `values` would register the list as an observer
+    /// of the storage it publishes to, and every publish would re-render it.
+    @ObservationIgnored private var published = FineEnvironmentValues()
 
     /// Publishes `values` only when they differ from the stored ones, so
     /// unrelated list renders don't re-render every observing cell.
     func update(_ values: FineEnvironmentValues) {
-        guard !storedValues.fineIsApproximatelyEqual(to: values) else { return }
+        guard !published.fineIsApproximatelyEqual(to: values) else { return }
 
-        observationRegistrar.withMutation(of: self, keyPath: \.values) {
-            storedValues = values
-        }
+        published = values
+        self.values = values
     }
 }
 

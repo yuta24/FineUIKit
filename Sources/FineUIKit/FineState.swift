@@ -8,24 +8,12 @@
 import Observation
 import UIKit
 
-final class FineStateStorage<Value>: Observable {
-    private let observationRegistrar = ObservationRegistrar()
-    private var storedValue: Value
+@Observable
+final class FineStateStorage<Value> {
+    var value: Value
 
     init(_ value: Value) {
-        storedValue = value
-    }
-
-    var value: Value {
-        get {
-            observationRegistrar.access(self, keyPath: \.value)
-            return storedValue
-        }
-        set {
-            observationRegistrar.withMutation(of: self, keyPath: \.value) {
-                storedValue = newValue
-            }
-        }
+        self.value = value
     }
 }
 

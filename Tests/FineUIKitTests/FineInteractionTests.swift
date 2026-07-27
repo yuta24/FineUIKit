@@ -483,3 +483,159 @@ struct FineViewRepresentableTests {
         #expect(bodyEvaluationCount == 1)
     }
 }
+
+/// Control handlers are re-installed on every render. These pin the two
+/// properties that keeps sane: the newest closure runs, and only once.
+///
+/// Serialized because these make a key window, and Swift Testing runs suites in
+/// parallel: overlapping with another window-based suite makes both flaky.
+@MainActor
+@Suite(.serialized)
+struct FineControlHandlerTests {
+    @Observable
+    final class ActionModel {
+        var version = 1
+    }
+
+    @MainActor
+    final class ActionLog {
+        var entries: [String] = []
+    }
+
+    @Test func rerenderReplacesTheHandlerInsteadOfAddingOne() async throws {
+        let model = ActionModel()
+        let log = ActionLog()
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 200))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let container = UIView(frame: window.bounds)
+        window.addSubview(container)
+
+        let fineUI = FineUI(model) { model in
+            // The title carries the version so the test can tell when the
+            // re-render has landed; the closure captures it so every render
+            // hands the button a different one.
+            FineButton(title: "tap \(model.version)") { [version = model.version] in
+                log.entries.append("v\(version)")
+            }
+        }
+        fineUI.build(to: container)
+        window.layoutIfNeeded()
+
+        let button = try #require(container.subviews.first as? UIButton)
+        button.sendActions(for: .primaryActionTriggered)
+        #expect(log.entries == ["v1"])
+
+        model.version = 2
+        // Tapping before the re-render lands would test nothing, so wait for
+        // the title the same render installs the new closure with.
+        for _ in 0..<200 where button.title(for: .normal) != "tap 2" {
+            await Task.yield()
+        }
+        #expect(button.title(for: .normal) == "tap 2")
+        button.sendActions(for: .primaryActionTriggered)
+
+        // The second tap must run the new closure exactly once: a stale action
+        // left in place would append "v1", and an accumulated one would append
+        // both.
+        #expect(log.entries == ["v1", "v2"])
+    }
+
+    @Test func droppingAHandlerRemovesTheAction() async throws {
+        let model = ActionModel()
+        let log = ActionLog()
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 200))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let container = UIView(frame: window.bounds)
+        window.addSubview(container)
+
+        let fineUI = FineUI(model) { model in
+            // Version 1 submits; later versions do not. The placeholder marks
+            // which render is currently installed.
+            model.version == 1
+                ? FineTextField(text: .init(get: { "" }, set: { _ in }), placeholder: "v1")
+                    .onSubmit { log.entries.append("submitted") }
+                : FineTextField(text: .init(get: { "" }, set: { _ in }), placeholder: "v2")
+        }
+        fineUI.build(to: container)
+        window.layoutIfNeeded()
+
+        let field = try #require(container.subviews.first as? UITextField)
+        field.sendActions(for: .editingDidEndOnExit)
+        #expect(log.entries == ["submitted"])
+
+        model.version = 2
+        for _ in 0..<200 where field.placeholder != "v2" {
+            await Task.yield()
+        }
+        #expect(field.placeholder == "v2")
+        field.sendActions(for: .editingDidEndOnExit)
+
+        #expect(log.entries == ["submitted"])
+    }
+}
+
+/// `fineSetHandler` keys actions by identifier, so a control can carry several
+/// independent handlers for one event. No component pairs two keys on the same
+/// event today; these pin the behaviour before one does.
+@MainActor
+struct FineControlHandlerKeyTests {
+    @MainActor
+    final class ActionLog {
+        var entries: [String] = []
+    }
+
+    @Test func keysOnTheSameEventAreIndependent() {
+        let log = ActionLog()
+        let control = UIControl(frame: .zero)
+
+        control.fineSetHandler("a", for: .primaryActionTriggered) { _ in log.entries.append("a1") }
+        control.fineSetHandler("b", for: .primaryActionTriggered) { _ in log.entries.append("b1") }
+
+        control.sendActions(for: .primaryActionTriggered)
+        #expect(log.entries == ["a1", "b1"])
+
+        // Replacing one key must leave the other alone, and must not add a
+        // second action under the same key.
+        log.entries = []
+        control.fineSetHandler("a", for: .primaryActionTriggered) { _ in log.entries.append("a2") }
+        control.sendActions(for: .primaryActionTriggered)
+        // What matters is that both keys survive and each runs exactly once.
+        // Replacing an action re-adds it, so UIKit moves it to the end of the
+        // list for that event, but nothing depends on that order.
+        #expect(Set(log.entries) == ["a2", "b1"])
+        #expect(log.entries.count == 2)
+
+        // Removing one key leaves the other installed.
+        log.entries = []
+        control.fineSetHandler("a", for: .primaryActionTriggered, handler: nil)
+        control.sendActions(for: .primaryActionTriggered)
+        #expect(log.entries == ["b1"])
+    }
+
+    @Test func removingAKeyThatWasNeverInstalledIsHarmless() {
+        let log = ActionLog()
+        let control = UIControl(frame: .zero)
+
+        control.fineSetHandler("never-installed", for: .valueChanged, handler: nil)
+        control.fineSetHandler("real", for: .valueChanged) { _ in log.entries.append("real") }
+
+        control.sendActions(for: .valueChanged)
+        #expect(log.entries == ["real"])
+    }
+
+    @Test func handlersAreScopedToTheirEvent() {
+        let log = ActionLog()
+        let control = UIControl(frame: .zero)
+
+        control.fineSetHandler("k", for: .primaryActionTriggered) { _ in log.entries.append("primary") }
+        control.fineSetHandler("k", for: .valueChanged) { _ in log.entries.append("value") }
+
+        control.sendActions(for: .valueChanged)
+        #expect(log.entries == ["value"])
+
+        control.sendActions(for: .primaryActionTriggered)
+        #expect(log.entries == ["value", "primary"])
+    }
+}
