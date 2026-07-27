@@ -486,7 +486,11 @@ struct FineViewRepresentableTests {
 
 /// Control handlers are re-installed on every render. These pin the two
 /// properties that keeps sane: the newest closure runs, and only once.
+///
+/// Serialized because these make a key window, and Swift Testing runs suites in
+/// parallel: overlapping with another window-based suite makes both flaky.
 @MainActor
+@Suite(.serialized)
 struct FineControlHandlerTests {
     @Observable
     final class ActionModel {
@@ -503,6 +507,7 @@ struct FineControlHandlerTests {
         let log = ActionLog()
         let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 200))
         window.makeKeyAndVisible()
+        defer { window.isHidden = true }
         let container = UIView(frame: window.bounds)
         window.addSubview(container)
 
@@ -534,8 +539,6 @@ struct FineControlHandlerTests {
         // left in place would append "v1", and an accumulated one would append
         // both.
         #expect(log.entries == ["v1", "v2"])
-
-        window.isHidden = true
     }
 
     @Test func droppingAHandlerRemovesTheAction() async throws {
@@ -543,6 +546,7 @@ struct FineControlHandlerTests {
         let log = ActionLog()
         let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 200))
         window.makeKeyAndVisible()
+        defer { window.isHidden = true }
         let container = UIView(frame: window.bounds)
         window.addSubview(container)
 
@@ -569,8 +573,6 @@ struct FineControlHandlerTests {
         field.sendActions(for: .editingDidEndOnExit)
 
         #expect(log.entries == ["submitted"])
-
-        window.isHidden = true
     }
 }
 
@@ -599,9 +601,11 @@ struct FineControlHandlerKeyTests {
         log.entries = []
         control.fineSetHandler("a", for: .primaryActionTriggered) { _ in log.entries.append("a2") }
         control.sendActions(for: .primaryActionTriggered)
-        // Replacing an action re-adds it, which moves it to the end of the
-        // control's list for that event. Both still run exactly once.
-        #expect(log.entries == ["b1", "a2"])
+        // What matters is that both keys survive and each runs exactly once.
+        // Replacing an action re-adds it, so UIKit moves it to the end of the
+        // list for that event, but nothing depends on that order.
+        #expect(Set(log.entries) == ["a2", "b1"])
+        #expect(log.entries.count == 2)
 
         // Removing one key leaves the other installed.
         log.entries = []

@@ -29,6 +29,7 @@ struct FineUIHostingTests {
     @Test func buildingToAnotherContainerMovesTheTree() async throws {
         let model = HostingModel()
         let window = makeWindow()
+        defer { window.isHidden = true }
         let first = UIView(frame: .init(x: 0, y: 0, width: 320, height: 200))
         let second = UIView(frame: .init(x: 0, y: 200, width: 200, height: 280))
         window.addSubview(first)
@@ -53,12 +54,12 @@ struct FineUIHostingTests {
         #expect(label.superview === second)
         #expect(label.text == "first")
 
-        window.isHidden = true
     }
 
     @Test func movedTreeIsConstrainedToTheNewContainer() async throws {
         let model = HostingModel()
         let window = makeWindow()
+        defer { window.isHidden = true }
         let first = UIView(frame: .init(x: 0, y: 0, width: 320, height: 200))
         let second = UIView(frame: .init(x: 0, y: 200, width: 200, height: 280))
         window.addSubview(first)
@@ -89,12 +90,12 @@ struct FineUIHostingTests {
         }
         #expect(staleConstraints.isEmpty)
 
-        window.isHidden = true
     }
 
     @Test func movedTreeKeepsRespondingToStateChanges() async throws {
         let model = HostingModel()
         let window = makeWindow()
+        defer { window.isHidden = true }
         let first = UIView(frame: .init(x: 0, y: 0, width: 320, height: 200))
         let second = UIView(frame: .init(x: 0, y: 200, width: 320, height: 280))
         window.addSubview(first)
@@ -116,12 +117,12 @@ struct FineUIHostingTests {
         #expect(label.text == "second")
         #expect(label.superview === second)
 
-        window.isHidden = true
     }
 
     @Test func buildingTwiceToTheSameContainerKeepsOneRootView() async throws {
         let model = HostingModel()
         let window = makeWindow()
+        defer { window.isHidden = true }
         let container = UIView(frame: window.bounds)
         window.addSubview(container)
 
@@ -143,12 +144,12 @@ struct FineUIHostingTests {
         // pinning constraints.
         #expect(container.constraints.count == constraintCount)
 
-        window.isHidden = true
     }
 
     @Test func traitChangesFollowTheNewContainer() async throws {
         let model = HostingModel()
         let window = makeWindow()
+        defer { window.isHidden = true }
         let first = UIView(frame: window.bounds)
         let second = UIView(frame: window.bounds)
         window.addSubview(first)
@@ -175,7 +176,6 @@ struct FineUIHostingTests {
         let label = try #require(second.subviews.first?.subviews.first as? UILabel)
         #expect(label.text?.contains("AccessibilityL") == true)
 
-        window.isHidden = true
     }
 }
 
@@ -188,6 +188,7 @@ struct FineUIManualReparentTests {
         let model = HostingModel()
         let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 480))
         window.makeKeyAndVisible()
+        defer { window.isHidden = true }
         let first = UIView(frame: .init(x: 0, y: 0, width: 320, height: 200))
         let second = UIView(frame: .init(x: 0, y: 200, width: 200, height: 280))
         window.addSubview(first)
@@ -231,6 +232,7 @@ struct FineUITraitFollowsContainerTests {
         let model = HostingModel()
         let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 480))
         window.makeKeyAndVisible()
+        defer { window.isHidden = true }
         let first = UIView(frame: window.bounds)
         let second = UIView(frame: window.bounds)
         window.addSubview(first)
@@ -266,11 +268,10 @@ struct FineUITraitFollowsContainerTests {
         let label = try #require(second.subviews.first?.subviews.first as? UILabel)
         #expect(label.text?.contains("AccessibilityL") == true)
 
-        window.isHidden = true
     }
 }
 
 @MainActor
-final class RenderCounter {
+private final class RenderCounter {
     var count = 0
 }
