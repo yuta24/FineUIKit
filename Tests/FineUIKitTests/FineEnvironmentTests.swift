@@ -124,3 +124,63 @@ struct FineEnvironmentTests {
         #expect(label.text == "injected-1")
     }
 }
+
+/// `FineEnvironmentStorage` is what carries a list's environment to its cells.
+/// Both properties tested here are load-bearing: cells must not re-render for
+/// an unchanged environment, and the list must not become an observer of the
+/// storage it writes to.
+@MainActor
+struct FineEnvironmentStorageTests {
+    @MainActor
+    final class Fires {
+        var count = 0
+    }
+
+    private func values(theme: String) -> FineEnvironmentValues {
+        var values = FineEnvironmentValues()
+        values.theme = theme
+        return values
+    }
+
+    @Test func republishesOnlyWhenTheEnvironmentDiffers() async throws {
+        let storage = FineEnvironmentStorage()
+        storage.update(values(theme: "light"))
+
+        let fires = Fires()
+        withObservationTracking {
+            _ = storage.values
+        } onChange: {
+            Task { @MainActor in fires.count += 1 }
+        }
+
+        // Same values: observers must not be woken.
+        storage.update(values(theme: "light"))
+        for _ in 0..<20 { await Task.yield() }
+        #expect(fires.count == 0)
+
+        storage.update(values(theme: "dark"))
+        for _ in 0..<200 where fires.count == 0 { await Task.yield() }
+        #expect(fires.count == 1)
+        #expect(storage.values.theme == "dark")
+    }
+
+    @Test func updatingDoesNotRegisterTheCallerAsAnObserver() async throws {
+        let storage = FineEnvironmentStorage()
+        storage.update(values(theme: "light"))
+
+        let fires = Fires()
+        // A list calls update(_:) from inside its own tracked render. If that
+        // registered a read, the next publish would re-render the list, which
+        // would publish again.
+        withObservationTracking {
+            storage.update(values(theme: "dark"))
+        } onChange: {
+            Task { @MainActor in fires.count += 1 }
+        }
+
+        storage.update(values(theme: "sepia"))
+        for _ in 0..<20 { await Task.yield() }
+
+        #expect(fires.count == 0)
+    }
+}

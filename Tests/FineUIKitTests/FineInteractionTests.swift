@@ -483,3 +483,89 @@ struct FineViewRepresentableTests {
         #expect(bodyEvaluationCount == 1)
     }
 }
+
+/// Control handlers are re-installed on every render. These pin the two
+/// properties that keeps sane: the newest closure runs, and only once.
+@MainActor
+struct FineControlHandlerTests {
+    @Observable
+    final class ActionModel {
+        var version = 1
+    }
+
+    @MainActor
+    final class ActionLog {
+        var entries: [String] = []
+    }
+
+    @Test func rerenderReplacesTheHandlerInsteadOfAddingOne() async throws {
+        let model = ActionModel()
+        let log = ActionLog()
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 200))
+        window.makeKeyAndVisible()
+        let container = UIView(frame: window.bounds)
+        window.addSubview(container)
+
+        let fineUI = FineUI(model) { model in
+            // The closure captures the version, so every render hands the
+            // button a different one.
+            FineButton(title: "tap") { [version = model.version] in
+                log.entries.append("v\(version)")
+            }
+        }
+        fineUI.build(to: container)
+        window.layoutIfNeeded()
+
+        let button = try #require(container.subviews.first as? UIButton)
+        button.sendActions(for: .primaryActionTriggered)
+        #expect(log.entries == ["v1"])
+
+        model.version = 2
+        for _ in 0..<200 where log.entries == ["v1"] {
+            await Task.yield()
+            button.sendActions(for: .primaryActionTriggered)
+            if log.entries.count > 1 { break }
+        }
+
+        // The second tap must run the new closure exactly once: a stale action
+        // left in place would append "v1", and an accumulated one would append
+        // both.
+        #expect(log.entries == ["v1", "v2"])
+
+        window.isHidden = true
+    }
+
+    @Test func droppingAHandlerRemovesTheAction() async throws {
+        let model = ActionModel()
+        let log = ActionLog()
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 200))
+        window.makeKeyAndVisible()
+        let container = UIView(frame: window.bounds)
+        window.addSubview(container)
+
+        let fineUI = FineUI(model) { model in
+            // Version 1 submits; later versions do not.
+            model.version == 1
+                ? FineTextField(text: .init(get: { "" }, set: { _ in }))
+                    .onSubmit { log.entries.append("submitted") }
+                : FineTextField(text: .init(get: { "" }, set: { _ in }))
+        }
+        fineUI.build(to: container)
+        window.layoutIfNeeded()
+
+        let field = try #require(container.subviews.first as? UITextField)
+        field.sendActions(for: .editingDidEndOnExit)
+        #expect(log.entries == ["submitted"])
+
+        model.version = 2
+        for _ in 0..<200 where log.entries.count == 1 {
+            await Task.yield()
+            field.sendActions(for: .editingDidEndOnExit)
+            if log.entries.count > 1 { break }
+        }
+
+        #expect(log.entries == ["submitted"])
+
+        window.isHidden = true
+    }
+}

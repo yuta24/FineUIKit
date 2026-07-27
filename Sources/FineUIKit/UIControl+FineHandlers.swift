@@ -6,54 +6,30 @@
 //
 
 import UIKit
-import ObjectiveC
-
-@MainActor
-final class FineControlHandlerBox {
-    var handler: (UIControl) -> Void
-
-    init(handler: @escaping (UIControl) -> Void) {
-        self.handler = handler
-    }
-}
 
 @MainActor
 extension UIControl {
-    nonisolated(unsafe) static var fineHandlersKey: UInt8 = 0
-
-    private var fineHandlers: [String: FineControlHandlerBox] {
-        get {
-            objc_getAssociatedObject(self, &Self.fineHandlersKey) as? [String: FineControlHandlerBox] ?? [:]
-        }
-        set {
-            objc_setAssociatedObject(self, &Self.fineHandlersKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-        }
-    }
-
-    /// Registers one trampoline `UIAction` per key and replaces only the
-    /// stored handler afterwards. Passing `nil` removes the action.
+    /// Installs `handler` for `event` under `key`, replacing whatever was
+    /// installed under the same key before. Passing `nil` removes it.
+    ///
+    /// Adding a `UIAction` whose identifier is already registered for an event
+    /// replaces that action, so a render can hand over a fresh closure without
+    /// actions piling up, and without a box kept in an associated object to
+    /// mutate in place.
     func fineSetHandler(_ key: String, for event: UIControl.Event, handler: ((UIControl) -> Void)?) {
+        let identifier = UIAction.Identifier(key)
+
         guard let handler else {
-            removeAction(identifiedBy: .init(key), for: event)
-            var handlers = fineHandlers
-            handlers[key] = nil
-            fineHandlers = handlers
+            removeAction(identifiedBy: identifier, for: event)
             return
         }
 
-        var handlers = fineHandlers
-        if let box = handlers[key] {
-            box.handler = handler
-            return
-        }
-
-        let box = FineControlHandlerBox(handler: handler)
-        handlers[key] = box
-        fineHandlers = handlers
-
-        addAction(.init(identifier: .init(key), handler: { [box] action in
-            guard let control = action.sender as? UIControl else { return }
-            box.handler(control)
-        }), for: event)
+        addAction(
+            UIAction(identifier: identifier) { action in
+                guard let control = action.sender as? UIControl else { return }
+                handler(control)
+            },
+            for: event
+        )
     }
 }
