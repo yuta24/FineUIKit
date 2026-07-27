@@ -105,15 +105,26 @@ public struct FineStack: FinePrimitiveRenderable {
             return context.render(node, reusing: reusable)
         }
 
-        for oldView in oldViews where !newViews.contains(where: { $0 === oldView }) {
+        // Membership through a set: scanning `newViews` for every old view
+        // makes removal quadratic in the number of children.
+        let survivors = Set(newViews.map(ObjectIdentifier.init))
+        for oldView in oldViews where !survivors.contains(ObjectIdentifier(oldView)) {
             stackView.removeArrangedSubview(oldView)
             oldView.removeFromSuperview()
         }
 
+        // `arrangedSubviews` builds a new array on every access, so it is read
+        // once and re-read only after an insertion actually changes it. A
+        // render that reorders nothing then costs one read instead of two per
+        // child.
+        var arranged = stackView.arrangedSubviews
         for (index, newView) in newViews.enumerated() {
-            if index >= stackView.arrangedSubviews.count || stackView.arrangedSubviews[index] !== newView {
-                stackView.insertArrangedSubview(newView, at: index)
+            if index < arranged.count, arranged[index] === newView {
+                continue
             }
+
+            stackView.insertArrangedSubview(newView, at: index)
+            arranged = stackView.arrangedSubviews
         }
     }
 }

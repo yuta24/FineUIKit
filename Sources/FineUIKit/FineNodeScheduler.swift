@@ -49,10 +49,17 @@ final class FineNodeScheduler {
         isDraining = true
         defer { isDraining = false }
 
-        while !queue.isEmpty {
-            let job = queue.removeFirst()
+        // Reading through the queue instead of removing from its front: a job
+        // enqueues its children as it runs, so the queue grows while it is
+        // consumed, and repeated `removeFirst()` would shift the remainder on
+        // every step.
+        var readIndex = 0
+        while readIndex < queue.count {
+            let job = queue[readIndex]
+            readIndex += 1
             run(job)
         }
+        queue.removeAll(keepingCapacity: true)
     }
 
     private func enqueue(

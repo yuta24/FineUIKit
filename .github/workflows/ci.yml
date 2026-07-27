@@ -13,16 +13,57 @@ jobs:
   test:
     runs-on: macos-26
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # The runtime the tests actually run against. Add the support floor
+        # (iOS 17) here once a runtime for it is available on the runner: the
+        # package needs swift-tools 6.2, so no Xcode old enough to bundle one
+        # can build it, and Xcode 26/27 ship only iOS 26/27 runtimes. Until
+        # then the floor is upheld by API availability at compile time, not by
+        # test runs.
+        runtime: ["26", "27"]
     steps:
       - uses: actions/checkout@v5
 
       - name: Show Xcode version
         run: xcodebuild -version
 
+      - name: Resolve simulator
+        id: simulator
+        env:
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          set -euo pipefail
+
+          # Pick a device on the requested runtime rather than whichever
+          # simulator is listed first: falling back to another OS silently
+          # would report a pass for a version nobody asked to test.
+          if ! UDID=$(xcrun simctl list devices available --json | python3 -c '
+          import json, os, sys
+
+          prefix = "com.apple.CoreSimulator.SimRuntime.iOS-" + os.environ["RUNTIME"]
+          devices = json.load(sys.stdin)["devices"]
+          for identifier, entries in sorted(devices.items()):
+              if not identifier.startswith(prefix):
+                  continue
+              for device in entries:
+                  if "iPhone" in device["name"]:
+                      print(device["udid"])
+                      sys.exit(0)
+          sys.exit(1)
+          '); then
+            echo "::error::No available iPhone simulator on an iOS ${RUNTIME}.x runtime."
+            xcrun simctl list runtimes
+            exit 1
+          fi
+
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl list devices available | grep "$UDID"
+
       - name: Run tests
         run: |
-          DEVICE=$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | sed -E 's/ \([^)]*\).*$//' | sed -E 's/^ +//')
-          echo "Using simulator: $DEVICE"
+          set -euo pipefail
           xcodebuild -scheme FineUIKit \
-            -destination "platform=iOS Simulator,name=$DEVICE" \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
             test
