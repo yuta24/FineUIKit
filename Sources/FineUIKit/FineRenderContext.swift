@@ -8,7 +8,7 @@
 import UIKit
 
 @MainActor
-public struct FineRenderContext {
+struct FineRenderContext {
     let nodeScheduler: FineNodeScheduler?
     /// Gates observation-driven re-renders for the tree this context belongs to.
     /// `nil` for one-off renders that nobody suspends (tests, direct
