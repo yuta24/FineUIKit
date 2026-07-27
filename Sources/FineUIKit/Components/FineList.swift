@@ -59,6 +59,18 @@ struct FineSectionIdentifier: Hashable, @unchecked Sendable {
     }
 }
 
+/// Which sections carry a header and a footer.
+///
+/// Supplementary views live outside the diffable snapshot, so a section that
+/// gains or loses one produces no snapshot difference. Lists and grids compare
+/// this alongside the snapshot structure, or a header appearing on an otherwise
+/// unchanged section would never be asked for.
+struct FineSupplementarySignature: Equatable {
+    let id: FineSectionIdentifier
+    let hasHeader: Bool
+    let hasFooter: Bool
+}
+
 @MainActor
 public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Element.ID: Sendable {
     private let sections: [FineListSection<Element>]
@@ -210,14 +222,18 @@ public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Ele
         coordinator.sections = snapshotSections
         let previousElementsByID = coordinator.elementsByID
 
-        let previousIDs = Set(coordinator.dataSource.snapshot().itemIdentifiers)
-
-        var snapshot = NSDiffableDataSourceSnapshot<FineSectionIdentifier, Element.ID>()
+        // The identifiers the data source holds, tracked alongside every apply
+        // instead of read back through `snapshot()`, which copies them all.
+        let previousIDs = coordinator.appliedItemIDs
         let sectionIDs = snapshotSections.map { FineSectionIdentifier($0.id) }
-        snapshot.appendSections(sectionIDs)
-        for sectionID in sectionIDs {
-            snapshot.appendItems(itemIDsBySectionID[sectionID] ?? [], toSection: sectionID)
+        let supplementarySignature = snapshotSections.map {
+            FineSupplementarySignature(
+                id: FineSectionIdentifier($0.id),
+                hasHeader: $0.header != nil,
+                hasFooter: $0.footer != nil
+            )
         }
+
         // Rows whose identity survived may still have changed content;
         // reconfigure re-runs the cell provider, which updates hosted views in
         // place. Rows whose element is unchanged are skipped: `@Observable`
@@ -240,10 +256,35 @@ public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Ele
             // Elements that cannot be compared are conservatively reconfigured.
             return fineDynamicEquals(previousElement, currentElement) != true
         }
-        snapshot.reconfigureItems(reconfiguredIDs)
 
         coordinator.elementsByID = elementsByID
         coordinator.refreshVisibleSupplementaryViews(in: listView)
+
+        // A render that neither moves a row nor changes one has nothing for the
+        // data source to do, and applying anyway makes it diff the whole list.
+        // Root renders are triggered by any observed read in `body`, so an
+        // unrelated field elsewhere on the screen would otherwise pay for this.
+        //
+        // Headers and footers are compared too, because they are not part of
+        // the snapshot: a section that gains or loses one looks identical here,
+        // and the table only re-asks for supplementary views when something
+        // makes it reload.
+        let structureIsUnchanged = coordinator.appliedSectionIDs == sectionIDs
+            && coordinator.appliedItemIDsBySectionID == itemIDsBySectionID
+            && coordinator.appliedSupplementarySignature == supplementarySignature
+        guard !structureIsUnchanged || !reconfiguredIDs.isEmpty else { return }
+
+        var snapshot = NSDiffableDataSourceSnapshot<FineSectionIdentifier, Element.ID>()
+        snapshot.appendSections(sectionIDs)
+        for sectionID in sectionIDs {
+            snapshot.appendItems(itemIDsBySectionID[sectionID] ?? [], toSection: sectionID)
+        }
+        snapshot.reconfigureItems(reconfiguredIDs)
+
+        coordinator.appliedSectionIDs = sectionIDs
+        coordinator.appliedItemIDsBySectionID = itemIDsBySectionID
+        coordinator.appliedItemIDs = Set(elementsByID.keys)
+        coordinator.appliedSupplementarySignature = supplementarySignature
         coordinator.dataSource.apply(
             snapshot,
             animatingDifferences: FineTransactionContext.allowsDiffAnimation(inWindow: listView.window != nil)
@@ -287,8 +328,27 @@ extension FineList {
     final class Coordinator: NSObject, UITableViewDelegate {
         let dataSource: DataSource
 
-        var sections: [FineListSection<Element>] = []
+        var sections: [FineListSection<Element>] = [] {
+            didSet {
+                sectionsByID = Dictionary(
+                    sections.map { ($0.id, $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+            }
+        }
+        /// `sections` by identity. Supplementary lookups run per section on
+        /// every layout pass, and a linear scan there is work proportional to
+        /// the section count for each one of them.
+        private(set) var sectionsByID: [AnyHashable: FineListSection<Element>] = [:]
         var elementsByID: [Element.ID: Element] = [:]
+        /// The structure last handed to the data source. A render that changes
+        /// neither the structure nor any row's content skips `apply`, which
+        /// otherwise diffs the whole list — a root render triggered by an
+        /// unrelated part of the tree would pay for it on every keystroke.
+        var appliedSectionIDs: [FineSectionIdentifier] = []
+        var appliedItemIDsBySectionID: [FineSectionIdentifier: [Element.ID]] = [:]
+        var appliedItemIDs: Set<Element.ID> = []
+        var appliedSupplementarySignature: [FineSupplementarySignature] = []
         var content: (@MainActor (Element) -> any Renderable)?
         var onSelect: (@MainActor (Element) -> Void)?
         var onDelete: (@MainActor (Element) -> Void)?
@@ -362,10 +422,8 @@ extension FineList {
         }
 
         private func section(at index: Int) -> FineListSection<Element>? {
-            let identifiers = dataSource.snapshot().sectionIdentifiers
-            guard identifiers.indices.contains(index) else { return nil }
-            let id = identifiers[index]
-            return sections.first { $0.id == id.value }
+            guard let id = sectionID(at: index) else { return nil }
+            return sectionsByID[id]
         }
 
         /// The current description for a section's header or footer, found by
@@ -377,14 +435,19 @@ extension FineList {
         /// render has already replaced. Identity, not position: a view stays on
         /// screen while a section removed above it shifts every index below.
         func supplementaryNode(forSection id: AnyHashable, isHeader: Bool) -> (any Renderable)? {
-            guard let section = sections.first(where: { $0.id == id }) else { return nil }
+            guard let section = sectionsByID[id] else { return nil }
             return isHeader ? section.header : section.footer
         }
 
+        /// The identifier the data source currently shows at `index`.
+        ///
+        /// Asked through the data source rather than a cache of our own, so an
+        /// index UIKit hands us during an animated apply still resolves against
+        /// the sections on screen. `sectionIdentifier(for:)` reads the applied
+        /// snapshot directly; `snapshot()` would copy the whole thing, and this
+        /// runs per section on every layout pass.
         private func sectionID(at index: Int) -> AnyHashable? {
-            let identifiers = dataSource.snapshot().sectionIdentifiers
-            guard identifiers.indices.contains(index) else { return nil }
-            return identifiers[index].value
+            dataSource.sectionIdentifier(for: index)?.value
         }
 
         /// Re-renders on-screen headers and footers from the current sections.

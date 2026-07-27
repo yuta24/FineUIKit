@@ -205,7 +205,7 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
         }
 
         let supplementarySignature = snapshotSections.map {
-            SectionSupplementarySignature(
+            FineSupplementarySignature(
                 id: FineSectionIdentifier($0.id),
                 hasHeader: $0.header != nil,
                 hasFooter: $0.footer != nil
@@ -213,9 +213,14 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
         }
         coordinator.sections = snapshotSections
 
+        // Held for the apply decision below: headers and footers are not part
+        // of the snapshot, so a section that gains or loses one produces no
+        // snapshot difference and would otherwise never be asked for.
+        let supplementaryDidChange = coordinator.supplementarySignature != supplementarySignature
+
         if coordinator.columns != columns
             || coordinator.spacing != spacing
-            || coordinator.supplementarySignature != supplementarySignature
+            || supplementaryDidChange
         {
             coordinator.columns = columns
             coordinator.spacing = spacing
@@ -224,14 +229,11 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
         }
 
         let previousElementsByID = coordinator.elementsByID
-        let previousIDs = Set(coordinator.dataSource.snapshot().itemIdentifiers)
-
-        var snapshot = NSDiffableDataSourceSnapshot<FineSectionIdentifier, Element.ID>()
+        // The identifiers the data source holds, tracked alongside every apply
+        // instead of read back through `snapshot()`, which copies them all.
+        let previousIDs = coordinator.appliedItemIDs
         let sectionIDs = snapshotSections.map { FineSectionIdentifier($0.id) }
-        snapshot.appendSections(sectionIDs)
-        for sectionID in sectionIDs {
-            snapshot.appendItems(itemIDsBySectionID[sectionID] ?? [], toSection: sectionID)
-        }
+
         // Items whose identity survived may still have changed content;
         // reconfigure re-runs the cell provider, which updates hosted views in
         // place. Items whose element is unchanged are skipped: `@Observable`
@@ -254,10 +256,30 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
             // Elements that cannot be compared are conservatively reconfigured.
             return fineDynamicEquals(previousElement, currentElement) != true
         }
-        snapshot.reconfigureItems(reconfiguredIDs)
 
         coordinator.elementsByID = elementsByID
         coordinator.refreshVisibleSupplementaryViews(in: gridView)
+
+        // A render that neither moves an item nor changes one has nothing for
+        // the data source to do, and applying anyway makes it diff the whole
+        // grid. Root renders are triggered by any observed read in `body`, so
+        // an unrelated field elsewhere on the screen would otherwise pay for
+        // this.
+        let structureIsUnchanged = coordinator.appliedSectionIDs == sectionIDs
+            && coordinator.appliedItemIDsBySectionID == itemIDsBySectionID
+            && !supplementaryDidChange
+        guard !structureIsUnchanged || !reconfiguredIDs.isEmpty else { return }
+
+        var snapshot = NSDiffableDataSourceSnapshot<FineSectionIdentifier, Element.ID>()
+        snapshot.appendSections(sectionIDs)
+        for sectionID in sectionIDs {
+            snapshot.appendItems(itemIDsBySectionID[sectionID] ?? [], toSection: sectionID)
+        }
+        snapshot.reconfigureItems(reconfiguredIDs)
+
+        coordinator.appliedSectionIDs = sectionIDs
+        coordinator.appliedItemIDsBySectionID = itemIDsBySectionID
+        coordinator.appliedItemIDs = Set(elementsByID.keys)
         coordinator.dataSource.apply(
             snapshot,
             animatingDifferences: FineTransactionContext.allowsDiffAnimation(inWindow: gridView.window != nil)
@@ -360,24 +382,36 @@ extension FineGrid {
         var hasFooter = false
     }
 
-    struct SectionSupplementarySignature: Equatable {
-        let id: FineSectionIdentifier
-        let hasHeader: Bool
-        let hasFooter: Bool
-    }
-
     @MainActor
     final class Coordinator: NSObject, UICollectionViewDelegate {
         let dataSource: UICollectionViewDiffableDataSource<FineSectionIdentifier, Element.ID>
 
-        var sections: [FineGridSection<Element>] = []
+        var sections: [FineGridSection<Element>] = [] {
+            didSet {
+                sectionsByID = Dictionary(
+                    sections.map { ($0.id, $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+            }
+        }
+        /// `sections` by identity. Supplementary lookups run per section on
+        /// every layout pass, and a linear scan there is work proportional to
+        /// the section count for each one of them.
+        private(set) var sectionsByID: [AnyHashable: FineGridSection<Element>] = [:]
         var elementsByID: [Element.ID: Element] = [:]
+        /// The structure last handed to the data source. A render that changes
+        /// neither the structure nor any item's content skips `apply`, which
+        /// otherwise diffs the whole grid — a root render triggered by an
+        /// unrelated part of the tree would pay for it on every keystroke.
+        var appliedSectionIDs: [FineSectionIdentifier] = []
+        var appliedItemIDsBySectionID: [FineSectionIdentifier: [Element.ID]] = [:]
+        var appliedItemIDs: Set<Element.ID> = []
         var content: (@MainActor (Element) -> any Renderable)?
         var onSelect: (@MainActor (Element) -> Void)?
         var onRefresh: (@MainActor () async -> Void)?
         var columns: FineGridColumns
         var spacing: CGFloat
-        var supplementarySignature: [SectionSupplementarySignature] = []
+        var supplementarySignature: [FineSupplementarySignature] = []
         // Environment resolved at the grid's last render. Cells observe it,
         // so `.environment(_:_:)` changes reach visible items even when no
         // snapshot difference reconfigures them.
@@ -477,7 +511,7 @@ extension FineGrid {
         /// has already replaced. Identity, not position: a view stays on screen
         /// while a section removed above it shifts every index below.
         func supplementaryNode(forSection id: AnyHashable, kind: String) -> (any Renderable)? {
-            guard let section = sections.first(where: { $0.id == id }) else { return nil }
+            guard let section = sectionsByID[id] else { return nil }
 
             switch kind {
             case UICollectionView.elementKindSectionHeader:
@@ -489,10 +523,15 @@ extension FineGrid {
             }
         }
 
+        /// The identifier the data source currently shows at `index`.
+        ///
+        /// Asked through the data source rather than a cache of our own, so an
+        /// index UIKit hands us during an animated apply still resolves against
+        /// the sections on screen. `sectionIdentifier(for:)` reads the applied
+        /// snapshot directly; `snapshot()` would copy the whole thing, and this
+        /// runs per visible supplementary view.
         func sectionID(at index: Int) -> AnyHashable? {
-            let identifiers = dataSource.snapshot().sectionIdentifiers
-            guard identifiers.indices.contains(index) else { return nil }
-            return identifiers[index].value
+            dataSource.sectionIdentifier(for: index)?.value
         }
 
         /// Points `view` at the description for `id`, re-read on every host
@@ -543,10 +582,8 @@ extension FineGrid {
         }
 
         private func section(at index: Int) -> FineGridSection<Element>? {
-            let identifiers = dataSource.snapshot().sectionIdentifiers
-            guard identifiers.indices.contains(index) else { return nil }
-            let id = identifiers[index]
-            return sections.first { $0.id == id.value }
+            guard let id = sectionID(at: index) else { return nil }
+            return sectionsByID[id]
         }
 
         func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
