@@ -507,9 +507,10 @@ struct FineControlHandlerTests {
         window.addSubview(container)
 
         let fineUI = FineUI(model) { model in
-            // The closure captures the version, so every render hands the
-            // button a different one.
-            FineButton(title: "tap") { [version = model.version] in
+            // The title carries the version so the test can tell when the
+            // re-render has landed; the closure captures it so every render
+            // hands the button a different one.
+            FineButton(title: "tap \(model.version)") { [version = model.version] in
                 log.entries.append("v\(version)")
             }
         }
@@ -521,11 +522,13 @@ struct FineControlHandlerTests {
         #expect(log.entries == ["v1"])
 
         model.version = 2
-        for _ in 0..<200 where log.entries == ["v1"] {
+        // Tapping before the re-render lands would test nothing, so wait for
+        // the title the same render installs the new closure with.
+        for _ in 0..<200 where button.title(for: .normal) != "tap 2" {
             await Task.yield()
-            button.sendActions(for: .primaryActionTriggered)
-            if log.entries.count > 1 { break }
         }
+        #expect(button.title(for: .normal) == "tap 2")
+        button.sendActions(for: .primaryActionTriggered)
 
         // The second tap must run the new closure exactly once: a stale action
         // left in place would append "v1", and an accumulated one would append
@@ -544,11 +547,12 @@ struct FineControlHandlerTests {
         window.addSubview(container)
 
         let fineUI = FineUI(model) { model in
-            // Version 1 submits; later versions do not.
+            // Version 1 submits; later versions do not. The placeholder marks
+            // which render is currently installed.
             model.version == 1
-                ? FineTextField(text: .init(get: { "" }, set: { _ in }))
+                ? FineTextField(text: .init(get: { "" }, set: { _ in }), placeholder: "v1")
                     .onSubmit { log.entries.append("submitted") }
-                : FineTextField(text: .init(get: { "" }, set: { _ in }))
+                : FineTextField(text: .init(get: { "" }, set: { _ in }), placeholder: "v2")
         }
         fineUI.build(to: container)
         window.layoutIfNeeded()
@@ -558,11 +562,11 @@ struct FineControlHandlerTests {
         #expect(log.entries == ["submitted"])
 
         model.version = 2
-        for _ in 0..<200 where log.entries.count == 1 {
+        for _ in 0..<200 where field.placeholder != "v2" {
             await Task.yield()
-            field.sendActions(for: .editingDidEndOnExit)
-            if log.entries.count > 1 { break }
         }
+        #expect(field.placeholder == "v2")
+        field.sendActions(for: .editingDidEndOnExit)
 
         #expect(log.entries == ["submitted"])
 
