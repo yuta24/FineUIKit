@@ -573,3 +573,65 @@ struct FineControlHandlerTests {
         window.isHidden = true
     }
 }
+
+/// `fineSetHandler` keys actions by identifier, so a control can carry several
+/// independent handlers for one event. No component pairs two keys on the same
+/// event today; these pin the behaviour before one does.
+@MainActor
+struct FineControlHandlerKeyTests {
+    @MainActor
+    final class ActionLog {
+        var entries: [String] = []
+    }
+
+    @Test func keysOnTheSameEventAreIndependent() {
+        let log = ActionLog()
+        let control = UIControl(frame: .zero)
+
+        control.fineSetHandler("a", for: .primaryActionTriggered) { _ in log.entries.append("a1") }
+        control.fineSetHandler("b", for: .primaryActionTriggered) { _ in log.entries.append("b1") }
+
+        control.sendActions(for: .primaryActionTriggered)
+        #expect(log.entries == ["a1", "b1"])
+
+        // Replacing one key must leave the other alone, and must not add a
+        // second action under the same key.
+        log.entries = []
+        control.fineSetHandler("a", for: .primaryActionTriggered) { _ in log.entries.append("a2") }
+        control.sendActions(for: .primaryActionTriggered)
+        // Replacing an action re-adds it, which moves it to the end of the
+        // control's list for that event. Both still run exactly once.
+        #expect(log.entries == ["b1", "a2"])
+
+        // Removing one key leaves the other installed.
+        log.entries = []
+        control.fineSetHandler("a", for: .primaryActionTriggered, handler: nil)
+        control.sendActions(for: .primaryActionTriggered)
+        #expect(log.entries == ["b1"])
+    }
+
+    @Test func removingAKeyThatWasNeverInstalledIsHarmless() {
+        let log = ActionLog()
+        let control = UIControl(frame: .zero)
+
+        control.fineSetHandler("never-installed", for: .valueChanged, handler: nil)
+        control.fineSetHandler("real", for: .valueChanged) { _ in log.entries.append("real") }
+
+        control.sendActions(for: .valueChanged)
+        #expect(log.entries == ["real"])
+    }
+
+    @Test func handlersAreScopedToTheirEvent() {
+        let log = ActionLog()
+        let control = UIControl(frame: .zero)
+
+        control.fineSetHandler("k", for: .primaryActionTriggered) { _ in log.entries.append("primary") }
+        control.fineSetHandler("k", for: .valueChanged) { _ in log.entries.append("value") }
+
+        control.sendActions(for: .valueChanged)
+        #expect(log.entries == ["value"])
+
+        control.sendActions(for: .primaryActionTriggered)
+        #expect(log.entries == ["value", "primary"])
+    }
+}

@@ -10,14 +10,23 @@ import UIKit
 @MainActor
 extension UIControl {
     /// Installs `handler` for `event` under `key`, replacing whatever was
-    /// installed under the same key before. Passing `nil` removes it.
+    /// installed for the same key and event before. Passing `nil` removes it.
     ///
-    /// Adding a `UIAction` whose identifier is already registered for an event
-    /// replaces that action, so a render can hand over a fresh closure without
-    /// actions piling up, and without a box kept in an associated object to
-    /// mutate in place.
+    /// Adding a `UIAction` whose identifier is already registered replaces that
+    /// action, so a render can hand over a fresh closure without actions piling
+    /// up, and without a box kept in an associated object to mutate in place.
+    ///
+    /// The event is folded into the identifier because UIKit scopes identifiers
+    /// to the control, not to the control and event: registering one key for
+    /// two events otherwise leaves the second registration running the first
+    /// one's closure.
+    ///
+    /// Replacing a handler moves its action to the end of the control's list
+    /// for that event, so handlers under different keys run in order of last
+    /// assignment rather than of first registration. No component depends on
+    /// that order.
     func fineSetHandler(_ key: String, for event: UIControl.Event, handler: ((UIControl) -> Void)?) {
-        let identifier = UIAction.Identifier(key)
+        let identifier = UIAction.Identifier("\(key)#\(event.rawValue)")
 
         guard let handler else {
             removeAction(identifiedBy: identifier, for: event)

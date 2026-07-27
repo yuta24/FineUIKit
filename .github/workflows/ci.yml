@@ -16,13 +16,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The runtime the tests actually run against. Add the support floor
-        # (iOS 17) here once a runtime for it is available on the runner: the
-        # package needs swift-tools 6.2, so no Xcode old enough to bundle one
-        # can build it, and Xcode 26/27 ship only iOS 26/27 runtimes. Until
-        # then the floor is upheld by API availability at compile time, not by
-        # test runs.
-        runtime: ["26", "27"]
+        # Only runtimes this runner image is known to carry. Adding one means
+        # pairing it with a runner that has it — the resolve step below fails
+        # loudly rather than falling back, so an unavailable entry turns CI red.
+        #
+        # The support floor (iOS 17) cannot be listed: swift-tools 6.2 rules
+        # out every Xcode old enough to bundle an iOS 17 runtime, and Xcode
+        # 26/27 ship only their own. The floor is upheld by API availability at
+        # compile time, not by a test run.
+        runtime: ["26"]
     steps:
       - uses: actions/checkout@v5
 

@@ -48,6 +48,11 @@ public final class FineUI<State> {
     /// tree to another container can take them down: they reference the former
     /// container's layout guides, which the new hierarchy cannot satisfy.
     private var rootConstraints: [NSLayoutConstraint] = []
+    /// The container `rootConstraints` were installed against. The root's
+    /// superview alone cannot say whether they still hold: re-parenting the
+    /// root by any other means makes UIKit drop every constraint that crossed
+    /// the old hierarchy, leaving a root that is attached but unconstrained.
+    private weak var rootConstraintTarget: UIView?
     private var generation = 0
     private let renderGate = FineRenderGate()
     private var traitRegistration: (any UITraitChangeRegistration)?
@@ -219,10 +224,16 @@ public final class FineUI<State> {
         } else {
             view = apply()
         }
-        // Already installed here: the render was enough. A reused root view
-        // still has to be attached when `build(to:)` named a different
-        // container, which is why the superview is checked too.
-        guard view !== rootView || view.superview !== container else { return }
+        // Attach unless the tree is already installed in this container under
+        // constraints of ours that still hold. Checking the superview alone is
+        // not enough: anything that re-parents the root — including code
+        // outside the runtime — makes UIKit drop those constraints, and the
+        // root would stay attached but unconstrained.
+        let isInstalled = view === rootView
+            && view.superview === container
+            && rootConstraintTarget === container
+            && rootConstraints.allSatisfy(\.isActive)
+        guard !isInstalled else { return }
 
         UIView.performWithoutAnimation {
             if case .animate = transaction {
@@ -265,6 +276,7 @@ public final class FineUI<State> {
                 fillBottom,
             ]
             NSLayoutConstraint.activate(rootConstraints)
+            rootConstraintTarget = container
             container.layoutIfNeeded()
         }
     }

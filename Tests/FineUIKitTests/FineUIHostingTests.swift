@@ -178,3 +178,99 @@ struct FineUIHostingTests {
         window.isHidden = true
     }
 }
+
+/// Moving a Fine-managed root view by hand is not a supported operation, but
+/// it must not leave the tree unconstrained the next time `build(to:)` runs.
+@MainActor
+@Suite(.serialized)
+struct FineUIManualReparentTests {
+    @Test func constraintsDieWhenTheRootIsReparentedByHand() async throws {
+        let model = HostingModel()
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 480))
+        window.makeKeyAndVisible()
+        let first = UIView(frame: .init(x: 0, y: 0, width: 320, height: 200))
+        let second = UIView(frame: .init(x: 0, y: 200, width: 200, height: 280))
+        window.addSubview(first)
+        window.addSubview(second)
+
+        let fineUI = FineUI(model) { model in
+            FineLabel(text: model.title)
+        }
+        fineUI.build(to: first)
+        window.layoutIfNeeded()
+
+        let root = try #require(first.subviews.first)
+        let constraintsBefore = first.constraints.filter {
+            $0.firstItem === root || $0.secondItem === root
+        }
+        #expect(!constraintsBefore.isEmpty)
+
+        // Reparent behind the runtime's back.
+        second.addSubview(root)
+        window.layoutIfNeeded()
+
+        // The premise the fix rests on: UIKit drops every constraint that
+        // crossed the old hierarchy, so a root that looks attached can be
+        // completely unconstrained.
+        #expect(constraintsBefore.allSatisfy { !$0.isActive })
+
+        fineUI.build(to: second)
+        window.layoutIfNeeded()
+
+        #expect(root.superview === second)
+        #expect(root.bounds.width == 200)
+    }
+}
+
+/// Trait observation is registered on the container, so moving the tree has to
+/// move the registration with it.
+@MainActor
+@Suite(.serialized)
+struct FineUITraitFollowsContainerTests {
+    @Test func theOldContainerStopsDrivingRenders() async throws {
+        let model = HostingModel()
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 480))
+        window.makeKeyAndVisible()
+        let first = UIView(frame: window.bounds)
+        let second = UIView(frame: window.bounds)
+        window.addSubview(first)
+        window.addSubview(second)
+
+        let renders = RenderCounter()
+        let fineUI = FineUI(model) { model in
+            FineEnvironmentReader { environment in
+                renders.count += 1
+                return FineLabel(text: "\(model.title)-\(environment.traitCollection.preferredContentSizeCategory.rawValue)")
+            }
+        }
+        fineUI.build(to: first)
+        window.layoutIfNeeded()
+
+        fineUI.build(to: second)
+        window.layoutIfNeeded()
+
+        let afterMove = renders.count
+
+        // The tree no longer lives here, so this must not reach it.
+        first.traitOverrides.preferredContentSizeCategory = .accessibilityExtraLarge
+        for _ in 0..<200 { await Task.yield() }
+        window.layoutIfNeeded()
+        #expect(renders.count == afterMove)
+
+        // The container it moved to still does.
+        second.traitOverrides.preferredContentSizeCategory = .accessibilityLarge
+        for _ in 0..<200 where renders.count == afterMove { await Task.yield() }
+        window.layoutIfNeeded()
+        #expect(renders.count > afterMove)
+
+        let label = try #require(second.subviews.first?.subviews.first as? UILabel)
+        #expect(label.text?.contains("AccessibilityL") == true)
+
+        window.isHidden = true
+    }
+}
+
+@MainActor
+final class RenderCounter {
+    var count = 0
+}
