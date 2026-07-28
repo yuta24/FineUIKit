@@ -42,6 +42,11 @@ public struct FineSlider: FinePrimitiveRenderable {
     func _update(_ view: UIView, context: FineRenderContext) {
         guard let slider = view as? UISlider else { return }
 
+        // The ceiling is raised before the floor moves up, so the two bounds
+        // never cross while a range that moved entirely upwards is written.
+        if slider.maximumValue < range.upperBound {
+            slider.maximumValue = range.upperBound
+        }
         if slider.minimumValue != range.lowerBound {
             slider.minimumValue = range.lowerBound
         }
@@ -51,6 +56,14 @@ public struct FineSlider: FinePrimitiveRenderable {
 
         if slider.value != value.value {
             slider.value = value.value
+        }
+        // UIKit clamps the written value to the slider's own range. The state
+        // follows what is actually shown, so a value outside the range is
+        // corrected once instead of disagreeing with the UI forever — and the
+        // guard above keeps working, which it would not against a value the
+        // slider can never take.
+        if value.value != slider.value {
+            value.value = slider.value
         }
         if slider.isEnabled != isEnabled {
             slider.isEnabled = isEnabled
