@@ -411,6 +411,77 @@ struct FineListBehaviorTests {
         _ = window
     }
 
+    /// A section that gains or loses a header or footer changes nothing the
+    /// diffable snapshot can express, so the list has to notice it on its own —
+    /// otherwise the table is never asked for the supplementary view.
+    @Test(arguments: [true, false])
+    func supplementaryAppearsWhenSectionIsOtherwiseUnchanged(isHeader: Bool) async throws {
+        let items = [Item(id: "a", title: "A")]
+        let list = { (text: String?) in
+            FineList(sections: [
+                FineListSection(
+                    id: "main",
+                    header: isHeader ? text.map { FineLabel(text: $0) } : nil,
+                    footer: isHeader ? nil : text.map { FineLabel(text: $0) },
+                    items: items
+                ),
+            ]) { FineLabel(text: $0.title) }
+        }
+
+        let view = FineRenderer.render(list(nil))
+        let listView = try #require(view as? UITableView)
+        let window = attachToWindow(listView)
+        await waitForRows(1, in: listView)
+
+        func supplementary() -> UIView? {
+            listView.layoutIfNeeded()
+            return isHeader ? listView.headerView(forSection: 0) : listView.footerView(forSection: 0)
+        }
+
+        #expect(supplementary() == nil)
+
+        _ = FineRenderer.render(list("S"), reusing: view)
+        await waitUntil { supplementary() != nil }
+
+        let installed = try #require(supplementary())
+        #expect(firstLabel(in: installed)?.text == "S")
+        _ = window
+    }
+
+    @Test(arguments: [true, false])
+    func supplementaryDisappearsWhenSectionIsOtherwiseUnchanged(isHeader: Bool) async throws {
+        let items = [Item(id: "a", title: "A")]
+        let list = { (text: String?) in
+            FineList(sections: [
+                FineListSection(
+                    id: "main",
+                    header: isHeader ? text.map { FineLabel(text: $0) } : nil,
+                    footer: isHeader ? nil : text.map { FineLabel(text: $0) },
+                    items: items
+                ),
+            ]) { FineLabel(text: $0.title) }
+        }
+
+        let view = FineRenderer.render(list("S"))
+        let listView = try #require(view as? UITableView)
+        let window = attachToWindow(listView)
+        await waitForRows(1, in: listView)
+
+        func supplementary() -> UIView? {
+            listView.layoutIfNeeded()
+            return isHeader ? listView.headerView(forSection: 0) : listView.footerView(forSection: 0)
+        }
+
+        await waitUntil { supplementary() != nil }
+        #expect(supplementary() != nil)
+
+        _ = FineRenderer.render(list(nil), reusing: view)
+        await waitUntil { supplementary() == nil }
+
+        #expect(supplementary() == nil)
+        _ = window
+    }
+
     @Test func onSelectChangeUpdatesVisibleCellSelectionStyle() async throws {
         let items = [Item(id: "a", title: "A")]
         let list = { (items: [Item]) in
@@ -544,6 +615,12 @@ struct FineGridBehaviorTests {
         }
     }
 
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<200 where !condition() {
+            await Task.yield()
+        }
+    }
+
     private func firstLabel(in view: UIView) -> UILabel? {
         if let label = view as? UILabel {
             return label
@@ -605,6 +682,83 @@ struct FineGridBehaviorTests {
         ))
 
         #expect(firstLabel(in: header)?.text == "H-injected")
+        _ = window
+    }
+
+    /// The grid reaches the same outcome as the list through a different route
+    /// — a compositional layout that has to be invalidated for the section to
+    /// gain or lose its supplementary item — so it is covered separately.
+    @Test(arguments: [true, false])
+    func supplementaryAppearsWhenSectionIsOtherwiseUnchanged(isHeader: Bool) async throws {
+        let kind = isHeader
+            ? UICollectionView.elementKindSectionHeader
+            : UICollectionView.elementKindSectionFooter
+        let items = [Item(id: "a", title: "A")]
+        let grid = { (text: String?) in
+            FineGrid(sections: [
+                FineGridSection(
+                    id: "main",
+                    header: isHeader ? text.map { FineLabel(text: $0) } : nil,
+                    footer: isHeader ? nil : text.map { FineLabel(text: $0) },
+                    items: items
+                ),
+            ]) { FineLabel(text: $0.title) }
+        }
+
+        let view = FineRenderer.render(grid(nil))
+        let collectionView = try #require(view as? UICollectionView)
+        let window = attachToWindow(collectionView)
+        await waitForItems(1, in: collectionView)
+
+        func supplementaries() -> [UICollectionReusableView] {
+            collectionView.layoutIfNeeded()
+            return collectionView.visibleSupplementaryViews(ofKind: kind)
+        }
+
+        #expect(supplementaries().isEmpty)
+
+        _ = FineRenderer.render(grid("S"), reusing: view)
+        await waitUntil { !supplementaries().isEmpty }
+
+        let installed = try #require(supplementaries().first)
+        #expect(firstLabel(in: installed)?.text == "S")
+        _ = window
+    }
+
+    @Test(arguments: [true, false])
+    func supplementaryDisappearsWhenSectionIsOtherwiseUnchanged(isHeader: Bool) async throws {
+        let kind = isHeader
+            ? UICollectionView.elementKindSectionHeader
+            : UICollectionView.elementKindSectionFooter
+        let items = [Item(id: "a", title: "A")]
+        let grid = { (text: String?) in
+            FineGrid(sections: [
+                FineGridSection(
+                    id: "main",
+                    header: isHeader ? text.map { FineLabel(text: $0) } : nil,
+                    footer: isHeader ? nil : text.map { FineLabel(text: $0) },
+                    items: items
+                ),
+            ]) { FineLabel(text: $0.title) }
+        }
+
+        let view = FineRenderer.render(grid("S"))
+        let collectionView = try #require(view as? UICollectionView)
+        let window = attachToWindow(collectionView)
+        await waitForItems(1, in: collectionView)
+
+        func supplementaries() -> [UICollectionReusableView] {
+            collectionView.layoutIfNeeded()
+            return collectionView.visibleSupplementaryViews(ofKind: kind)
+        }
+
+        await waitUntil { !supplementaries().isEmpty }
+        #expect(!supplementaries().isEmpty)
+
+        _ = FineRenderer.render(grid(nil), reusing: view)
+        await waitUntil { supplementaries().isEmpty }
+
+        #expect(supplementaries().isEmpty)
         _ = window
     }
 

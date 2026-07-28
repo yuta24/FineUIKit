@@ -15,9 +15,23 @@ import UIKit
 @MainActor
 public protocol Renderable {
     /// Returns the composed UI description.
+    ///
+    /// Reconciling a description may evaluate `body` more than once — deciding
+    /// whether a view can be reused reads through it, and so does rendering it
+    /// — so it must be free of side effects and describe the same UI each time
+    /// for the same state. It may of course describe something different after
+    /// the state it reads has changed.
     var body: any Renderable { get }
 }
 
+/// The description a view is built and updated from.
+///
+/// `_modifierSignature` and `_key` must be free of side effects, and equivalent
+/// across repeated evaluations for the same state: reconciliation may read them
+/// more than once, and in no guaranteed order relative to `_canUpdate`,
+/// `_makeView` and `_update`. Pass-through primitives resolve their content
+/// through `body` to answer them, so the same requirement reaches whatever
+/// `Renderable.body` they wrap.
 @MainActor
 protocol FinePrimitiveRenderable: Renderable {
     func _makeView() -> UIView

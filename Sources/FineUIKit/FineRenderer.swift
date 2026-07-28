@@ -16,23 +16,40 @@ public enum FineRenderer {
     }
 
     static func render(_ node: any Renderable, reusing existing: UIView? = nil, context: FineRenderContext) -> UIView {
+        render(resolved: primitive(for: node), reusing: existing, context: context)
+    }
+
+    /// Renders a description whose primitive the caller already resolved.
+    ///
+    /// Resolving walks `body`, so a caller that had to look at the primitive
+    /// anyway — `FineStack`, for a child's key — hands it over instead of
+    /// making the renderer rebuild the same subtree.
+    static func render(
+        resolved node: any FinePrimitiveRenderable,
+        reusing existing: UIView? = nil,
+        context: FineRenderContext
+    ) -> UIView {
         if let nodeScheduler = context.nodeScheduler {
-            return nodeScheduler.renderChild(node, reusing: existing, context: context)
+            return nodeScheduler.renderChild(resolved: node, reusing: existing, context: context)
         }
 
-        let node = primitive(for: node)
+        // Read once and reuse: both are computed properties that walk `body`
+        // down to the content primitive, so asking twice re-evaluates the
+        // description.
+        let signature = node._modifierSignature
+        let key = node._key
 
-        if let existing, reuses(existing, for: node) {
+        if let existing, reuses(existing, for: node, signature: signature, key: key) {
             node._update(existing, context: context)
-            existing.fineModifierSignature = node._modifierSignature
-            existing.fineKey = node._key
+            existing.fineModifierSignature = signature
+            existing.fineKey = key
             return existing
         }
 
         let view = node._makeView()
         node._update(view, context: context)
-        view.fineModifierSignature = node._modifierSignature
-        view.fineKey = node._key
+        view.fineModifierSignature = signature
+        view.fineKey = key
         return view
     }
 
@@ -42,14 +59,20 @@ public enum FineRenderer {
     /// behind and a moved item would keep another item's view.
     ///
     /// The single place both render paths decide this, so `FineDiagnostics`
-    /// sees every rebuild.
-    static func reuses(_ existing: UIView, for primitive: any FinePrimitiveRenderable) -> Bool {
+    /// sees every rebuild. `signature` and `key` are passed in rather than read
+    /// here: the caller installs them on the view afterwards and would
+    /// otherwise re-evaluate the description to get the same values.
+    static func reuses(
+        _ existing: UIView,
+        for primitive: any FinePrimitiveRenderable,
+        signature: String,
+        key: AnyHashable?
+    ) -> Bool {
         guard primitive._canUpdate(existing) else {
             FineDiagnostics.reportRebuild(of: existing, for: primitive, reason: .viewType)
             return false
         }
 
-        let signature = primitive._modifierSignature
         guard existing.fineModifierSignature == signature else {
             FineDiagnostics.reportRebuild(
                 of: existing,
@@ -59,7 +82,6 @@ public enum FineRenderer {
             return false
         }
 
-        let key = primitive._key
         guard existing.fineKey == key else {
             FineDiagnostics.reportRebuild(
                 of: existing,
