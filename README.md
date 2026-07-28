@@ -66,12 +66,33 @@ FineList(sections: [
 | `FineList` | `UITableView` | diffable data source(`Identifiable`)。セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedRows()` / `.onSelect` / `.onDelete` / `.keyboardDismissMode`。行の高さは観測起因の変化に自動追従 |
 | `FineGrid` | `UICollectionView` | compositional layout。`columns: .count(n)` / `.adaptive(minimum:)`、セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedItems()` / `.onSelect` / `.keyboardDismissMode` |
 | `FineTextField` | `UITextField` | `FineBinding<String>` で双方向。`.keyboardType` / `.returnKeyType` / `.secureTextEntry` / `.onSubmit` / `.enabled` / `.focused` |
+| `FineTextView` | `UITextView` | 複数行入力。`FineBinding<String>` + placeholder(UIKit にないので独自描画)。既定でスクロール無効=内容に合わせて伸びる。`.font` / `.textColor` / `.textAlignment` / `.editable` / `.scrollEnabled` / `.keyboardType` / `.focused` |
 | `FineToggle` | `UISwitch` | `FineBinding<Bool>`。`.enabled` |
 | `FineSlider` | `UISlider` | `FineBinding<Float>` + `in:` レンジ。`.enabled` |
+| `FineStepper` | `UIStepper` | `FineBinding<Double>` + `in:` レンジ / `step:`。`.enabled` |
+| `FineSegmentedControl` | `UISegmentedControl` | `FineBinding<Int>` で選択。タイトル / 画像セグメント。セグメントの増減・差し替えは in-place 差分適用。`.enabled` |
+| `FineDatePicker` | `UIDatePicker` | `FineBinding<Date>` + `in:` レンジ。`.datePickerMode` / `.preferredDatePickerStyle` / `.minuteInterval` / `.enabled`。`.countDownTimer` は非対応(`Date` では duration を表現できないため。debug ビルドでは assert) |
+| `FinePageControl` | `UIPageControl` | `FineBinding<Int>` + `numberOfPages`(範囲外はクランプ)。`.hidesForSinglePage` / `.pageIndicatorTintColor` / `.currentPageIndicatorTintColor` |
+| `FineProgressView` | `UIProgressView` | `value:` / `total:`(0...1 にクランプ)。`.progressViewStyle` / `.progressTintColor` / `.trackTintColor` |
+| `FineActivityIndicator` | `UIActivityIndicatorView` | `isAnimating:` で開始・停止。`.style` / `.color` / `.hidesWhenStopped` |
 | `FineSpacer` | — | スタック内の余白吸収(`minLength:`) |
+| `FineDivider` | — | 区切り線。既定は1物理ピクセルのヘアライン(display scale 追従)。`FineDivider()` = 横線 / `FineDivider.vertical()` = 縦線、`.thickness` / `.color` |
 | `FineScrollView` | `UIScrollView` | 縦横対応。`.keyboardDismissMode`。`FineList` / `FineGrid` は自身がスクロールするので入れないこと |
 
 組み込みにないビューは `FineViewRepresentable` で任意の `UIView` をラップできます(後述)。
+
+`FineProgressView(value:)` / `FineActivityIndicator(isAnimating:)` は表示値を `@autoclosure` で受け取ります(`FineLabel(text:)` と同じ)。読み取りはそのノードの `_update` 内で起きるため、進捗やローディングの変化では**そのビューだけ**が更新され、`body` は再評価されません。`total:` は素の値なので、これが変わったときは `body` から再評価されます。
+
+```swift
+FineStack.vertical(spacing: 12) {
+    FineProgressView(value: viewModel.downloaded, total: viewModel.totalBytes)
+    FineDivider()
+    FineStack.horizontal(spacing: 8) {
+        FineActivityIndicator(isAnimating: viewModel.isLoading)
+        FineLabel(text: viewModel.status)
+    }
+}
+```
 
 ## ナビゲーション
 
@@ -105,17 +126,28 @@ FineBarButton(title: "Detail") { [weak self] in
 FineTextField(text: .init(viewModel, \.draft))   // ReferenceWritableKeyPath から生成
 FineToggle(isOn: .init(item, \.completed))
 FineSlider(value: .init(settings, \.volume), in: 0...10)
+FineStepper(value: .init(settings, \.servings), in: 1...20, step: 1)
+FineSegmentedControl(titles: ["All", "Active", "Done"], selection: .init(viewModel, \.filter))
+FineDatePicker(selection: .init(item, \.dueDate), in: .now ... .distantFuture)
+    .datePickerMode(.date)
+FinePageControl(numberOfPages: viewModel.pages.count, currentPage: .init(viewModel, \.page))
 
 FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
     .returnKeyType(.done)
     .onSubmit { viewModel.add() }
+
+FineTextView(text: .init(item, \.memo), placeholder: "Memo")   // 複数行。内容に合わせて伸びる
 ```
 
 `FineBinding` は `get` / `set` のペアです。`get` はレンダリング中(observation スコープ内)に評価されるため、バインド先の変更で自動的に再レンダリングされます。UI 側の変更は `set` を通じて状態へ書き戻され、「現在値と異なるときだけビューに書く」ガードにより入力中のカーソルは保持されます。
 
+**クランプ・丸めの書き戻し**: `FineSlider` / `FineStepper` / `FineDatePicker` / `FinePageControl` は、UIKit 側で値がクランプ(レンジ外)・丸め(`minuteInterval` など)されたとき、**適用後の値をバインディングへ書き戻します**。状態は常に「画面に出ている値」と一致するため、範囲外の値が状態にだけ残り続けることはありません(例: `pages` が減ったあとの `page` が末尾を超えたままにならない)。書き戻しは1回で収束し、以降の再レンダリングは発生しません。
+
+`FineSegmentedControl` だけは例外で、`selection` がセグメント範囲外のときは「未選択」を表示するだけで状態は書き換えません(セグメントを後から流し込む間、選択の意図を消さないため)。
+
 ## フォーカス管理
 
-`FineTextField` の `.focused(_:)` に `FineBinding<Bool>` を渡すと、first responder を状態から駆動できます。`true` を書くとフォーカス(キーボード表示)、`false` を書くと解除。ユーザー操作によるフォーカスの出入りもバインディングへ書き戻されます。
+`FineTextField` / `FineTextView` の `.focused(_:)` に `FineBinding<Bool>` を渡すと、first responder を状態から駆動できます。`true` を書くとフォーカス(キーボード表示)、`false` を書くと解除。ユーザー操作によるフォーカスの出入りもバインディングへ書き戻されます。
 
 ```swift
 @Observable
@@ -366,22 +398,23 @@ FineStack.vertical(spacing: 8) {
 組み込みコンポーネントにないビュー(`WKWebView`、`MKMapView`、自作ビューなど)は `FineViewRepresentable` で宣言的ツリーに組み込めます。SwiftUI の `UIViewRepresentable` に相当します。
 
 ```swift
-struct ProgressBar: FineViewRepresentable {
-    let progress: Float
+struct BlurBackground: FineViewRepresentable {
+    let style: UIBlurEffect.Style
 
-    func makeView() -> UIProgressView {
-        UIProgressView(progressViewStyle: .default)
+    func makeView() -> UIVisualEffectView {
+        UIVisualEffectView(effect: nil)
     }
 
-    func updateView(_ view: UIProgressView, environment: FineEnvironmentValues) {
-        if view.progress != progress {
-            view.progress = progress
+    func updateView(_ view: UIVisualEffectView, environment: FineEnvironmentValues) {
+        let effect = UIBlurEffect(style: style)
+        if view.effect != effect {
+            view.effect = effect
         }
     }
 }
 
 // 通常のコンポーネントと同じように合成・修飾できる
-ProgressBar(progress: viewModel.progress)
+BlurBackground(style: .systemMaterial)
     .padding(16)
 ```
 
