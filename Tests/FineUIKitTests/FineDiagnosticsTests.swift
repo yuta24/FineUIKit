@@ -105,6 +105,31 @@ struct FineDiagnosticsTests {
         #expect(messages.isEmpty)
     }
 
+    /// Renders that reuse their view report nothing to the rebuild log, which
+    /// is the question `logsRenders` exists to answer instead.
+    @Test func reportsEveryRenderWhenAskedTo() {
+        let previousHandler = FineDiagnostics.handler
+        let previousFlag = FineDiagnostics.logsRenders
+        defer {
+            FineDiagnostics.handler = previousHandler
+            FineDiagnostics.logsRenders = previousFlag
+        }
+
+        var messages: [String] = []
+        FineDiagnostics.handler = { messages.append($0) }
+        FineDiagnostics.logsRenders = true
+
+        let first = FineRenderer.render(DiagnosticsMarker())
+        _ = FineRenderer.render(DiagnosticsMarker(), reusing: first)
+        FineDiagnostics.logsRenders = false
+
+        let reports = messages.filter { $0.contains("DiagnosticsMarkerView") }
+        #expect(reports.count == 2)
+        #expect(reports.first?.contains("created") == true)
+        #expect(reports.last?.contains("updated") == true)
+        #expect(reports.last?.contains("render #2") == true)
+    }
+
     /// The scheduler path decides reuse through the same helper, so rebuilds
     /// are reported there too.
     @Test func reportsRebuildsOnTheScheduledPath() async {

@@ -27,4 +27,33 @@ final class FineNode {
     // node-local re-renders reuse it, so environment survives without a
     // separate copy on the node.
     var context: FineRenderContext?
+
+    /// The description that last rendered this view, kept as a metatype rather
+    /// than a name: assigning it is a pointer store, so the debug description
+    /// can name the component without formatting a string on every render.
+    /// Held separately from `primitive`, which only the scheduled path sets.
+    var primitiveType: (any FinePrimitiveRenderable.Type)?
+
+    /// Renders applied at this position in the tree, and how many of them had
+    /// to make a new view instead of updating one. Carried onto a replacement
+    /// view by `FineDiagnostics.carryCounters(from:to:)`.
+    var renderCount = 0
+    var rebuildCount = 0
+
+    /// How the view about to be updated came about. The scheduled path decides
+    /// this when it reconciles, and the update it enqueues consumes it; a
+    /// node-local re-render finds it empty and counts as an update.
+    var pendingRenderKind: FineDiagnostics.RenderKind?
+
+    /// The component that last rendered this view, or `nil` for a view
+    /// FineUIKit does not manage.
+    var primitiveName: String {
+        primitiveType.map { "\($0)" } ?? "unknown"
+    }
+
+    /// Reads and clears the kind recorded by the last reconciliation.
+    func takePendingRenderKind() -> FineDiagnostics.RenderKind? {
+        defer { pendingRenderKind = nil }
+        return pendingRenderKind
+    }
 }

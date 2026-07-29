@@ -457,6 +457,60 @@ FineUIKit rebuilt UILabel for FineImage: view type is incompatible
 
 既定では `OSLog` に出力します。`FineDiagnostics.handler` を差し替えれば、テストや自前のコンソールへ流せます。
 
+### レンダリング回数
+
+各ビューには「その位置で何回レンダリングされたか(`renders`)」「そのうち何回ビューを作り直したか(`rebuilds`)」が常に記録されます。フラグ不要・常時有効で、コストは整数のインクリメント2回です。作り直しの際はカウンタが新しいビューへ引き継がれるため、数字はビュー個体ではなく**ツリー上の位置**を表します。
+
+作り直しに至らない再レンダリングも含めて全件ログに出したいときは:
+
+```swift
+FineDiagnostics.logsRenders = true  // または FINEUIKIT_LOG_RENDERS=1
+```
+
+```
+FineUIKit updated UILabel for FineLabel (render #3, 0 rebuilt)
+FineUIKit rebuilt UITextField for FineKeyed (render #5, 1 rebuilt)
+```
+
+### 再レンダリングのハイライト
+
+再レンダリングされたビューの輪郭が一瞬光ります。**緑 = in-place 更新、赤 = 作り直し**で、数字はそのビューの累計レンダリング回数です。
+
+```swift
+FineDiagnostics.highlightsRenders = true  // または FINEUIKIT_HIGHLIGHT_RENDERS=1
+```
+
+ビュー自身の `layer.border` ではなく専用のサブレイヤーを重ねるため、枠線を持つコンポーネントの見た目を壊さず、タップも吸いません。DEBUG ビルド限定です。フレームレートを計測するときはオフにしてください(オーバーレイの描画コストが計測対象を上回ります)。
+
+### ツリーのダンプとビューの説明
+
+Xcode の View Debugger は `UILabel` は見せますが、それを作った `FineLabel`・key・モディファイア署名は見せません。デバッガから:
+
+```
+(lldb) po view.fineDumpTree()
+FineStack → UIStackView  renders 2
+  FineLabel → UILabel  renders 2  modifiers "|padding"
+  FineKeyed → UITextField  renders 5  rebuilds 1  key draft  state
+  UIView (unmanaged)
+
+(lldb) po someLabel.fineDebugDescription
+FineLabel → UILabel  renders 3  hidden
+```
+
+FineUIKit が管理していないビューは `unmanaged` と表示されます。どちらも observable な状態を読まないので、ブレークポイントから呼んでもレンダリングループを乱しません。
+
+### Instruments(signpost)
+
+3つのレンダリングループが Points of Interest に signpost 区間を出します。Time Profiler や Animation Hitches のテンプレートでそのまま見えるため、専用テンプレートは不要です。
+
+| 区間 | 意味 |
+|---|---|
+| `render` | ルートの再レンダリング(`body(_:)` の再評価とツリーの再 diff) |
+| `node` | ノード単位の更新(観測起因のノードローカル再レンダリングを含む。記述の型名付き) |
+| `cell` | リスト / グリッドのセルが抱えるサブツリー |
+
+計測ツールが記録していなければ何も出力されないため、release ビルドにもそのまま残ります。
+
 ## アーキテクチャ
 
 - `Renderable` — UI 記述の公開プロトコル。アプリ側は `body` で組み込みコンポーネントを合成する
@@ -477,6 +531,8 @@ Example アプリでは [InjectionLite](https://github.com/johnno1962/InjectionL
 1. InjectionLite を SPM で追加(またはビルドマシンで InjectionIII.app を起動)
 2. Debug 構成の Other Linker Flags に `-Xlinker -interposable` を追加
 3. シミュレータでアプリを起動し、ソースを編集・保存すると数秒で画面に反映される
+
+注入が届いて再レンダリングが走ると、画面上部に「FineUIKit reloaded」のトーストが出ます(複数のツリーが再レンダリングされた場合は `×3` のように件数付き)。**「注入が届いていない」のか「届いたが記述が変わらなかった」のか**は画面上は同じに見えるため、前者だけが無音になるこの区別が切り分けの起点になります。不要なら `FineDiagnostics.showsInjectionToast = false`、または環境変数 `FINEUIKIT_INJECTION_TOAST=0` で消せます。
 
 ### 注意: `body` の外に書いたコードの差し替え
 

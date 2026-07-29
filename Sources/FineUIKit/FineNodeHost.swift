@@ -70,7 +70,11 @@ final class FineNodeHost {
 
         let transaction = FineTransactionContext.current
         let apply = { [self] in
-            withObservationTracking {
+            let signposter = FineSignpost.signposter
+            let interval = signposter.beginInterval("cell", id: signposter.makeSignpostID())
+            defer { signposter.endInterval("cell", interval) }
+
+            return withObservationTracking {
                 // Reading environment values inside the tracked scope
                 // registers them, so an environment change re-renders this
                 // host with the current values.

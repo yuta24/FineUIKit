@@ -34,12 +34,16 @@ final class FineNodeScheduler {
         let signature = primitive._modifierSignature
         let key = primitive._key
         let view: UIView
+        let kind: FineDiagnostics.RenderKind
 
         if let existing, FineRenderer.reuses(existing, for: primitive, signature: signature, key: key) {
             view = existing
+            kind = .updated
         } else {
             existing?.fineNodeIfPresent?.generation += 1
             view = primitive._makeView()
+            FineDiagnostics.carryCounters(from: existing, to: view)
+            kind = existing == nil ? .created : .rebuilt
         }
 
         view.fineModifierSignature = signature
@@ -47,8 +51,12 @@ final class FineNodeScheduler {
 
         let state = view.fineNode
         state.primitive = primitive
+        state.primitiveType = type(of: primitive)
         state.context = context
         state.generation += 1
+        // The update this enqueues does the counting, because a node-local
+        // re-render reaches it without passing through here.
+        state.pendingRenderKind = kind
 
         enqueue(view: view, generation: state.generation, primitive: primitive, context: context)
         return view
@@ -99,6 +107,14 @@ final class FineNodeScheduler {
 
         let generation = job.generation
         let renderGate = job.context.renderGate
+        let kind = view.fineNodeIfPresent?.takePendingRenderKind() ?? .updated
+
+        let signposter = FineSignpost.signposter
+        let interval = signposter.beginInterval(
+            "node",
+            id: signposter.makeSignpostID(),
+            "\(view.fineNodeIfPresent?.primitiveName ?? "unknown", privacy: .public)"
+        )
         withObservationTracking {
             job.primitive._update(view, context: job.context)
         } onChange: { [weak self, weak view] in
@@ -122,5 +138,8 @@ final class FineNodeScheduler {
                 }
             }
         }
+        signposter.endInterval("node", interval)
+
+        FineDiagnostics.recordRender(of: view, as: kind)
     }
 }

@@ -43,13 +43,20 @@ public enum FineRenderer {
             node._update(existing, context: context)
             existing.fineModifierSignature = signature
             existing.fineKey = key
+            existing.fineNode.primitiveType = type(of: node)
+            FineDiagnostics.recordRender(of: existing, as: .updated)
             return existing
         }
 
         let view = node._makeView()
+        // Before the update, so the counters the render is about to add to are
+        // the ones the replaced view accumulated.
+        FineDiagnostics.carryCounters(from: existing, to: view)
         node._update(view, context: context)
         view.fineModifierSignature = signature
         view.fineKey = key
+        view.fineNode.primitiveType = type(of: node)
+        FineDiagnostics.recordRender(of: view, as: existing == nil ? .created : .rebuilt)
         return view
     }
 
