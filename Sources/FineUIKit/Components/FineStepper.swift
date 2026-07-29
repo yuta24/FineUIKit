@@ -56,8 +56,9 @@ public struct FineStepper: FinePrimitiveRenderable {
             stepper.maximumValue = range.upperBound
         }
 
-        if stepper.stepValue != step {
-            stepper.stepValue = step
+        let resolvedStep = resolveStep()
+        if stepper.stepValue != resolvedStep {
+            stepper.stepValue = resolvedStep
         }
         if stepper.value != value.value {
             stepper.value = value.value
@@ -77,5 +78,20 @@ public struct FineStepper: FinePrimitiveRenderable {
             guard let stepper = control as? UIStepper else { return }
             value.value = stepper.value
         }
+    }
+
+    /// `UIStepper.stepValue` must be greater than zero — UIKit raises
+    /// `NSInvalidArgumentException` for anything else, so an invalid step would
+    /// take the app down from inside the setter. It is rejected here instead,
+    /// and reported in debug builds.
+    private func resolveStep() -> Double {
+        // A NaN fails `> 0`; an infinite step passes it but is not a step size
+        // the stepper can move by.
+        guard step > 0, step.isFinite else {
+            assertionFailure("FineStepper step must be a positive finite value, got \(step)")
+            return 1
+        }
+
+        return step
     }
 }

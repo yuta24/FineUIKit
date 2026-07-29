@@ -563,6 +563,16 @@ struct FineDividerTests {
         #expect(divider.backgroundColor == .separator)
     }
 
+    @Test func zeroThicknessStaysARealSizeRatherThanNoIntrinsicMetric() throws {
+        let view = try #require(FineRenderer.render(FineDivider().thickness(0)) as? FineDividerView)
+
+        // `UIView.noIntrinsicMetric` is -1, so the guard that rejects a
+        // negative thickness has to let a deliberate zero through — otherwise
+        // hiding a line by collapsing it would instead free its axis entirely.
+        #expect(view.intrinsicContentSize.height == 0)
+        #expect(view.intrinsicContentSize.width == UIView.noIntrinsicMetric)
+    }
+
     @Test func dividerDoesNotStretchInsideAFillStack() throws {
         let stack = FineRenderer.render(FineStack.vertical {
             [FineLabel(text: "A"), FineDivider(), FineLabel(text: "B")]

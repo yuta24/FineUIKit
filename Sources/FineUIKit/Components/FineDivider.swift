@@ -129,9 +129,25 @@ public struct FineDivider: FinePrimitiveRenderable {
         let resolvedColor = color ?? .separator
 
         divider.lineAxis = axis
-        divider.thickness = thickness
+        divider.thickness = resolveThickness()
         if divider.backgroundColor?.isEqual(resolvedColor) != true {
             divider.backgroundColor = resolvedColor
         }
+    }
+
+    /// `UIView.noIntrinsicMetric` is `-1`, so a negative thickness would not
+    /// draw a thin line — it would read as "no intrinsic size on this axis" and
+    /// let the line collapse or stretch. A NaN reaches Auto Layout and throws.
+    /// Neither is a thickness anyone can mean, so both fall back to the
+    /// hairline and are reported in debug builds.
+    private func resolveThickness() -> CGFloat? {
+        guard let thickness else { return nil }
+
+        guard thickness.isFinite, thickness >= 0 else {
+            assertionFailure("FineDivider thickness must be a non-negative finite value, got \(thickness)")
+            return nil
+        }
+
+        return thickness
     }
 }
