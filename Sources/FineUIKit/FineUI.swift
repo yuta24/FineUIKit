@@ -190,7 +190,11 @@ public final class FineUI<State> {
         guard let container else { return }
 
         let signposter = FineSignpost.signposter
-        let interval = signposter.beginInterval("render", id: signposter.makeSignpostID())
+        let interval = signposter.beginInterval(
+            "render",
+            id: signposter.makeSignpostID(),
+            "\(String(describing: State.self), privacy: .public)"
+        )
         defer { signposter.endInterval("render", interval) }
 
         let transaction = FineTransactionContext.current

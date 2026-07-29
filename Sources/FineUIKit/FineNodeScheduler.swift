@@ -51,7 +51,7 @@ final class FineNodeScheduler {
 
         let state = view.fineNode
         state.primitive = primitive
-        state.primitiveType = type(of: primitive._viewProvider)
+        state.noteRender(of: primitive)
         state.context = context
         state.generation += 1
         // The update this enqueues does the counting, because a node-local

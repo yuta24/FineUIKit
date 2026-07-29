@@ -28,11 +28,14 @@ final class FineNode {
     // separate copy on the node.
     var context: FineRenderContext?
 
-    /// The description that last rendered this view, kept as a metatype rather
-    /// than a name: assigning it is a pointer store, so the debug description
-    /// can name the component without formatting a string on every render.
-    /// Held separately from `primitive`, which only the scheduled path sets.
+    /// The component that makes this view, kept as a metatype rather than a
+    /// name so the debug description costs nothing to keep current. Held
+    /// separately from `primitive`, which only the scheduled path sets.
     var primitiveType: (any FinePrimitiveRenderable.Type)?
+
+    /// The outermost description `primitiveType` was resolved from, so the
+    /// resolution is not repeated for a description this node has already seen.
+    private var providerResolvedFrom: ObjectIdentifier?
 
     /// Renders applied at this position in the tree, and how many of them had
     /// to make a new view instead of updating one. Carried onto a replacement
@@ -55,5 +58,27 @@ final class FineNode {
     func takePendingRenderKind() -> FineDiagnostics.RenderKind? {
         defer { pendingRenderKind = nil }
         return pendingRenderKind
+    }
+
+    /// Records which component makes this view, looking through modifiers that
+    /// render into their content's view.
+    ///
+    /// That lookup walks `body`, which is not free — the runtime already goes
+    /// out of its way to resolve a description once per render — so the answer
+    /// is cached against the description it came from. A description whose type
+    /// changed forces a rebuild and a fresh node, so the cache is only ever
+    /// consulted for the description that filled it.
+    ///
+    /// One case keeps a stale answer: the same modifier type over different
+    /// content that makes the same view class, such as `.backgroundColor()`
+    /// applied to two components that both build a `UILabel`. Walking `body`
+    /// on every render of every view to catch it would cost the whole tree
+    /// more than the debug label is worth.
+    func noteRender(of primitive: any FinePrimitiveRenderable) {
+        let outer = ObjectIdentifier(type(of: primitive))
+        guard providerResolvedFrom != outer else { return }
+
+        providerResolvedFrom = outer
+        primitiveType = type(of: primitive._viewProvider)
     }
 }

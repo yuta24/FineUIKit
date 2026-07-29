@@ -71,7 +71,11 @@ final class FineNodeHost {
         let transaction = FineTransactionContext.current
         let apply = { [self] in
             let signposter = FineSignpost.signposter
-            let interval = signposter.beginInterval("cell", id: signposter.makeSignpostID())
+            let interval = signposter.beginInterval(
+                "cell",
+                id: signposter.makeSignpostID(),
+                "\(self.hostedView?.fineNodeIfPresent?.primitiveName ?? "new", privacy: .public)"
+            )
             defer { signposter.endInterval("cell", interval) }
 
             return withObservationTracking {

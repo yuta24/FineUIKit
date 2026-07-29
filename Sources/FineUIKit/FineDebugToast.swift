@@ -31,6 +31,11 @@ final class FineDebugToast: UIView {
     /// that is on screen.
     private var presentation = 0
 
+    /// What the banner currently reads, for tests.
+    var message: String? {
+        label.text
+    }
+
     /// Shows (or re-shows) the toast in `window`, coalescing repeat calls.
     ///
     /// Does nothing without a window: a tree built into a detached view has

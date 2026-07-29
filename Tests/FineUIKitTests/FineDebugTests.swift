@@ -83,6 +83,28 @@ struct FineDebugTests {
         #expect(description.contains("backgroundColor"))
     }
 
+    /// Every modifier that renders into its content's view has to look through
+    /// itself, or the view it shares gets named after whichever one happened to
+    /// be outermost.
+    @Test func looksThroughEveryModifierThatSharesAView() {
+        let cases: [(String, any Renderable)] = [
+            ("backgroundColor", FineLabel(text: "A").backgroundColor(.red)),
+            ("key", FineLabel(text: "A").key("k")),
+            ("onTap", FineLabel(text: "A").onTap {}),
+            ("width", FineLabel(text: "A").width(10)),
+            ("constraints", FineLabel(text: "A").constraints(id: "c") { _ in [] }),
+            ("environment", FineLabel(text: "A").environment(\.traitCollection, .current)),
+        ]
+
+        for (name, description) in cases {
+            let view = FineRenderer.render(description)
+            #expect(
+                view.fineDebugDescription.hasPrefix("FineLabel → UILabel"),
+                "\(name) named \(view.fineDebugDescription)"
+            )
+        }
+    }
+
     /// A modifier that makes its own view is a node of its own, and says so.
     @Test func namesModifiersThatOwnAView() {
         let view = FineRenderer.render(FineLabel(text: "A").padding(.init(top: 8, leading: 8, bottom: 8, trailing: 8)))
@@ -173,6 +195,43 @@ struct FineDebugTests {
         // A banner that ate a tap would be worse than no banner.
         #expect(toast?.isUserInteractionEnabled == false)
         _ = ui
+    }
+
+    /// Every live tree re-renders on the same notification, so the banner has
+    /// to count them rather than stack one per controller.
+    @Test func coalescesOneToastForEveryTreeThatReloaded() async {
+        let previous = FineDiagnostics.showsInjectionToast
+        defer { FineDiagnostics.showsInjectionToast = previous }
+        FineDiagnostics.showsInjectionToast = true
+
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 480))
+        let notificationName = Notification.Name("FineUIKitTests.toast.\(UUID().uuidString)")
+
+        let trees = (0..<3).map { _ -> FineUI<DebugCounter> in
+            let container = UIView()
+            window.addSubview(container)
+
+            let ui = FineUI(DebugCounter()) { model in
+                FineLabel(text: "\(model.count)")
+            }
+            ui.injectionNotificationName = notificationName
+            ui.build(to: container)
+            return ui
+        }
+
+        NotificationCenter.default.post(name: notificationName, object: nil)
+
+        for _ in 0..<200 where !window.subviews.contains(where: { $0 is FineDebugToast }) {
+            await Task.yield()
+        }
+        for _ in 0..<50 {
+            await Task.yield()
+        }
+
+        let toasts = window.subviews.compactMap { $0 as? FineDebugToast }
+        #expect(toasts.count == 1)
+        #expect(toasts.first?.message == "FineUIKit reloaded ×3")
+        _ = trees
     }
 
     @Test func staysSilentWhenTheToastIsDisabled() async {
