@@ -30,6 +30,12 @@ jobs:
           # runs authenticated git: the pull request step pushes with the token
           # passed to it below.
           persist-credentials: false
+          # The whole history, not the default single commit. OpenWiki is asked
+          # to read git history for the reasoning behind changes, and it resolves
+          # the gitHead recorded in openwiki/.last-update.json to work out what
+          # moved since the last run. On a shallow clone neither is possible and
+          # the run concludes there is nothing to document.
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -51,9 +57,13 @@ jobs:
           OPENAI_COMPATIBLE_BASE_URL: https://opencode.ai/zen/go/v1
           OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           OPENWIKI_MODEL_ID: glm-5.2
-          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-          LANGCHAIN_PROJECT: openwiki
-          LANGCHAIN_TRACING_V2: "true"
+          # LangSmith tracing is off. It was enabled without the key ever being
+          # registered, so every run buried its own output under repeated
+          # "Failed to send multipart request ... 403" lines. To turn it back on,
+          # add the LANGSMITH_API_KEY secret and restore:
+          #   LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+          #   LANGCHAIN_PROJECT: openwiki
+          #   LANGCHAIN_TRACING_V2: "true"
 
       - name: Create OpenWiki update pull request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
