@@ -450,8 +450,8 @@ FineDiagnostics.logsViewReuse = true
 スキームの環境変数 `FINEUIKIT_LOG_REUSE=1` でも有効になります。出力例:
 
 ```
-FineUIKit rebuilt UILabel for FineStyled: modifier composition changed ("|backgroundColor" → "|backgroundColor|cornerRadius")
-FineUIKit rebuilt UITextField for FineKeyed: key changed (a → b)
+FineUIKit rebuilt UILabel for FineLabel: modifier composition changed ("|backgroundColor" → "|backgroundColor|cornerRadius")
+FineUIKit rebuilt UITextField for FineTextField: key changed (a → b)
 FineUIKit rebuilt UILabel for FineImage: view type is incompatible
 ```
 
@@ -468,9 +468,11 @@ FineDiagnostics.logsRenders = true  // または FINEUIKIT_LOG_RENDERS=1
 ```
 
 ```
-FineUIKit updated UILabel for FineLabel (render #3, 0 rebuilt)
-FineUIKit rebuilt UITextField for FineKeyed (render #5, 1 rebuilt)
+FineUIKit created UILabel for FineLabel (render #1, 0 rebuilt)
+FineUIKit rebuilt UILabel for FineLabel (render #2, 1 rebuilt)
 ```
+
+名乗るのは**ビューを作ったコンポーネント**です。`.backgroundColor()` や `.key()` は content のビューにそのまま描画する(自前のビューを作らない)ため、`FineStyled` / `FineKeyed` ではなく `FineLabel` と表示されます。適用されたモディファイア自体は署名の方に出ます。
 
 ### 再レンダリングのハイライト
 
@@ -488,16 +490,22 @@ Xcode の View Debugger は `UILabel` は見せますが、それを作った `F
 
 ```
 (lldb) po view.fineDumpTree()
-FineStack → UIStackView  renders 2
-  FineLabel → UILabel  renders 2  modifiers "|padding"
-  FineKeyed → UITextField  renders 5  rebuilds 1  key draft  state
-  UIView (unmanaged)
+FineStack → UIStackView  renders 1
+  FinePadded → FinePaddingView  renders 1  modifiers "padding"
+    FineLabel → UILabel  renders 3
+  FineStack → UIStackView  renders 1
+    FineTextField → FineTextFieldView  renders 1  key draft
+      UITextFieldLabel (unmanaged)
+    FineButton → UIButton  renders 1  modifiers "|backgroundColor"
+      UIButtonLabel (unmanaged)
 
 (lldb) po someLabel.fineDebugDescription
-FineLabel → UILabel  renders 3  hidden
+FineLabel → UILabel  renders 3
 ```
 
-FineUIKit が管理していないビューは `unmanaged` と表示されます。どちらも observable な状態を読まないので、ブレークポイントから呼んでもレンダリングループを乱しません。
+この例では、ラベルだけが `renders 3`、親は `renders 1` です。テキストがノード単位で3回更新され、ツリーの再 diff は1回も起きていないことがそのまま読み取れます。作り直しがあれば `rebuilds N` が付き、`FineState` を持つノードには `state` が付きます。
+
+FineUIKit が管理していないビュー(UIKit が内部で作るラベルなど)は `unmanaged` と表示されます。どちらも observable な状態を読まないので、ブレークポイントから呼んでもレンダリングループを乱しません。
 
 ### Instruments(signpost)
 

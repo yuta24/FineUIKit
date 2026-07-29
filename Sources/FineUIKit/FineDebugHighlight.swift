@@ -39,10 +39,11 @@ enum FineDebugHighlight {
         overlay.borderColor = color.cgColor
 
         if let label = overlay.sublayers?.first as? CATextLayer {
-            // Sized from the text so a flash on a small view does not cover it.
             label.string = "\(count)"
             label.foregroundColor = color.cgColor
             label.contentsScale = max(view.traitCollection.displayScale, 1)
+            // Deliberately small and unclipped: the count is a corner marker,
+            // and a box sized to hold five digits would cover a short label.
             label.frame = CGRect(x: 1, y: 1, width: 28, height: 9)
         }
 
@@ -57,16 +58,15 @@ enum FineDebugHighlight {
         fade.isRemovedOnCompletion = false
         overlay.add(fade, forKey: "fade")
 
-        // The first render of a view usually precedes its layout, so its bounds
-        // are still empty here and the outline would have nothing to draw.
-        // Re-reading them once the turn is over catches that case, which is
-        // exactly the `created` flash the counts start from.
-        if view.bounds.isEmpty {
-            Task { @MainActor [weak view] in
-                guard let view, overlay.superlayer === view.layer else { return }
+        // A render runs before the layout it causes, so the bounds read above
+        // are the ones from before this render: empty on a view's first render,
+        // and stale on any render that resizes it — a label whose text grew, a
+        // stack that gained a child. Re-reading once the turn is over outlines
+        // what the render actually produced.
+        Task { @MainActor [weak view] in
+            guard let view, overlay.superlayer === view.layer else { return }
 
-                overlay.frame = view.bounds
-            }
+            overlay.frame = view.bounds
         }
     }
 

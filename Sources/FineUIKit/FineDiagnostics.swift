@@ -118,7 +118,10 @@ public enum FineDiagnostics {
     ) {
         guard logsViewReuse else { return }
 
-        handler("FineUIKit rebuilt \(type(of: view)) for \(type(of: primitive)): \(reason.message)")
+        // The component, matching what the render log and the debug
+        // description say about the same view. The modifier that wrapped it is
+        // not lost: for the reason that names one, it is in the message.
+        handler("FineUIKit rebuilt \(type(of: view)) for \(type(of: primitive._viewProvider)): \(reason.message)")
     }
 
     /// Moves the counters of a replaced view onto the view taking its place, so

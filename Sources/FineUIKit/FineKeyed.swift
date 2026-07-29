@@ -31,6 +31,10 @@ struct FineKeyed: FinePrimitiveRenderable {
     var _key: AnyHashable? {
         key
     }
+
+    var _viewProvider: any FinePrimitiveRenderable {
+        FineRenderer.primitive(for: content)._viewProvider
+    }
 }
 
 @MainActor

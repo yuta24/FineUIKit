@@ -39,6 +39,7 @@ protocol FinePrimitiveRenderable: Renderable {
     func _update(_ view: UIView, context: FineRenderContext)
     var _modifierSignature: String { get }
     var _key: AnyHashable? { get }
+    var _viewProvider: any FinePrimitiveRenderable { get }
 }
 
 extension FinePrimitiveRenderable {
@@ -52,5 +53,18 @@ extension FinePrimitiveRenderable {
 
     var _key: AnyHashable? {
         nil
+    }
+
+    /// The description that makes the view this one renders into: itself, or
+    /// for a modifier that renders into its content's view, whatever that
+    /// content resolves to.
+    ///
+    /// Only the debug description reads this. Reconciliation works on the
+    /// outermost primitive, because that is what decides reuse — but a reader
+    /// looking at a `UILabel` wants the `FineLabel` that made it, not the
+    /// `FineStyled` that tinted it. The modifier is not lost: it is what the
+    /// reported modifier signature describes.
+    var _viewProvider: any FinePrimitiveRenderable {
+        self
     }
 }

@@ -53,7 +53,8 @@ struct FineDiagnosticsTests {
 
         let report = try? #require(messages.first)
         #expect(messages.count == 1)
-        #expect(report?.contains("UILabel") == true)
+        // The component that made the view, not the modifier that wrapped it.
+        #expect(report?.contains("UILabel for FineLabel") == true)
         #expect(report?.contains("modifier composition changed") == true)
         #expect(report?.contains("cornerRadius") == true)
     }

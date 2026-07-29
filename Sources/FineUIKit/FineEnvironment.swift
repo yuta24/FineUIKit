@@ -97,6 +97,10 @@ struct FineEnvironmentWriter: FinePrimitiveRenderable {
     var _key: AnyHashable? {
         contentPrimitive._key
     }
+
+    var _viewProvider: any FinePrimitiveRenderable {
+        contentPrimitive._viewProvider
+    }
 }
 
 @MainActor

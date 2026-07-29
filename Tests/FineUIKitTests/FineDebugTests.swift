@@ -39,9 +39,14 @@ struct FineDebugTests {
     @Test func countsNodeLocalRerenders() async {
         let model = DebugCounter()
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
+        var bodyEvaluationCount = 0
 
         let ui = FineUI(model) { model in
-            FineLabel(text: "\(model.count)")
+            bodyEvaluationCount += 1
+            // `text` is an autoclosure, so the read happens while the label
+            // node updates rather than while `body` is evaluated — which is
+            // what puts the change in the node's own observation scope.
+            return FineLabel(text: "\(model.count)")
         }
         ui.build(to: container)
 
@@ -53,24 +58,38 @@ struct FineDebugTests {
             await Task.yield()
         }
 
-        // The label re-rendered without a new view: a node-local update, which
-        // never revisits the reuse decision and would go uncounted if counting
-        // lived there.
+        // A node-local re-render: no new view, and `body` was never
+        // re-evaluated. It reaches the update without passing the reuse
+        // decision, so counting there would miss it entirely.
+        #expect(bodyEvaluationCount == 1)
         #expect(label?.fineNodeIfPresent?.renderCount == 2)
         #expect(label?.fineNodeIfPresent?.rebuildCount == 0)
         #expect(container.subviews.first === label)
         _ = ui
     }
 
+    /// The component, not the modifier that wrapped it: `.backgroundColor()`
+    /// and `.key()` render into the label's own view, so naming them here
+    /// would answer a question nobody asked — and the modifier they applied is
+    /// already in the signature.
     @Test func describesTheDescriptionBehindAView() {
         let view = FineRenderer.render(FineLabel(text: "A").backgroundColor(.red).key("k"))
         let description = view.fineDebugDescription
 
-        #expect(description.contains("→ UILabel"))
+        #expect(description.hasPrefix("FineLabel → UILabel"))
         #expect(description.contains("renders 1"))
         #expect(description.contains("key k"))
         #expect(description.contains("modifiers"))
         #expect(description.contains("backgroundColor"))
+    }
+
+    /// A modifier that makes its own view is a node of its own, and says so.
+    @Test func namesModifiersThatOwnAView() {
+        let view = FineRenderer.render(FineLabel(text: "A").padding(.init(top: 8, leading: 8, bottom: 8, trailing: 8)))
+        let lines = view.fineDumpTree().split(separator: "\n")
+
+        #expect(lines.first?.hasPrefix("FinePadded → FinePaddingView") == true)
+        #expect(lines.dropFirst().first?.hasPrefix("  FineLabel → UILabel") == true)
     }
 
     @Test func marksViewsItDoesNotManage() {

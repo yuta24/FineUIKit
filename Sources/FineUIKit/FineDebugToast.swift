@@ -26,6 +26,10 @@ final class FineDebugToast: UIView {
     private let label = UILabel()
     private var reloadCount = 0
     private var dismissal: Task<Void, Never>?
+    /// Distinguishes the fade this presentation started from an earlier one,
+    /// so a completion that a re-presentation overtook cannot reset the count
+    /// that is on screen.
+    private var presentation = 0
 
     /// Shows (or re-shows) the toast in `window`, coalescing repeat calls.
     ///
@@ -80,6 +84,14 @@ final class FineDebugToast: UIView {
         superview?.bringSubviewToFront(self)
 
         dismissal?.cancel()
+        presentation += 1
+        let presentation = presentation
+
+        // An injection that lands mid-fade has to stop the fade, not just set
+        // the property: the running animation owns what is on screen, and
+        // assigning `alpha` under it makes the banner blink out while it says
+        // a reload just happened.
+        layer.removeAllAnimations()
         alpha = 1
 
         dismissal = Task { [weak self] in
@@ -88,9 +100,11 @@ final class FineDebugToast: UIView {
 
             UIView.animate(withDuration: 0.25) {
                 self.alpha = 0
-            } completion: { _ in
+            } completion: { finished in
                 // Counting restarts with the next injection, not with the next
-                // tree of this one.
+                // tree of this one — and not at all if this fade was overtaken.
+                guard finished, self.presentation == presentation else { return }
+
                 self.reloadCount = 0
             }
         }
