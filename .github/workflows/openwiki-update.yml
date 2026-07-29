@@ -5,6 +5,14 @@ on:
   schedule:
     - cron: "0 8 * * *"
 
+# A manual dispatch can land on top of the nightly run. Both push the same
+# openwiki/update branch and reuse the same pull request, so they are queued
+# rather than run side by side. Cancelling would throw away a finished wiki
+# generation, so the in-progress run is left to finish.
+concurrency:
+  group: openwiki-update
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pull-requests: write
@@ -15,6 +23,13 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Keep the write-capable token out of .git/config. This job hands the
+          # workspace to an LLM agent that reads the repository and runs tools,
+          # so the credential is worth not leaving lying around. Nothing here
+          # runs authenticated git: the pull request step pushes with the token
+          # passed to it below.
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -43,6 +58,9 @@ jobs:
       - name: Create OpenWiki update pull request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
+          # Explicit because the checkout above persists no credentials: this is
+          # the only thing authenticating the push and the pull request.
+          token: ${{ github.token }}
           # Only what OpenWiki actually regenerates. This workflow file is
           # deliberately excluded: GITHUB_TOKEN is not allowed to push changes
           # under .github/workflows, so listing it would fail the push the one
