@@ -60,5 +60,4 @@ final class ScreenController: FineViewController<ScreenState> {
 
 ## Backlog
 
-- OpenWiki を定期更新する GitHub Actions ワークフローは、まだこのリポジトリに追加されていません。当面は `openwiki --update` を手元で実行して再生成します。
-- 上記を除き、初期調査で確認した主要領域（ランタイム、DSL、UIKit 統合、コレクション、CI・テスト）は本 Wiki に記録済みです。
+- なし。初期調査で確認した主要領域（ランタイム、DSL、UIKit 統合、コレクション、CI・テスト）は本 Wiki に記録済みです。
