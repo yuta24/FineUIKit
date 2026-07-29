@@ -63,9 +63,29 @@ jobs:
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           xcrun simctl list devices available | grep "$UDID"
 
+      # The step budget is the backstop, and it is deliberately not the job's:
+      # a wedged simulator once cost the job all 30 of its minutes, and all CI
+      # could say afterwards was "exceeded the maximum execution time" — no
+      # test named, no result bundle. Build plus suite takes about four
+      # minutes, so twelve is a hang, not a slow runner.
+      #
+      # It has to be a step timeout rather than only the xcodebuild flags
+      # below, because those cover XCTest and this suite is mostly Swift
+      # Testing, whose time limits are a separate opt-in trait. The flags
+      # sharpen the common case; this bounds every other one, including a
+      # simulator that never finishes booting.
       - name: Run tests
+        timeout-minutes: 12
         run: |
           set -euo pipefail
+
+          # Capping an individual test names the one that hung and lets the
+          # rest of the suite still run. XCTest enforces a one minute floor on
+          # the allowance — a smaller number is accepted and silently rounded
+          # up to 60s — so 120 is the first value that reads as deliberate.
+          # The slowest test here takes a few seconds.
           xcodebuild -scheme FineUIKit \
             -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
             test
