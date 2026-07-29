@@ -25,6 +25,17 @@ Swift Testing の振る舞いテストが大半を占めます。`RenderingPerfo
 
 [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) は `main` への push と pull request で macOS 26 を使い、iOS 26 runtime の利用可能な iPhone Simulator を JSON から明示選択します。指定 runtime がなければ、別 runtime へ暗黙に fallback せず失敗します。iOS 17 の対応下限は、Xcode 26/27 に iOS 17 runtime が同梱されないため、runtime 実行ではなく compile-time availability により維持します。
 
+## ドキュメント更新 CI
+
+[`.github/workflows/openwiki-update.yml`](../../.github/workflows/openwiki-update.yml) は毎日 08:00 UTC および手動実行で OpenWiki を起動し、`openwiki/update` ブランチへ更新 PR を作成します。実行の要点は次の通りです。
+
+- `fetch-depth: 0` で全履歴を取得し、OpenWiki が `openwiki/.last-update.json` の gitHead から差分を判定できるようにします。
+- `persist-credentials: false` でトークンを `.git/config` に残しません。PR 作成ステップだけが `github.token` で認証します。
+- `concurrency` で重複実行をキューに並べ、キャンセルではなく完了待ちにします。
+- `add-paths` で `openwiki`、`AGENTS.md`、`CLAUDE.md` のみを PR 対象とし、ワークフローファイル自体は含みません。
+
+このワークフローが生成したドキュメントは手動編集せず、ソースコードまたは既存ドキュメントを更新して OpenWiki に再生成させてください。
+
 ## 変更別のテスト選択
 
 | 変更領域 | まず確認するテスト | 主な保護対象 |
