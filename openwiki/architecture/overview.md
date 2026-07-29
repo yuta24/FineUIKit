@@ -36,13 +36,15 @@ flowchart TD
 
 ## 差分適用の契約
 
-`FineRenderer` は `body` を最大 64 段たどって最初の primitive を解決し、既存 UIView を再利用できるか判定します。再利用には次の三条件すべてが必要です。
+`FineRenderer` は `body` を最大 64 段たどって最初の primitive を解決し、渡された既存 UIView を再利用できるか判定します。判定は次の三条件すべてを要求します（`FineRenderer.reuses(_:for:signature:key:)`）。
 
-1. primitive が既存ビューを更新可能であること。
+1. primitive が既存ビューを更新可能であること（`_canUpdate`）。
 2. モディファイア署名が一致すること。
-3. `.key(_:)` による identity が一致すること。
+3. key が一致すること。key なしの primitive では双方 `nil` として一致します。
 
-一致すれば `_update` を既存ビューへ適用し、不一致なら新しいビューを生成します。モディファイアの構成や key を変更すると、古い装飾・状態を引きずらずに再構築できる一方、局所状態は失われます。詳細な更新経路と観測粒度は[レンダリングワークフロー](../workflows/rendering.md)を参照してください。
+ただし「どの既存ビューを候補として渡すか」は親コンテナが決めます。`FineStack` は子を key の有無で分け、key 付きは `.key(_:)` の値で対応するビューを引き当て、key なしは並び順の位置で引き当てます（[FineStack.swift](../../Sources/FineUIKit/Components/FineStack.swift)）。したがって key を付けない限り identity は位置に依存し、要素の挿入・並べ替えでビューと `FineState` が別の子に付き替わります。安定させたい子には `.key(_:)` を付けてください。
+
+候補が三条件を満たせば `_update` を既存ビューへ適用し、満たさなければ新しいビューを生成します。モディファイアの構成や key を変更すると、古い装飾・状態を引きずらずに再構築できる一方、局所状態は失われます。詳細な更新経路と観測粒度は[レンダリングワークフロー](../workflows/rendering.md)を参照してください。
 
 ## 役割分担
 
