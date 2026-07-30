@@ -35,7 +35,9 @@ tags: [source-map, navigation, swift, uikit]
 |---|---|---|
 | `FineViewController.swift`, `FineNavigation.swift` | 画面ホスト、navigation item、bar button | [UIKit 統合とコレクション](integrations/uikit-collections.md) |
 | `Components/FineStack.swift`, `FineLabel.swift`, `FineButton.swift`, `FineImage.swift` | 基本レイアウト・表示・操作 | [UI 合成と状態](domain/ui-composition.md) |
-| `Components/FineTextField.swift`, `FineToggle.swift`, `FineSlider.swift` | binding、focus、入力制御 | [UI 合成と状態](domain/ui-composition.md) |
+| `Components/FineTextField.swift`, `FineTextView.swift`, `FineToggle.swift`, `FineSlider.swift`, `FineStepper.swift` | binding、focus、入力制御 | [UI 合成と状態](domain/ui-composition.md) |
+| `Components/FineSegmentedControl.swift`, `FineDatePicker.swift`, `FinePageControl.swift` | binding ベースの選択コントロール | [UI 合成と状態](domain/ui-composition.md) |
+| `Components/FineProgressView.swift`, `FineActivityIndicator.swift`, `FineDivider.swift`, `FineSpacer.swift` | 表示・区切り・余白（autoclosure または非 binding） | [UI 合成と状態](domain/ui-composition.md) |
 | `Components/FineList.swift`, `FineGrid.swift` | diffable data source、sections、セル、layout | [UIKit 統合とコレクション](integrations/uikit-collections.md) |
 | `UIControl+FineHandlers.swift`, `FineTapGesture.swift` | 再利用可能なイベント handler | [テストと運用](operations/testing.md) |
 
@@ -47,6 +49,8 @@ tags: [source-map, navigation, swift, uikit]
 - `FineUIHostingTests.swift`: `build(to:)`、container 移動、制約、trait。
 - `FineInteractionTests.swift`: binding、focus、handler、Grid の計算。
 - `FineStateTests.swift`、`FineEnvironmentTests.swift`、`FineTraitTests.swift`、`FineDiagnosticsTests.swift`: 専用のドメイン回帰。
+- `FineComponentTests.swift`: UIKit コントロール（stepper、segmented、date picker、page control、progress、activity indicator、divider、text view）の in-place 差分適用、クランプ書き戻し、modifier リセット。
+- `FineSliderTests.swift`: slider のクランプ書き戻しと範囲移動。
 - `RenderingPerformanceTests.swift`: 性能の傾向確認。
 
 テストの実行方法と変更別選択は[テストと運用](operations/testing.md)が正本です。内部設計のより詳細な一次資料は [`docs/architecture.md`](../docs/architecture.md)、公開 API の例は [`README.md`](../README.md) にあります。
