@@ -41,6 +41,10 @@ struct FineStyled: FinePrimitiveRenderable {
     var _key: AnyHashable? {
         FineRenderer.primitive(for: content)._key
     }
+
+    var _viewProvider: any FinePrimitiveRenderable {
+        FineRenderer.primitive(for: content)._viewProvider
+    }
 }
 
 extension Renderable {

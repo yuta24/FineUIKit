@@ -175,6 +175,10 @@ public final class FineUI<State> {
             MainActor.assumeIsolated {
                 self?.render()
                 self?.onInjectionReload?()
+
+                if FineDiagnostics.showsInjectionToast {
+                    FineDebugToast.show("FineUIKit reloaded", in: self?.container?.window)
+                }
             }
         }
     }
@@ -184,6 +188,14 @@ public final class FineUI<State> {
         generation += 1
         let expectedGeneration = generation
         guard let container else { return }
+
+        let signposter = FineSignpost.signposter
+        let interval = signposter.beginInterval(
+            "render",
+            id: signposter.makeSignpostID(),
+            "\(String(describing: State.self), privacy: .public)"
+        )
+        defer { signposter.endInterval("render", interval) }
 
         let transaction = FineTransactionContext.current
         let description = withObservationTracking {
