@@ -46,6 +46,7 @@ Swift Testing の振る舞いテストが大半を占めます。`RenderingPerfo
 | root/node/navigation の観測粒度、suspend/resume | `FineRenderScopeTests.swift` | 局所更新、非表示ツリーの停止と一回の catch-up |
 | `FineState`、environment | `FineStateTests.swift`、`FineEnvironmentTests.swift` | identity をまたぐ状態、注入と伝播 |
 | trait、Dynamic Type、診断 | `FineTraitTests.swift`、`FineDiagnosticsTests.swift` | trait 起因再描画、再構築理由 |
+| レンダリング計測、デバッグ説明、ハイライト、トースト、signpost | `FineDebugTests.swift`、`FineDiagnosticsTests.swift` | レンダリング回数、コンポーネント名解決、注入トースト、`_viewProvider` 透過 |
 | input、focus、action handler、grid math | `FineInteractionTests.swift` | 双方向 binding、target-action の再利用、境界条件 |
 | UIKit コントロール（stepper、segmented、date picker、page control、progress、activity indicator、divider、text view） | `FineComponentTests.swift`、`FineSliderTests.swift` | in-place 差分適用、クランプ書き戻し、modifier リセット、placeholder 描画、focus binding |
 | List/Grid の section、header/footer、行高、セル更新 | `FineListBehaviorTests.swift`、`FineUIKitTests.swift` | diffable、supplementary identity、layout 再計測 |
@@ -59,10 +60,6 @@ Swift Testing の振る舞いテストが大半を占めます。`RenderingPerfo
 - ホストを変更する: 別コンテナへの再 build で旧制約と trait registration を残さないことを確認します。根拠は `e56854e` と `FineUIHostingTests.swift` です。
 - handler を変更する: UIKit の再利用時に action や gesture を二重登録せず、最新 closure に置換することを確認します。
 - 可視性ゲートを変更する: root とセルで異なる復帰経路が必要です。`FineRenderScopeTests` と List の振る舞いテストをセットで実行します。
-
-関連する実装領域は[ソースマップ](../source-map.md)、設計上の処理経路は[レンダリングランタイムの構造](../architecture/overview.md)を参照してください。
-` です。
-- handler を変更する: UIKit の再利用時に action や gesture を二重登録せず、最新 closure に置換することを確認します。
-- 可視性ゲートを変更する: root とセルで異なる復帰経路が必要です。`FineRenderScopeTests` と List の振る舞いテストをセットで実行します。
+- 計測・診断を変更する: 計測は `_update` の実行点で行うことでノード局所再レンダリングを取りこぼさない点を確認します。詳しくは[レンダリング計測とデバッグ診断](diagnostics.md)を参照してください。
 
 関連する実装領域は[ソースマップ](../source-map.md)、設計上の処理経路は[レンダリングランタイムの構造](../architecture/overview.md)を参照してください。
