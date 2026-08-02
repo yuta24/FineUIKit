@@ -437,7 +437,37 @@ FineButton(title: "Add") { viewModel.add() }
 FineButton(title: "Add") { [unowned self] in addTask() }
 ```
 
-原則: **クロージャには状態(`@Observable` モデル)だけをキャプチャし、view controller 自身をキャプチャする場合は `[weak self]` / `[unowned self]` を付けてください。**
+### builder のクロージャも同じ経路に載る
+
+保持されるのはハンドラだけではありません。`FineStack` などの `@FineBuilder` クロージャも `@escaping` で記述(`FineStack` 値)に保持され、その記述を node が持ちます。node 単位の再レンダリングが content を評価し直せる必要があるためです。
+
+つまり **builder の中で `self` に一度でも触れると、内側のハンドラを `[weak self]` / `[unowned self]` にしていても builder 自身が `self` を強参照し、コントローラはリークします**。実際の画面はほぼ必ず builder を経由するので、ハンドラだけを弱参照にしても足りません。
+
+```swift
+// ❌ リーク: 内側は weak でも、builder が self を暗黙に強参照キャプチャしている
+FineStack.vertical {
+    FineButton(title: "Add") { [weak self] in self?.addTask() }
+}
+
+// ✅ 外側の builder に付ける(内側のハンドラは弱参照になった self を
+//    引き継ぐので、重ねて capture list を書く必要はない)
+FineStack.vertical { [weak self] in
+    FineButton(title: "Add") { self?.addTask() }
+}
+
+// ✅ そもそも self に触れない(状態オブジェクトだけを読む)のが最も安全
+FineStack.vertical {
+    FineButton(title: "Add") { viewModel.add() }
+}
+```
+
+この取り違えは **Swift 6.4(Xcode 27)以降**のコンパイラが `#ImplicitStrongCapture`(`'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope`。`unowned` でも同様)として警告します。この警告が出たら、内側ではなく**外側の builder** に `[weak self]` が必要だというサインです。
+
+ただし**それより前のツールチェーン(Xcode 26 系)では警告が出ません**。コンパイラ任せにはできないので、builder の中で `self` に触れていないかは自分で確認してください。
+
+原則: **クロージャには状態(`@Observable` モデル)だけをキャプチャしてください。** view controller 自身に触れる場合は、**`self` を最初にキャプチャする最も外側の escaping クロージャ**に `[weak self]` / `[unowned self]` を付けます。ハンドラが `body` 直下ならそのハンドラ、builder に囲まれているならその builder です。内側のクロージャは弱参照になった `self` を引き継ぐため、重ねて付ける必要はありません。
+
+ここで挙げた各パターンが実際に解放されるか・リークするかは `FineLeakTests` が検証しています。
 
 ## 診断(なぜビューが作り直されたか)
 
