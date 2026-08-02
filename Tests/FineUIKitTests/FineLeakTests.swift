@@ -47,11 +47,16 @@ private final class WeakSelfInsideBuilderController: FineViewController<LeakMode
 
     override func body(_ state: LeakModel) -> any Renderable {
         // `[self]` on the builder is exactly what writing nothing there already
-        // means. It is spelled out because the two are the same capture to the
-        // compiler — its own diagnostic calls the implicit form an
-        // "implicitly-captured strong reference" — and writing it silences the
-        // `#ImplicitStrongCapture` warning the mismatch would otherwise raise
-        // in test code.
+        // means, and it is spelled out so the capture under test is visible.
+        // The two forms are the same capture to the compiler, whose own
+        // diagnostic calls the implicit one an "implicitly-captured strong
+        // reference".
+        //
+        // Writing it also keeps `#ImplicitStrongCapture` out of the build, but
+        // only Swift 6.4 (Xcode 27) and later raise that warning at all —
+        // Xcode 26, which CI runs, compiles the implicit form silently. So the
+        // warning is a bonus for whoever has the newer toolchain, not the
+        // thing that catches this mistake.
         FineStack.vertical { [self] in
             FineLabel(text: state.title)
             FineButton(title: "Tap") { [weak self] in self?.taps += 1 }

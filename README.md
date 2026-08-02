@@ -461,7 +461,9 @@ FineStack.vertical {
 }
 ```
 
-この取り違えは Swift コンパイラが `#ImplicitStrongCapture`(`'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope`。`unowned` でも同様)として警告します。この警告が出たら、内側ではなく**外側の builder** に `[weak self]` が必要だというサインです。
+この取り違えは **Swift 6.4(Xcode 27)以降**のコンパイラが `#ImplicitStrongCapture`(`'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope`。`unowned` でも同様)として警告します。この警告が出たら、内側ではなく**外側の builder** に `[weak self]` が必要だというサインです。
+
+ただし**それより前のツールチェーン(Xcode 26 系)では警告が出ません**。コンパイラ任せにはできないので、builder の中で `self` に触れていないかは自分で確認してください。
 
 原則: **クロージャには状態(`@Observable` モデル)だけをキャプチャしてください。** view controller 自身に触れる場合は、**`self` を最初にキャプチャする最も外側の escaping クロージャ**に `[weak self]` / `[unowned self]` を付けます。ハンドラが `body` 直下ならそのハンドラ、builder に囲まれているならその builder です。内側のクロージャは弱参照になった `self` を引き継ぐため、重ねて付ける必要はありません。
 
