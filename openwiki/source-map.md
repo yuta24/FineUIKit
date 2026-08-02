@@ -18,6 +18,7 @@ tags: [source-map, navigation, swift, uikit]
 | `FineNodeScheduler.swift`, `FineRenderContext.swift` | ノード局所観測と context 伝播 | [レンダリングワークフロー](workflows/rendering.md) |
 | `FineUI.swift`, `FineRenderGate.swift`, `FineObservedScope.swift` | root render、停止・復帰、navigation 用観測 | [レンダリングワークフロー](workflows/rendering.md) |
 | `FineNodeHost.swift` | List/Grid セルと supplementary view の局所レンダー | [UIKit 統合とコレクション](integrations/uikit-collections.md) |
+| `FineDiagnostics.swift`, `FineDebugHighlight.swift`, `FineDebugToast.swift`, `FineSignpost.swift`, `UIView+FineDebug.swift` | レンダリング計測、ハイライト、注入トースト、signpost、デバッガ内省 | [レンダリング計測とデバッグ診断](operations/diagnostics.md) |
 
 ## DSL、状態、スタイル
 
@@ -49,6 +50,7 @@ tags: [source-map, navigation, swift, uikit]
 - `FineUIHostingTests.swift`: `build(to:)`、container 移動、制約、trait。
 - `FineInteractionTests.swift`: binding、focus、handler、Grid の計算。
 - `FineStateTests.swift`、`FineEnvironmentTests.swift`、`FineTraitTests.swift`、`FineDiagnosticsTests.swift`: 専用のドメイン回帰。
+- `FineDebugTests.swift`: レンダリング回数、デバッグ説明、ハイライト、注入トースト、`_viewProvider` のモディファイア透過。
 - `FineComponentTests.swift`: UIKit コントロール（stepper、segmented、date picker、page control、progress、activity indicator、divider、text view）の in-place 差分適用、クランプ書き戻し、modifier リセット。
 - `FineSliderTests.swift`: slider のクランプ書き戻しと範囲移動。
 - `RenderingPerformanceTests.swift`: 性能の傾向確認。
