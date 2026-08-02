@@ -79,6 +79,20 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Tests run one at a time, because the allowance below only means
+          # anything if a test's duration is its own. Swift Testing
+          # parallelises in-process by default, and this suite is almost
+          # entirely @MainActor with `await Task.yield()` polling loops, so
+          # every test spends most of its life queued behind the others on the
+          # main actor and they all finish together at the end. Their reported
+          # durations converge on the duration of the whole run: run
+          # 30546032009 had eleven tests reporting 67-71s against a 72s run,
+          # and 30549948082 had them reporting 111-118s against a 129s run.
+          # That is how a test with nothing wrong with it came to trip the
+          # allowance — once the run passes 120s, whichever main-actor test
+          # gets there first is named, and the growth is superlinear in test
+          # count. Serialised, each duration reflects that test's own work.
+          #
           # Capping an individual test names the one that hung and lets the
           # rest of the suite still run. XCTest enforces a one minute floor on
           # the allowance — a smaller number is accepted and silently rounded
@@ -86,6 +100,7 @@ jobs:
           # The slowest test here takes a few seconds.
           xcodebuild -scheme FineUIKit \
             -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 120 \
             test

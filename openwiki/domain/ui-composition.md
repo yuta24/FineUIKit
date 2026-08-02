@@ -11,15 +11,19 @@ FineUIKit の利用者は `Renderable` を合成し、状態と UIKit の更新�
 
 ## コンポーネントとモディファイア
 
-主な primitive は `FineLabel`、`FineButton`、`FineImage`、`FineStack`、`FineScrollView`、`FineTextField`、`FineToggle`、`FineSlider`、`FineList`、`FineGrid` です（[Components](../../Sources/FineUIKit/Components/)）。`FineStack` は key 付きの子を key、key なしの子を位置で再利用します。繰り返し・並べ替えをまたいで identity を維持するには `FineForEach` または `.key(_:)` を使います（[FineKeyed.swift](../../Sources/FineUIKit/FineKeyed.swift)）。
+主な primitive は `FineLabel`、`FineButton`、`FineImage`、`FineStack`、`FineScrollView`、`FineTextField`、`FineTextView`、`FineToggle`、`FineSlider`、`FineStepper`、`FineSegmentedControl`、`FineDatePicker`、`FinePageControl`、`FineProgressView`、`FineActivityIndicator`、`FineDivider`、`FineSpacer`、`FineList`、`FineGrid` です（[Components](../../Sources/FineUIKit/Components/)）。各コンポーネントの API と対応 UIKit クラスの一覧は [`README.md`](../../README.md) が正本です。`FineStack` は key 付きの子を key、key なしの子を位置で再利用します。繰り返し・並べ替えをまたいで identity を維持するには `FineForEach` または `.key(_:)` を使います（[FineKeyed.swift](../../Sources/FineUIKit/FineKeyed.swift)）。
+
+`FineLabel`、`FineProgressView`、`FineActivityIndicator` は表示値を `@autoclosure` で受け取ります。値の読み取りはノードの `_update` 内で起きるため、表示内容の変化はそのノードだけを更新し、`body` は再評価されません（[レンダリングワークフロー](../workflows/rendering.md)のノード局所更新と同じ経路）。
 
 モディファイアは transparent な同一ビューへの適用と、padding/frame/lifecycle のようなホストビューを増やす適用を組み合わせます。順序は署名とビュー階層に影響するため意味を持ちます。構成を変えると再利用判定に失敗して再構築されます。
 
-**実装時の契約:** `body` と `FineViewRepresentable.updateView` は、同じ入力から同じ UI を作り、管理するプロパティを毎回現在値へ戻してください。更新回数やメタデータ読み取り順序に依存する副作用は許容されません。
+**実装時の契約:** `body` と `FineViewRepresentable.updateView` は、同じ入力から同じ UI を作り、管理するプロパティを毎回現在値へ戻してください。更新回数やメタデータ読み取り順序に依存する副作用は許容されません。UIKit が例外を投げるか Auto Layout を破壊する値は、`_update` 内で拒否して既定値へフォールバックし、debug ビルドで報告します（`FineStepper` の `step` は正の有限値、`FineDivider` の `thickness` は非負有限値、`FineDatePicker` の `minuteInterval` は 60 の約数）。`FineDatePicker` は `.countDownTimer` モードをサポートしません（`Date` binding では duration を表現できないため）。
 
 ## `FineBinding` とローカル状態
 
-`FineBinding<Value>` は `get` / `set` のペアです。`FineTextField`、`FineToggle`、`FineSlider` は UI イベントを binding へ書き戻し、レンダリング側は値が変わるときだけ UIKit に設定するため、入力カーソルの不要な破壊を避けます（[FineBinding.swift](../../Sources/FineUIKit/FineBinding.swift)、各コンポーネント実装）。
+`FineBinding<Value>` は `get` / `set` のペアです。`FineTextField`、`FineTextView`、`FineToggle`、`FineSlider`、`FineStepper`、`FineSegmentedControl`、`FineDatePicker`、`FinePageControl` は UI イベントを binding へ書き戻し、レンダリング側は値が変わるときだけ UIKit に設定するため、入力カーソルの不要な破壊を避けます（[FineBinding.swift](../../Sources/FineUIKit/FineBinding.swift)、各コンポーネント実装）。
+
+UIKit が値をクランプまたは丸めるコントロール（`FineSlider`、`FineStepper`、`FineDatePicker`、`FinePageControl`）は、適用後の値を binding へ書き戻します。これにより「状態が UI に表示できない値のまま残り、毎レンダリングで再書き込みされる」ことを防ぎます。範囲の移動は上限を先に広げてから下限を狭める順序で行い、範囲全体が上へ移動したときに上限・下限が一時的に逆転しないようにします。`FineSegmentedControl` はこのパターンの例外で、範囲外の選択インデックスを破棄せず `noSegment` として表示します — 到着前のセグメントを意図として保持するためです。
 
 `FineState` は一時的な UI 状態をコンポーネント内に閉じ込める手段です。storage は記述値ではなく `FineNode.localState` に置かれるため、親の再レンダリングをまたいで保持されます。ただしビュー型、モディファイア署名、key のいずれかが変われば別 identity として初期化されます（[FineState.swift](../../Sources/FineUIKit/FineState.swift)）。この identity 規則は renderer の再利用条件そのものです。
 

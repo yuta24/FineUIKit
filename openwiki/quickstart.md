@@ -42,6 +42,7 @@ final class ScreenController: FineViewController<ScreenState> {
 1. 描画や局所更新を変える: [アーキテクチャ概要](architecture/overview.md) → [レンダリングワークフロー](workflows/rendering.md) → [テストと運用](operations/testing.md)。
 2. コンポーネントやモディファイアを変える: [UI 合成と状態](domain/ui-composition.md) → [ソースマップ](source-map.md)。
 3. `FineList` / `FineGrid`、セル、ナビゲーション、再ホストを変える: [UIKit 統合とコレクション](integrations/uikit-collections.md) → [テストと運用](operations/testing.md)。
+4. レンダリング計測・デバッグ診断を変える: [レンダリング計測とデバッグ診断](operations/diagnostics.md) → [テストと運用](operations/testing.md)。
 
 ## リポジトリの地図
 
