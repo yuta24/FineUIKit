@@ -6,6 +6,9 @@ import UIKit
 // FineUIKit body (see CounterView.swift).
 struct CounterTabs: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UITabBarController {
+        let tabs = UITabBarController()
+        let settings = DemoSettings()
+
         let tca = UINavigationController(rootViewController: TCACounterViewController())
         tca.tabBarItem = UITabBarItem(
             title: "TCA",
@@ -20,8 +23,24 @@ struct CounterTabs: UIViewControllerRepresentable {
             tag: 1
         )
 
-        let tabs = UITabBarController()
-        tabs.viewControllers = [tca, plain]
+        let settingsController = SettingsViewController(
+            settings: settings,
+            onAppearanceChange: { [weak tabs] isDarkModeEnabled in
+                tabs?.overrideUserInterfaceStyle = isDarkModeEnabled ? .dark : .light
+            },
+            onLanguageChange: { [weak tabs] language in
+                tabs?.viewControllers?.last?.tabBarItem.title = language.settingsTitle
+            }
+        )
+        let settingsNavigation = UINavigationController(rootViewController: settingsController)
+        settingsNavigation.tabBarItem = UITabBarItem(
+            title: settings.language.settingsTitle,
+            image: UIImage(systemName: "gearshape"),
+            tag: 2
+        )
+
+        tabs.viewControllers = [tca, plain, settingsNavigation]
+        tabs.overrideUserInterfaceStyle = settings.isDarkModeEnabled ? .dark : .light
         return tabs
     }
 
