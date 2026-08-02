@@ -65,7 +65,11 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
             listSections.append(.init(id: "completed", header: "Completed", items: completedItems))
         }
 
-        return FineStack.vertical(spacing: 8) {
+        // `[weak self]` belongs on the builder, not only on the handlers
+        // below: a builder's content closure is stored on the description the
+        // node holds, so touching `self` anywhere inside it captures the
+        // controller strongly no matter what the handlers ask for.
+        return FineStack.vertical(spacing: 8) { [weak self] in
             // Environment sample. The count badge is nested inside a
             // `FineEnvironmentReader` and colors itself with the injected
             // `accentColor`. Flipping the "Pink accent" switch changes the
@@ -116,10 +120,10 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
 
             FineStack.horizontal(spacing: 8) {
                 FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
-                    .onSubmit { [unowned self] in addTask(viewModel) }
+                    .onSubmit { self?.addTask(viewModel) }
                     .accessibilityIdentifier("draft-field")
-                FineButton(title: "Add") { [unowned self] in
-                    addTask(viewModel)
+                FineButton(title: "Add") {
+                    self?.addTask(viewModel)
                 }
                 .configuration(.filled())
                 .hugging(.defaultHigh, axis: .horizontal)
