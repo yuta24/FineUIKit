@@ -84,7 +84,9 @@ private final class UnownedSelfInsideBuilderController: FineViewController<LeakM
     }
 }
 
-/// `[weak self]` on the builder as well as on the handler.
+/// `[weak self]` on the builder, and nothing on the handler inside: weakening
+/// the outermost closure that captures `self` is enough, because what the
+/// handler then captures is already the weak binding.
 @MainActor
 private final class WeakSelfOnBuilderController: FineViewController<LeakModel> {
     var taps = 0
