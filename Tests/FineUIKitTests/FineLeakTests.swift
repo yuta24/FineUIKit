@@ -28,29 +28,30 @@ private final class StateCapturingController: FineViewController<LeakModel> {
     }
 }
 
-/// Captures `self` strongly, which is the shape the README warns about.
+/// Captures `self` strongly from a handler, with no builder in between, so the
+/// only capture in play is the handler's own.
 @MainActor
-private final class SelfCapturingController: FineViewController<LeakModel> {
+private final class StrongSelfWithoutBuilderController: FineViewController<LeakModel> {
     var taps = 0
 
     override func body(_ state: LeakModel) -> any Renderable {
-        FineStack.vertical {
-            FineLabel(text: state.title)
-            FineButton(title: "Tap") { self.taps += 1 }
-        }
+        FineButton(title: "Tap") { self.taps += 1 }
     }
 }
 
-/// The escape hatch the README prescribes — `[weak self]` on the handler —
-/// written inside a builder, which is how a real screen is shaped.
+/// The escape hatch the README used to prescribe — `[weak self]` on the handler
+/// — written inside a builder, which is how a real screen is shaped.
 @MainActor
 private final class WeakSelfInsideBuilderController: FineViewController<LeakModel> {
     var taps = 0
 
     override func body(_ state: LeakModel) -> any Renderable {
-        // `[self]` on the builder is what writing nothing there already means;
-        // it is spelled out so the capture under test is visible, and so the
-        // compiler stops reporting the mismatch it would otherwise warn about.
+        // `[self]` on the builder is exactly what writing nothing there already
+        // means. It is spelled out because the two are the same capture to the
+        // compiler — its own diagnostic calls the implicit form an
+        // "implicitly-captured strong reference" — and writing it silences the
+        // `#ImplicitStrongCapture` warning the mismatch would otherwise raise
+        // in test code.
         FineStack.vertical { [self] in
             FineLabel(text: state.title)
             FineButton(title: "Tap") { [weak self] in self?.taps += 1 }
@@ -70,7 +71,7 @@ private final class WeakSelfWithoutBuilderController: FineViewController<LeakMod
 }
 
 /// `[unowned self]` on the handler inside a builder, which is the shape the
-/// ToDo example is written in.
+/// ToDo example was written in.
 @MainActor
 private final class UnownedSelfInsideBuilderController: FineViewController<LeakModel> {
     var taps = 0
@@ -96,9 +97,7 @@ private final class WeakSelfOnBuilderController: FineViewController<LeakModel> {
     }
 }
 
-/// Captures `self` strongly from a navigation button rather than from the
-/// tree. Navigation runs in its own observation scope, so it is a second way
-/// into the same cycle.
+/// Captures `self` strongly from a navigation button rather than from the tree.
 @MainActor
 private final class NavigationCapturingController: FineViewController<LeakModel> {
     var taps = 0
@@ -121,6 +120,10 @@ private final class NavigationCapturingController: FineViewController<LeakModel>
 /// that captures the controller therefore closes the cycle
 /// controller → view → node → primitive → closure → controller. These tests
 /// pin down which shapes pay that cost and which do not.
+///
+/// The shapes that currently leak are written as the release they ought to
+/// achieve and marked `withKnownIssue`, so closing the cycle in the runtime
+/// reports the known issue as no longer occurring rather than passing quietly.
 @MainActor
 @Suite(.serialized)
 struct FineLeakTests {
@@ -149,6 +152,22 @@ struct FineLeakTests {
         #expect(!controllerSurvivesRelease { WeakSelfWithoutBuilderController(state: LeakModel()) })
     }
 
+    /// The capture that does work through a builder: weaken the builder too.
+    @Test func weakSelfOnTheBuilderReleasesTheController() {
+        #expect(!controllerSurvivesRelease { WeakSelfOnBuilderController(state: LeakModel()) })
+    }
+
+    /// A handler that reaches the controller strongly cannot release it: the
+    /// view the runtime keeps the handler on is the controller's own view.
+    ///
+    /// No builder stands between the handler and `body` here, so this pins the
+    /// handler's capture on its own rather than a builder's.
+    @Test func aHandlerCapturingSelfStronglyReleasesTheController() {
+        withKnownIssue("The node holds the primitive, and the primitive holds the handler that holds the controller.") {
+            #expect(!controllerSurvivesRelease { StrongSelfWithoutBuilderController(state: LeakModel()) })
+        }
+    }
+
     /// `[weak self]` on the handler is not enough once a builder stands between
     /// the handler and `body`.
     ///
@@ -157,57 +176,51 @@ struct FineLeakTests {
     /// be able to evaluate it again. Mentioning `self` anywhere inside it —
     /// even only to weakly capture it further in — makes the builder itself
     /// capture `self` strongly, and the builder is what the node holds.
-    ///
-    /// This is the gap between the runtime and the advice in the README, which
-    /// prescribes `[weak self]` on the handler without saying that the builder
-    /// needs it too. Asserting the leak keeps the two in step: closing the
-    /// cycle, or making the capture unnecessary, fails here.
-    @Test func weakSelfInsideABuilderStillLeaksTheController() {
-        #expect(controllerSurvivesRelease { WeakSelfInsideBuilderController(state: LeakModel()) })
+    @Test func weakSelfInsideABuilderReleasesTheController() {
+        withKnownIssue("The builder captures the controller strongly, whatever ownership the handler inside asks for.") {
+            #expect(!controllerSurvivesRelease { WeakSelfInsideBuilderController(state: LeakModel()) })
+        }
     }
 
     /// `unowned` fares no better. What holds the controller is the builder's
     /// capture, so the ownership the handler inside asks for cannot help.
-    @Test func unownedSelfInsideABuilderStillLeaksTheController() {
-        #expect(controllerSurvivesRelease { UnownedSelfInsideBuilderController(state: LeakModel()) })
+    @Test func unownedSelfInsideABuilderReleasesTheController() {
+        withKnownIssue("The builder captures the controller strongly, whatever ownership the handler inside asks for.") {
+            #expect(!controllerSurvivesRelease { UnownedSelfInsideBuilderController(state: LeakModel()) })
+        }
     }
 
-    /// The capture that does work through a builder: weaken the builder too.
-    @Test func weakSelfOnTheBuilderReleasesTheController() {
-        #expect(!controllerSurvivesRelease { WeakSelfOnBuilderController(state: LeakModel()) })
-    }
-
-    /// Records the known cost documented in the README: a handler that captures
-    /// `self` strongly leaks the controller, because the view the runtime keeps
-    /// the handler on is the controller's own view.
+    /// Navigation reaches the controller by a route of its own, and it is not
+    /// the node's.
     ///
-    /// This asserts the leak rather than the absence of one, so that closing
-    /// the cycle in the runtime fails here and gets the promise updated in the
-    /// README and in this suite together.
-    @Test func strongSelfInAHandlerLeaksTheController() {
-        #expect(controllerSurvivesRelease { SelfCapturingController(state: LeakModel()) })
-    }
-
-    /// Navigation reaches the same cycle by a different route: the scope that
-    /// applies `navigation(_:)` holds the bar button's handler.
-    @Test func strongSelfInABarButtonLeaksTheController() {
-        #expect(controllerSurvivesRelease { NavigationCapturingController(state: LeakModel()) })
+    /// `FineObservedScope` holds only its body closure, which
+    /// `FineViewController.viewDidLoad` gives `[unowned self]`, and it keeps
+    /// neither the `FineNavigation` value nor the bar button once `apply(to:)`
+    /// has run. What retains the controller is UIKit's own item:
+    /// controller → `navigationItem` → `UIBarButtonItem` → `primaryAction`
+    /// (`FineNavigation.update(_:)`) → handler → controller.
+    @Test func aBarButtonCapturingSelfStronglyReleasesTheController() {
+        withKnownIssue("The navigation item holds the bar button whose action holds the controller.") {
+            #expect(!controllerSurvivesRelease { NavigationCapturingController(state: LeakModel()) })
+        }
     }
 
     /// The views a controller rendered must not outlive it. A view held past
     /// its controller keeps its node, its local state, and its handlers alive
     /// with it.
-    @Test func renderedViewsDoNotOutliveTheirController() {
+    @Test func renderedViewsDoNotOutliveTheirController() throws {
         weak var releasedRoot: UIView?
         weak var releasedLabel: UIView?
 
-        autoreleasepool {
+        try autoreleasepool {
             let controller = StateCapturingController(state: LeakModel())
             controller.loadViewIfNeeded()
 
-            let root = controller.view.subviews.first
+            // Required, not expected: a tree that never rendered would leave
+            // both references nil and pass the release checks for free.
+            let root = try #require(controller.view.subviews.first as? UIStackView)
             releasedRoot = root
-            releasedLabel = (root as? UIStackView)?.arrangedSubviews.first
+            releasedLabel = try #require(root.arrangedSubviews.first as? UILabel)
         }
 
         #expect(releasedRoot == nil)
@@ -215,13 +228,13 @@ struct FineLeakTests {
     }
 
     /// `FineUI` holds the tree it built, so releasing it has to release the
-    /// views — including after the tree has re-rendered and replaced them.
-    @Test func fineUIReleasesTheTreeItBuilt() {
+    /// views too.
+    @Test func fineUIReleasesTheTreeItBuilt() throws {
         let model = LeakModel()
         weak var releasedRoot: UIView?
         weak var releasedFineUI: AnyObject?
 
-        autoreleasepool {
+        try autoreleasepool {
             let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
             let fineUI = FineUI(model) { model in
                 FineStack.vertical {
@@ -232,7 +245,7 @@ struct FineLeakTests {
             fineUI.build(to: container)
             container.layoutIfNeeded()
 
-            releasedRoot = container.subviews.first
+            releasedRoot = try #require(container.subviews.first as? UIStackView)
             releasedFineUI = fineUI
         }
 
