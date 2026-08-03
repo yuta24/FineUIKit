@@ -246,7 +246,7 @@ struct FineRenderScopeTests {
     @Test func suspendedRootScopeChangeIsDeferredAndFlushed() async throws {
         let state = ScopeState()
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             // Read in the root body itself: this registers on `FineUI`'s own
             // scope, which is a different gate call site than a node's.
             let value = state.bodyValue
@@ -370,7 +370,7 @@ struct FineRenderScopeTests {
     @Test func suspendedRuntimeDefersWorkUntilResume() async throws {
         let state = ScopeState()
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             FineStack.vertical {
                 FineLabel(text: "body")
                     .backgroundColor(state.bodyValue % 2 == 0 ? .red : .blue)
@@ -396,7 +396,7 @@ struct FineRenderScopeTests {
     @Test func resumeWithoutPendingChangeDoesNoWork() async throws {
         let state = ScopeState()
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
-        let ui = FineUI(state) { _ in
+        let ui = FineUI(state: state) { _ in
             FineStack.vertical {
                 CountingProbe(tag: "idle-resume")
             }
@@ -416,7 +416,7 @@ struct FineRenderScopeTests {
     @Test func manyChangesWhileSuspendedFlushOnce() async throws {
         let state = ScopeState()
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             FineStack.vertical {
                 FineLabel(text: "body")
                     .backgroundColor(state.bodyValue % 2 == 0 ? .red : .blue)
@@ -449,7 +449,7 @@ struct FineRenderScopeTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(row) { row in
+        let ui = FineUI(state: row) { row in
             FineList([row]) { row in
                 FineStack.horizontal {
                     FineLabel(text: row.title)
@@ -486,7 +486,7 @@ struct FineRenderScopeTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineList([KeyedRow(id: 1)]) { _ in
                 FineLabel(text: model.title)
             }
@@ -567,7 +567,7 @@ struct FineRenderScopeTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             FineList(state.rows) { row in
                 FineStack.horizontal {
                     FineLabel(text: "\(row.title)-\(state.model.title)")
@@ -610,7 +610,7 @@ struct FineRenderScopeTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineStack.vertical {
                 CountingProbe(tag: "outside-list")
                 FineList([KeyedRow(id: 1)]) { _ in
@@ -645,7 +645,7 @@ struct FineRenderScopeTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineList([KeyedRow(id: 1)]) { _ in
                 FineStack.horizontal {
                     FineLabel(text: model.title)
@@ -682,7 +682,7 @@ struct FineRenderScopeTests {
     @Test func catchUpRenderRunsWithAnimationsDisabled() async throws {
         let state = ScopeState()
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             let value = state.bodyValue
             return FineStack.vertical {
                 FineLabel(text: "\(value)")

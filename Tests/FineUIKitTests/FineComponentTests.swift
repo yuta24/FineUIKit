@@ -251,7 +251,7 @@ struct FineProgressViewTests {
         let counter = BodyCounter()
 
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 200))
-        let fineUI = FineUI(state) { state in
+        let fineUI = FineUI(state: state) { state in
             counter.count += 1
             return FineProgressView(value: state.progress)
         }
@@ -516,7 +516,7 @@ struct FineClampWriteBackTests {
         let counter = FineProgressViewTests.BodyCounter()
 
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 200))
-        let fineUI = FineUI(state) { state in
+        let fineUI = FineUI(state: state) { state in
             counter.count += 1
             return FinePageControl(numberOfPages: 3, currentPage: .init(state, \.page))
         }
@@ -723,7 +723,7 @@ struct FineTextViewTests {
         let container = UIView(frame: window.bounds)
         window.addSubview(container)
 
-        let fineUI = FineUI(state) { state in
+        let fineUI = FineUI(state: state) { state in
             FineTextView(text: .init(state, \.note))
                 .focused(.init(state, \.isFocused))
         }

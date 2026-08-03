@@ -13,7 +13,7 @@ import FineUIKit
 import Observation
 
 @Observable
-final class ToDoListScreen: FineNavigating {
+final class ToDoListScreen: FineContent {
     var draft: String = ""
     var items: [ToDo] = []
 
@@ -132,7 +132,7 @@ protocol ToDoListScreenDelegate: AnyObject {
 
 @Observable
 final class ToDoListScreen: FineContent {
-    weak var delegate: (any ToDoListScreenDelegate)?
+    @ObservationIgnored weak var delegate: (any ToDoListScreenDelegate)?
 
     func body() -> any Renderable {
         FineList(self.items) { ... }
@@ -476,7 +476,7 @@ func body() -> any Renderable {
 // ✅ 推奨: weak が宣言に 1 回だけ
 @Observable
 final class ToDoListScreen: FineContent {
-    weak var delegate: (any ToDoListScreenDelegate)?
+    @ObservationIgnored weak var delegate: (any ToDoListScreenDelegate)?
 }
 
 // ⚠️ クロージャでも書けますが、合成する側が毎回 [weak] を守る必要があります
@@ -607,7 +607,7 @@ DEBUG ビルドでは、コード注入(InjectionLite / InjectionIII / Injection
 
 `any FineContent` として保持していても同じです。クラスが protocol に適合した場合、protocol witness thunk 自身が `class_method` を発行してクラスの vtable に落ちるためです。
 
-**これが `body` をクロージャではなくメソッドにしている理由**でもあります。`FineUI` のクロージャ初期化子(`FineUI(state) { state in ... }`)だけは例外で、記述がストアドクロージャの中に確定するため**注入で差し替わりません**。ホットリロードしたいツリーは `FineContent` の形で書いてください。
+**これが `body` をクロージャではなくメソッドにしている理由**でもあります。`FineUI` のクロージャ初期化子(`FineUI(state:) { ... }`)だけは例外で、記述がストアドクロージャの中に確定するため**注入で差し替わりません**。ホットリロードしたいツリーは `FineContent` の形で書いてください。
 
 Example アプリでは [InjectionLite](https://github.com/johnno1962/InjectionLite)(GUI アプリ不要)を利用しています。セットアップ:
 

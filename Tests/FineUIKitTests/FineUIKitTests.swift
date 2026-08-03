@@ -1303,7 +1303,7 @@ struct FineBindingTests {
         let state = FormState()
         let container = UIView()
 
-        let fineUI = FineUI(state) { state in
+        let fineUI = FineUI(state: state) { state in
             FineTextField(text: .init(state, \.text))
         }
         fineUI.build(to: container)
@@ -1386,7 +1386,7 @@ struct FineBindingTests {
         let state = FormState()
         let container = UIView()
 
-        let fineUI = FineUI(state) { state in
+        let fineUI = FineUI(state: state) { state in
             FineToggle(isOn: .init(state, \.isOn))
         }
         fineUI.build(to: container)
@@ -1630,7 +1630,9 @@ struct FineNavigationTests {
         #expect(systemItem !== titleItem)
     }
 
-    @Test func nilNavigationLeavesManualNavigationItemUntouched() {
+    /// Content that is not `FineNavigating` gets no navigation scope at all, so
+    /// a manually managed `navigationItem` is left alone.
+    @Test func contentThatDoesNotNavigateLeavesTheNavigationItemUntouched() {
         let state = NavigationState()
         let viewController = ManualNavigationViewController(state: state)
         viewController.navigationItem.title = "Manual"
@@ -1683,7 +1685,7 @@ struct FineUITests {
         let counter = Counter()
         let container = UIView()
 
-        let fineUI = FineUI(counter) { counter in
+        let fineUI = FineUI(state: counter) { counter in
             FineLabel(text: "\(counter.count)")
         }
         fineUI.build(to: container)
@@ -1708,7 +1710,7 @@ struct FineUITests {
         let container = UIView()
         var bodyEvaluationCount = 0
 
-        let fineUI = FineUI(counter) { counter in
+        let fineUI = FineUI(state: counter) { counter in
             bodyEvaluationCount += 1
             let text = "\(counter.count)"
             return FineLabel(text: text)
@@ -1743,7 +1745,7 @@ struct FineUITests {
         let container = UIView()
         var bodyEvaluationCount = 0
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             bodyEvaluationCount += 1
             return FineLabel(text: model.title)
         }
@@ -1769,7 +1771,7 @@ struct FineUITests {
         let container = UIView()
         var bodyEvaluationCount = 0
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             bodyEvaluationCount += 1
             return FineStack.vertical {
                 model.items.map { FineLabel(text: $0) as any Renderable }
@@ -1795,7 +1797,7 @@ struct FineUITests {
         let container = UIView()
         var bodyEvaluationCount = 0
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             bodyEvaluationCount += 1
             let title = model.title
             return FineLabel(text: title)
@@ -1818,7 +1820,7 @@ struct FineUITests {
         let container = UIView()
         var bodyEvaluationCount = 0
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             bodyEvaluationCount += 1
             let title = model.title
             let suffix = model.usesSubtitle ? model.subtitle : "Zero"
@@ -1848,7 +1850,7 @@ struct FineUITests {
         let counter = Counter()
         let container = UIView()
 
-        let fineUI = FineUI(counter) { counter in
+        let fineUI = FineUI(state: counter) { counter in
             FineStack.vertical {
                 [FineLabel(text: "\(counter.count)")]
             }
@@ -1916,7 +1918,7 @@ struct FineAnimationTests {
     @Test func animatedOpacityChangeAddsLayerAnimation() async throws {
         let model = Model()
         let container = UIView()
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineLabel(text: "A").opacity(model.opacity)
         }
         let window = attachToWindow(container)
@@ -1939,7 +1941,7 @@ struct FineAnimationTests {
     @Test func animatedNodeScopedOpacityChangeAddsLayerAnimation() async throws {
         let model = Model()
         let container = UIView()
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineStack.vertical {
                 [FineLabel(text: "A").opacity(model.opacity)]
             }
@@ -1965,7 +1967,7 @@ struct FineAnimationTests {
     @Test func unanimatedOpacityChangeDoesNotAddLayerAnimation() async throws {
         let model = Model()
         let container = UIView()
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineLabel(text: "A").opacity(model.opacity)
         }
         let window = attachToWindow(container)
@@ -1986,7 +1988,7 @@ struct FineAnimationTests {
     @Test func animatedPaddingChangeAddsLayoutAnimation() async throws {
         let model = Model()
         let container = UIView()
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineLabel(text: "A").padding(model.padding)
         }
         let window = attachToWindow(container)
@@ -2051,7 +2053,7 @@ struct FineAnimationTests {
     @Test func animatedRootRebuildDoesNotAnimateNewRoot() async throws {
         let model = Model()
         let container = UIView()
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             if model.usesStyledRoot {
                 FineLabel(text: "B").backgroundColor(.red)
             } else {
@@ -2874,7 +2876,7 @@ struct FineKeyboardTests {
 
     @Test func rootBottomFollowsKeyboardLayoutGuideByDefault() {
         let container = UIView()
-        let ui = FineUI(Model()) { _ in FineLabel(text: "A") }
+        let ui = FineUI(state: Model()) { _ in FineLabel(text: "A") }
         ui.build(to: container)
 
         let root = container.subviews.first
@@ -2889,7 +2891,7 @@ struct FineKeyboardTests {
 
     @Test func keyboardAvoidanceCanBeDisabled() {
         let container = UIView()
-        let ui = FineUI(Model(), avoidsKeyboard: false) { _ in FineLabel(text: "A") }
+        let ui = FineUI(state: Model(), avoidsKeyboard: false) { _ in FineLabel(text: "A") }
         ui.build(to: container)
 
         let root = container.subviews.first

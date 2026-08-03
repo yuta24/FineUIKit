@@ -57,7 +57,7 @@
 ///
 /// @Observable
 /// final class ToDoList: FineContent {
-///     weak var delegate: (any ToDoListDelegate)?
+///     @ObservationIgnored weak var delegate: (any ToDoListDelegate)?
 /// }
 /// ```
 ///

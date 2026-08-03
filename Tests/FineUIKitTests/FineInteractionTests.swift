@@ -162,7 +162,7 @@ struct FineTextFieldFocusTests {
         let container = UIView(frame: window.bounds)
         window.addSubview(container)
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             FineTextField(text: .init(model, \.text))
                 .focused(.init(model, \.isFocused))
         }
@@ -193,7 +193,7 @@ struct FineTextFieldFocusTests {
         let container = UIView(frame: window.bounds)
         window.addSubview(container)
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             FineTextField(text: .init(model, \.text))
                 .focused(.init(model, \.isFocused))
         }
@@ -214,7 +214,7 @@ struct FineTextFieldFocusTests {
         model.isFocused = true
 
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 200))
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             FineTextField(text: .init(model, \.text))
                 .focused(.init(model, \.isFocused))
         }
@@ -243,7 +243,7 @@ struct FineTextFieldFocusTests {
         model.isFocused = true
 
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 200))
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             FineTextField(text: .init(model, \.text))
                 .focused(.init(model, \.isFocused))
         }
@@ -460,7 +460,7 @@ struct FineViewRepresentableTests {
         let container = UIView()
         var bodyEvaluationCount = 0
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             bodyEvaluationCount += 1
             return FineStack.vertical {
                 ObservingBar(model: model)
@@ -511,7 +511,7 @@ struct FineControlHandlerTests {
         let container = UIView(frame: window.bounds)
         window.addSubview(container)
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             // The title carries the version so the test can tell when the
             // re-render has landed; the closure captures it so every render
             // hands the button a different one.
@@ -550,7 +550,7 @@ struct FineControlHandlerTests {
         let container = UIView(frame: window.bounds)
         window.addSubview(container)
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             // Version 1 submits; later versions do not. The placeholder marks
             // which render is currently installed.
             model.version == 1

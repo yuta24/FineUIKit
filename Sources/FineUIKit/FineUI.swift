@@ -95,8 +95,13 @@ public final class FineUI {
     /// moment it is made, so **code injection cannot replace it**. Reach for
     /// the `FineContent` form for anything you intend to hot-reload: its
     /// `body()` is a method, and a method can be swapped.
+    ///
+    /// The `state:` label is what keeps the two apart. Without it,
+    /// `FineUI(content)` and `FineUI(content) { ... }` would differ only by a
+    /// trailing closure, and the second — the one that cannot be hot-reloaded —
+    /// is the easier of the two to write by accident.
     public convenience init<State>(
-        _ state: State,
+        state: State,
         avoidsKeyboard: Bool = true,
         body: @escaping @MainActor (State) -> any Renderable
     ) {

@@ -281,7 +281,7 @@ struct FineLeakTests {
 
         try autoreleasepool {
             let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
-            let fineUI = FineUI(store) { store in
+            let fineUI = FineUI(state: store) { store in
                 FineStack.vertical {
                     FineLabel(text: store.title)
                     FineButton(title: "Tap") { store.rows = [] }
@@ -331,5 +331,69 @@ struct FineLeakTests {
 
         #expect(releasedController == nil)
         #expect(releasedScreen == nil)
+    }
+}
+
+@MainActor
+@Observable
+private final class MountedContent: FineContent {
+    var title = "mounted"
+
+    func body() -> any Renderable {
+        FineStack.vertical {
+            FineLabel(text: self.title)
+            FineButton(title: "Tap") { self.title = "tapped" }
+        }
+    }
+}
+
+/// Mounting content into a plain view — no controller in sight — is the path
+/// `FineUI` exists for, and it has to release the same way the hosted one does.
+@MainActor
+@Suite(.serialized)
+struct FineUIMountLeakTests {
+    @Test func contentMountedIntoAPlainViewIsReleasedWithTheRuntime() throws {
+        weak var releasedContent: AnyObject?
+        weak var releasedRuntime: AnyObject?
+        weak var releasedRoot: UIView?
+
+        try autoreleasepool {
+            let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
+            let content = MountedContent()
+            let fineUI = FineUI(content)
+            fineUI.build(to: container)
+            container.layoutIfNeeded()
+
+            // Required, not expected: an unrendered tree would pass for free.
+            releasedRoot = try #require(container.subviews.first as? UIStackView)
+            releasedContent = content
+            releasedRuntime = fineUI
+        }
+
+        #expect(releasedRuntime == nil)
+        #expect(releasedContent == nil)
+        #expect(releasedRoot == nil)
+    }
+
+    /// The closure initialiser keeps its state in a box of the runtime's, so
+    /// releasing the runtime has to release that too.
+    @Test func theClosureFormReleasesItsStateWithTheRuntime() {
+        weak var releasedState: AnyObject?
+        weak var releasedRuntime: AnyObject?
+
+        autoreleasepool {
+            let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
+            let store = LeakStore()
+            let fineUI = FineUI(state: store) { store in
+                FineLabel(text: store.title)
+            }
+            fineUI.build(to: container)
+
+            releasedState = store
+            releasedRuntime = fineUI
+        }
+
+        #expect(releasedRuntime == nil)
+        #expect(releasedState == nil)
     }
 }

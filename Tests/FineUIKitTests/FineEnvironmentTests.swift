@@ -79,7 +79,7 @@ struct FineEnvironmentTests {
     @Test func observableWriterValueUpdatesReader() async throws {
         let state = ThemeState()
         let container = UIView()
-        let fineUI = FineUI(state) { state in
+        let fineUI = FineUI(state: state) { state in
             FineEnvironmentReader { environment in
                 FineLabel(text: environment.theme)
             }
@@ -103,7 +103,7 @@ struct FineEnvironmentTests {
     @Test func nodeLocalRerenderPreservesInjectedEnvironment() async throws {
         let state = CounterState()
         let container = UIView()
-        let fineUI = FineUI(state) { state in
+        let fineUI = FineUI(state: state) { state in
             FineEnvironmentReader { environment in
                 FineLabel(text: "\(environment.theme)-\(state.counter)")
             }

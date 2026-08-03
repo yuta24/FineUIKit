@@ -102,22 +102,22 @@ open class FineScreenController: UIViewController {
         // Navigation gets its own observation scope: reads that only navigation
         // performs must not invalidate the tree. Content that does not describe
         // a bar gets no scope at all.
-        guard let navigating = content as? any FineNavigating else { return }
+        if let navigating = content as? any FineNavigating {
+            let navigationScope = FineObservedScope { [unowned self] in
+                guard let navigation = navigating.navigation() else { return }
+                navigation.apply(to: self.navigationItem)
+            }
+            navigationScope.run()
+            self.navigationScope = navigationScope
 
-        let navigationScope = FineObservedScope { [unowned self] in
-            guard let navigation = navigating.navigation() else { return }
-            navigation.apply(to: self.navigationItem)
+            #if DEBUG
+            // Injection replaces `navigation()` too, and it does not run inside
+            // the tree's render pass, so refresh it alongside the re-render.
+            fineUI.onInjectionReload = { [weak navigationScope] in
+                navigationScope?.run()
+            }
+            #endif
         }
-        navigationScope.run()
-        self.navigationScope = navigationScope
-
-        #if DEBUG
-        // Injection replaces `navigation()` too, and it does not run inside the
-        // tree's render pass, so refresh it alongside the re-render.
-        fineUI.onInjectionReload = { [weak navigationScope] in
-            navigationScope?.run()
-        }
-        #endif
     }
 
     /// Resumes rendering. An override must call `super`, or the controller

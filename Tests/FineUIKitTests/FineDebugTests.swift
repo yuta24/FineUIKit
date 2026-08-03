@@ -41,7 +41,7 @@ struct FineDebugTests {
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
         var bodyEvaluationCount = 0
 
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             bodyEvaluationCount += 1
             // `text` is an autoclosure, so the read happens while the label
             // node updates rather than while `body` is evaluated — which is
@@ -175,7 +175,7 @@ struct FineDebugTests {
         let container = UIView()
         window.addSubview(container)
 
-        let ui = FineUI(DebugCounter()) { model in
+        let ui = FineUI(state: DebugCounter()) { model in
             FineLabel(text: "\(model.count)")
         }
         // An instance-specific name keeps this post from re-rendering every
@@ -211,7 +211,7 @@ struct FineDebugTests {
             let container = UIView()
             window.addSubview(container)
 
-            let ui = FineUI(DebugCounter()) { model in
+            let ui = FineUI(state: DebugCounter()) { model in
                 FineLabel(text: "\(model.count)")
             }
             ui.injectionNotificationName = notificationName
@@ -243,7 +243,7 @@ struct FineDebugTests {
         let container = UIView()
         window.addSubview(container)
 
-        let ui = FineUI(DebugCounter()) { model in
+        let ui = FineUI(state: DebugCounter()) { model in
             FineLabel(text: "\(model.count)")
         }
         let notificationName = Notification.Name("FineUIKitTests.toast.\(UUID().uuidString)")
