@@ -291,7 +291,7 @@ override var suspendsWhenDisappeared: Bool { false }   // 隠れている間も�
 ルートビューの下端は既定で `keyboardLayoutGuide` に追従するため、キーボード表示中はコンテンツがその上に詰まり、隠れません(キーボード非表示時は safe area 下端と一致し、レイアウトは従来どおり)。無効にする場合は `FineScreenController(_:avoidsKeyboard:)` に `false` を渡します(`FineUI` 直接利用なら `init(_:avoidsKeyboard:body:)`)。
 
 ```swift
-override var avoidsKeyboard: Bool { false }
+FineScreenController(ToDoListScreen(), avoidsKeyboard: false)
 ```
 
 スクロールでキーボードを閉じるには `.keyboardDismissMode` を使います(`FineList` / `FineGrid` / `FineScrollView`)。

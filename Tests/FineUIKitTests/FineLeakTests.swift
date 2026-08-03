@@ -22,9 +22,28 @@ private final class LeakStore {
     var rows = [LeakRow(id: 1, title: "one")]
 }
 
-/// Captures `self` from every handler shape the runtime keeps: a builder, a
-/// button action, a tap gesture, lifecycle hooks, a bar button, and a list's
-/// cell content and row callbacks.
+/// A representable whose adapter holds a closure, which is the retention path
+/// a wrapped `UIView` adds.
+private struct CapturingRepresentable: FineViewRepresentable {
+    let onUpdate: @MainActor () -> Void
+
+    func makeView() -> UIView {
+        UIView(frame: .zero)
+    }
+
+    func updateView(_ view: UIView, environment: FineEnvironmentValues) {
+        onUpdate()
+    }
+}
+
+/// Captures `self` from every shape the runtime keeps a closure in: a builder,
+/// a button action, a tap gesture, lifecycle hooks, a bar button, a list's and
+/// a grid's cell content and row callbacks, an environment reader, a
+/// `FineState` subtree, and a representable's adapter.
+///
+/// Off a window a list builds no cells, so the callbacks a coordinator holds
+/// are covered here while the cell subtrees themselves are covered by the
+/// windowed test below, which lays out and therefore materialises them.
 @MainActor
 @Observable
 private final class CapturingScreen: FineScreen {
@@ -42,11 +61,26 @@ private final class CapturingScreen: FineScreen {
             FineButton(title: "Tap") { self.taps += 1 }
             FineLabel(text: "\(self.taps)")
                 .onTap { self.taps += 1 }
+            FineEnvironmentReader { _ in
+                FineLabel(text: "\(self.taps)")
+            }
+            FineState(false) { isOn in
+                FineButton(title: "\(isOn.value)") {
+                    self.taps += 1
+                    isOn.value.toggle()
+                }
+            }
+            CapturingRepresentable { self.taps += 0 }
             FineList(self.store.rows) { row in
                 FineLabel(text: "\(row.title) \(self.taps)")
             }
             .onSelect { _ in self.taps += 1 }
             .onDelete { _ in self.taps += 1 }
+            .onRefresh { self.taps += 1 }
+            FineGrid(self.store.rows, columns: .count(2), spacing: 4) { row in
+                FineLabel(text: "\(row.title) \(self.taps)")
+            }
+            .onSelect { _ in self.taps += 1 }
             .onRefresh { self.taps += 1 }
         }
         .onAppear { self.appearances += 1 }
@@ -173,17 +207,20 @@ struct FineLeakTests {
         #expect(released.screen)
     }
 
-    /// The boundary, stated as a test so it cannot drift unnoticed: a screen
-    /// holding its controller strongly closes the cycle again —
-    /// screen → controller → view → node → closure → screen.
-    @Test func aScreenHoldingItsControllerStronglyLeaks() {
+    /// The boundary, stated as a test so it cannot drift unnoticed.
+    ///
+    /// The controller holds its screen, so a screen that holds the controller
+    /// back is a cycle on its own — controller → screen → controller — before
+    /// any view exists. Nothing is rendered here on purpose: the rule is about
+    /// the reference, not about which handler captured it, and rendering would
+    /// only add a longer path to a cycle that already closed.
+    @Test func aScreenHoldingItsControllerLeaks() {
         weak var releasedController: UIViewController?
 
         autoreleasepool {
             let screen = ControllerHoldingScreen()
             let controller = FineScreenController(screen)
             screen.controller = controller
-            controller.loadViewIfNeeded()
             releasedController = controller
         }
 
