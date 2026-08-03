@@ -13,35 +13,34 @@ FineUIKit は、UIKit の上で `Renderable` による宣言的 UI を記述し�
 
 ## 最小の使い方
 
-`FineViewController` を継承し、`@Observable` な状態と `body(_:)` を定義します。`body` 内で読んだ値は観測対象となり、互換なビューは作り直さず更新されます。
+`@Observable` なクラスを `FineContent` に適合させ `body() -> any Renderable` を実装し、`FineContentController(content)` で画面としてマウントします。`body` 内で読んだ値は観測対象となり、互換なビューは作り直さず更新されます。
 
 ```swift
 import FineUIKit
 import Observation
 
 @Observable
-final class ScreenState {
+final class ScreenContent: FineContent {
     var title = "Hello"
-}
 
-final class ScreenController: FineViewController<ScreenState> {
-    init() { super.init(state: .init()) }
-
-    override func body(_ state: ScreenState) -> any Renderable {
+    func body() -> any Renderable {
         FineStack.vertical {
-            FineLabel(text: state.title)
+            FineLabel(text: title)
         }
     }
 }
+
+let controller = FineContentController(ScreenContent())
+navigationController.pushViewController(controller, animated: true)
 ```
 
-公開 DSL、`FineState`、environment、ライフサイクル、独自 `UIView` のラップは[UI 合成と状態](domain/ui-composition.md)が正本です。リスト、グリッド、ナビゲーション、UIKit へのホストは[UIKit 統合とコレクション](integrations/uikit-collections.md)を参照してください。
+公開 DSL、`FineState`、environment、ライフサイクル、独自 `UIView` のラップは[UI 合成と状態](domain/ui-composition.md)が正本です。リスト、グリッド、ナビゲーション、ホストは[UIKit 統合とコレクション](integrations/uikit-collections.md)を参照してください。
 
 ## 保守者向けの最短経路
 
 1. 描画や局所更新を変える: [アーキテクチャ概要](architecture/overview.md) → [レンダリングワークフロー](workflows/rendering.md) → [テストと運用](operations/testing.md)。
 2. コンポーネントやモディファイアを変える: [UI 合成と状態](domain/ui-composition.md) → [ソースマップ](source-map.md)。
-3. `FineList` / `FineGrid`、セル、ナビゲーション、再ホストを変える: [UIKit 統合とコレクション](integrations/uikit-collections.md) → [テストと運用](operations/testing.md)。
+3. `FineList` / `FineGrid`、セル、ナビゲーション、ホストを変える: [UIKit 統合とコレクション](integrations/uikit-collections.md) → [テストと運用](operations/testing.md)。
 4. レンダリング計測・デバッグ診断を変える: [レンダリング計測とデバッグ診断](operations/diagnostics.md) → [テストと運用](operations/testing.md)。
 
 ## リポジトリの地図

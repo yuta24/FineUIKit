@@ -7,19 +7,19 @@ tags: [uikit, navigation, list, grid, hosting]
 
 # UIKit 統合、ナビゲーション、List と Grid
 
-FineUIKit は UIKit を置き換えず、`FineViewController` / `FineUI` が既存 UIView 階層に宣言的ツリーを設置します。更新粒度と停止・復帰の共通ルールは[レンダリングワークフロー](../workflows/rendering.md)、public DSL の状態・extension 規則は[UI 合成と状態](../domain/ui-composition.md)を参照してください。
+FineUIKit は UIKit を置き換えず、`FineContentController` が `FineContent` を `UIViewController` へ、内部の `FineUI` が UIView 階層へ宣言的ツリーを設置します。更新粒度と停止・復帰の共通ルールは[レンダリングワークフロー](../workflows/rendering.md)、public DSL の状態・extension 規則は[UI 合成と状態](../domain/ui-composition.md)を参照してください。
 
 ## 画面とホスティング
 
-`FineViewController<State>` は `viewDidLoad` で `FineUI` を生成して自身の `view` へ `build(to:)` します。`body(_:)` は必須、`avoidsKeyboard` は既定で `true` で、root の下端を `keyboardLayoutGuide` へ追従させます（[FineViewController.swift](../../Sources/FineUIKit/FineViewController.swift)、[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)）。
+画面として使う場合は `FineContentController` に `any FineContent` を渡します（`init(_ content:avoidsKeyboard:)`、`avoidsKeyboard` は既定で `true`）。`viewDidLoad` で内部の `FineUI` を生成し、自身の `view` へ `build(to:)` します（[FineContent.swift](../../Sources/FineUIKit/FineContent.swift)、[FineContentController.swift](../../Sources/FineUIKit/FineContentController.swift)、[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)）。
 
-`FineUI` を直接使う場合は強参照を保持してください。解放すると observation を含むレンダーループも停止します。`build(to:)` を別コンテナで再度呼ぶと、同じ root view を移し、旧コンテナにまたがる制約と trait registration を外して新コンテナに再設置します。同じコンテナへの再 build は階層を壊さない idempotent な再レンダーです。
+`FineUI` は意図的に公開していません（`da73abc`）。mounting を自分で書くと suspend/resume のライフサイクル管理も自分で担うことになり、`suspend()` を忘れたツリーは画面外でも黙って再差分され続けます。`FineContentController` はそれを正しく行う唯一の場所です。公開 API の拡張は source-compatible ですが縮小は互換性を壊すため、必要が生じるまで閉じています。自分のコントローラ内に埋め込む場合は `addChild(FineContentController(content))` で外観遷移を転送し、画面外で停止する render loop を保ってください。
 
-この再ホスト経路は `e56854e` とその後の修正で強化されました。`FineUIHostingTests.swift` は root 移動、制約の張り直し、状態と trait の追従を保護するため、変更時の必須確認先です。
+`build(to:)` を別コンテナで再度呼ぶと、同じ root view を移し、旧コンテナにまたがる制約と trait registration を外して新コンテナに再設置します。同じコンテナへの再 build は階層を壊さない idempotent な再レンダーです。この再ホスト経路は `e56854e` とその後の修正で強化され、`FineUIHostingTests.swift` が root 移動、制約の張り直し、状態と trait の追従を保護するため、変更時の必須確認先です。
 
 ## 宣言的 navigation
 
-`navigation(_:) -> FineNavigation?` を override すると `navigationItem` の title、prompt、large-title、back-button、leading/trailing button を宣言できます。`nil` は FineUIKit が navigation item に触れず、手動管理を維持する意味です（[FineNavigation.swift](../../Sources/FineUIKit/FineNavigation.swift)）。
+`FineNavigating` に適合すると `navigation() -> FineNavigation?` で `navigationItem` の title、prompt、large-title、back-button、leading/trailing button を宣言できます。`nil` は FineUIKit が navigation item に触れず、手動管理を維持する意味です（[FineNavigation.swift](../../Sources/FineUIKit/FineNavigation.swift)）。画面としてマウントされたときだけ navigation は意味を持ち、サブビューとしての `FineContent` は `FineNavigating` に適合できません（`FineContent.swift` が `FineContent` と `FineNavigating` を分離している理由です）。
 
 navigation は body から分離された observation scope です。タイトルや button の enabled 状態の変更は navigation item だけを更新し、view tree を再調停しません。また、画面本体が非表示で停止中でも navigation は更新されます。後ろの画面の title が上の画面の back-button label として表示されるためです。
 

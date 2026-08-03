@@ -25,7 +25,7 @@ flowchart TD
 
 ## 1. root の構造変更
 
-`FineUI.render()` は `body(state)` を `withObservationTracking` 内で評価します。`if`、配列の構造、モディファイア引数のように、記述を組み立てる最中に読まれた値が変わると root が再評価され、`FineRenderer` が前回の root view と差分適用します（[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)）。
+`FineUI.render()` は `content.body()` を `withObservationTracking` 内で評価します。`if`、配列の構造、モディファイア引数のように、記述を組み立てる最中に読まれた値が変わると root が再評価され、`FineRenderer` が前回の root view と差分適用します（[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)）。`body()` は protocol メソッドとして content のクラス経由で呼ばれるため、コード注入が次回 render で差し替えられます(`9864cee` で `FineUI<State>` の stored closure から `any FineContent` の method へ移行した理由です)。
 
 ここでは `FineNodeScheduler` を新たに用意し、子ノードの更新をキューへ積んで `drain()` します。古い render や observation callback は generation で捨てるため、作り直されたビューに stale な更新が入らない設計です（[FineNodeScheduler.swift](../../Sources/FineUIKit/FineNodeScheduler.swift)）。
 
@@ -37,13 +37,15 @@ primitive の `_update` 内で読まれた値は、scheduler がノードごと�
 
 ## 3. ナビゲーションとセルは独立スコープ
 
-`FineViewController.navigation(_:)` は `FineObservedScope` で追跡されます。タイトルや bar button の enabled 状態だけが変わったとき、view tree は再調停せず `navigationItem` だけ更新されます（[FineViewController.swift](../../Sources/FineUIKit/FineViewController.swift)、[FineObservedScope.swift](../../Sources/FineUIKit/FineObservedScope.swift)）。
+`FineNavigating.navigation()` は `FineObservedScope` で追跡されます。`FineContentController` は `viewDidLoad` で content が `FineNavigating` に適合しているときだけこの scope を構築します(`7f7602d` 以降、非適合 content では `viewDidLoad` の後続処理を打ち切らない)。タイトルや bar button の enabled 状態だけが変わったとき、view tree は再調停せず `navigationItem` だけ更新されます（[FineContentController.swift](../../Sources/FineUIKit/FineContentController.swift)、[FineObservedScope.swift](../../Sources/FineUIKit/FineObservedScope.swift)）。
 
 List/Grid のセルと supplementary view は `FineNodeHost` で個別に観測されます。セル内で読んだ値は該当セルだけを更新し、可視セルに伝える environment もこの経路で反映されます。diffable data source とセル再利用の詳細は[UIKit 統合とコレクション](../integrations/uikit-collections.md)に分離しています。
 
 ## 4. 非表示ツリーの停止と復帰
 
-`FineRenderGate` は画面外の observation 起因作業を止めます。`FineViewController` は標準で `viewDidDisappear` に suspend、`viewIsAppearing` に resume を呼び、停止中の変更は一回のアニメーションなし catch-up render にまとめます。
+`FineRenderGate` は画面外の observation 起因作業を止めます。`FineContentController` は標準で `viewDidDisappear` に suspend、`viewIsAppearing` に resume を呼び、停止中の変更は一回のアニメーションなし catch-up render にまとめます。
+
+`89d9164` 以降、停止の理由は二つに分かれています。`isSuspendedOffScreen`（画面外による停止）と `isSuspendedByCaller`（`suspendRendering()` による明示的停止）は独立し、いずれかが有効な間だけ runtime が suspend します（`applySuspension()`）。したがって `suspendRendering()` で要求した停止は `viewIsAppearing` でも解除されず、`resumeRendering()` だけで終わります。`suspendsWhenDisappeared` を `false` にoverride すると画面外停止を無効化できます（snapshotted な遷移ビューなど）。`.overFullScreen` / `.overCurrentContext` で覆われる場合と、ロード後に一度も表示されない場合は `suspendRendering()` / `resumeRendering()` で手動制御します。
 
 ```mermaid
 stateDiagram-v2
