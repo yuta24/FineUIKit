@@ -1424,13 +1424,13 @@ struct FineBindingTests {
 }
 
 @MainActor
-struct FineScreenControllerTests {
+struct FineContentControllerTests {
     @Observable
     final class Counter {
         var count: Int = 0
     }
 
-    final class CounterScreen: FineContent {
+    final class CounterContent: FineContent {
         let state: Counter
 
         init(state: Counter) {
@@ -1442,9 +1442,9 @@ struct FineScreenControllerTests {
         }
     }
 
-    final class CounterViewController: FineScreenController {
+    final class CounterViewController: FineContentController {
         init(state: Counter) {
-            super.init(CounterScreen(state: state))
+            super.init(CounterContent(state: state))
         }
     }
 
@@ -1476,7 +1476,7 @@ struct FineNavigationTests {
         var usesSecondAction: Bool = false
     }
 
-    final class NavigationScreen: FineNavigating {
+    final class NavigationContent: FineNavigating {
         let state: NavigationState
         var firstActionCount = 0
         var secondActionCount = 0
@@ -1494,7 +1494,7 @@ struct FineNavigationTests {
                 .leading(.init(title: "Close") {})
                 .trailing(
                     .init(title: "Edit") {},
-                    // Capturing the screen, not the controller: the controller
+                    // Capturing the content, not the controller: the controller
                     // owns this object and the bar button alike, so the graph
                     // stays acyclic without a capture list.
                     .init(title: "Save") {
@@ -1509,20 +1509,20 @@ struct FineNavigationTests {
         }
     }
 
-    final class NavigationViewController: FineScreenController {
-        private let navigationScreen: NavigationScreen
+    final class NavigationViewController: FineContentController {
+        private let navigationContent: NavigationContent
 
-        var firstActionCount: Int { navigationScreen.firstActionCount }
-        var secondActionCount: Int { navigationScreen.secondActionCount }
+        var firstActionCount: Int { navigationContent.firstActionCount }
+        var secondActionCount: Int { navigationContent.secondActionCount }
 
         init(state: NavigationState) {
-            let screen = NavigationScreen(state: state)
-            self.navigationScreen = screen
-            super.init(screen)
+            let content = NavigationContent(state: state)
+            self.navigationContent = content
+            super.init(content)
         }
     }
 
-    final class ManualNavigationScreen: FineContent {
+    final class ManualNavigationContent: FineContent {
         let state: NavigationState
 
         init(state: NavigationState) {
@@ -1534,9 +1534,9 @@ struct FineNavigationTests {
         }
     }
 
-    final class ManualNavigationViewController: FineScreenController {
+    final class ManualNavigationViewController: FineContentController {
         init(state: NavigationState) {
-            super.init(ManualNavigationScreen(state: state))
+            super.init(ManualNavigationContent(state: state))
         }
     }
 

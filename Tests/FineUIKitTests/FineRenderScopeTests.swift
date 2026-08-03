@@ -89,7 +89,7 @@ private final class ScopeState {
 @MainActor
 @Suite(.serialized)
 struct FineRenderScopeTests {
-    private final class ScopedScreen: FineNavigating {
+    private final class ScopedContent: FineNavigating {
         let state: ScopeState
         let tag: String
 
@@ -113,7 +113,7 @@ struct FineRenderScopeTests {
         }
     }
 
-    private final class ScopedViewController: FineScreenController {
+    private final class ScopedViewController: FineContentController {
         var suspends = true
 
         override var suspendsWhenDisappeared: Bool {
@@ -121,13 +121,13 @@ struct FineRenderScopeTests {
         }
 
         init(state: ScopeState, tag: String) {
-            super.init(ScopedScreen(state: state, tag: tag))
+            super.init(ScopedContent(state: state, tag: tag))
         }
     }
 
     /// Reads state in `body()` itself, so the read registers on the root
     /// scope rather than on the enclosing container's node.
-    private final class RootScopeScreen: FineContent {
+    private final class RootScopeContent: FineContent {
         let state: ScopeState
         let tag: String
 
@@ -145,9 +145,9 @@ struct FineRenderScopeTests {
         }
     }
 
-    private final class RootScopeViewController: FineScreenController {
+    private final class RootScopeViewController: FineContentController {
         init(state: ScopeState, tag: String) {
-            super.init(RootScopeScreen(state: state, tag: tag))
+            super.init(RootScopeContent(state: state, tag: tag))
         }
     }
 
@@ -514,7 +514,7 @@ struct FineRenderScopeTests {
     }
 
     @Test func suspendedCellCatchesUpOnControllerReappearance() async throws {
-        final class ListScreen: FineContent {
+        final class ListContent: FineContent {
             let state: RowModel
 
             init(state: RowModel) {
@@ -528,9 +528,9 @@ struct FineRenderScopeTests {
             }
         }
 
-        final class ListViewController: FineScreenController {
+        final class ListViewController: FineContentController {
             init(state: RowModel) {
-                super.init(ListScreen(state: state))
+                super.init(ListContent(state: state))
             }
         }
 
@@ -763,14 +763,14 @@ private final class PreloadContent: FineContent {
 /// without ever appearing. The runtime does not exist yet at that point.
 @MainActor
 @Suite(.serialized)
-struct FineScreenControllerSuspensionTests {
+struct FineContentControllerSuspensionTests {
     private func label(_ controller: UIViewController) -> UILabel? {
         controller.view.subviews.first as? UILabel
     }
 
     @Test func suspendingBeforeTheViewLoadsStillSuspends() async {
         let state = PreloadState()
-        let controller = FineScreenController(PreloadContent(state: state))
+        let controller = FineContentController(PreloadContent(state: state))
 
         controller.suspendRendering()
         controller.loadViewIfNeeded()

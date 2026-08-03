@@ -154,7 +154,7 @@ final class ToDoList: FineNavigating {
 
 struct TodoListWrapper: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UINavigationController {
-        UINavigationController(rootViewController: FineScreenController(ToDoList()))
+        UINavigationController(rootViewController: FineContentController(ToDoList()))
     }
 
     func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {

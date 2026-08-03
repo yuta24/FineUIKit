@@ -36,7 +36,7 @@ enum FineObservedTraits {
 ///
 /// Deliberately not public. Mounting by hand means owning the lifecycle by
 /// hand — a tree whose owner forgets `suspend()` keeps re-diffing while it is
-/// off screen, silently — and `FineScreenController` is the one place that
+/// off screen, silently — and `FineContentController` is the one place that
 /// wiring is written correctly. Widening this later is source-compatible;
 /// narrowing it would not be, so it stays closed until something needs it
 /// open.

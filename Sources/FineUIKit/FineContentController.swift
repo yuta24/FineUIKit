@@ -1,5 +1,5 @@
 //
-//  FineScreenController.swift
+//  FineContentController.swift
 //  FineUIKit
 //
 //  Created by nova on 2026/08/03.
@@ -15,7 +15,7 @@ import UIKit
 /// ```swift
 /// let list = ToDoList()
 /// list.delegate = self
-/// navigationController.pushViewController(FineScreenController(list), animated: true)
+/// navigationController.pushViewController(FineContentController(list), animated: true)
 /// ```
 ///
 /// To put content inside a controller you already own, add one of these as a
@@ -23,7 +23,7 @@ import UIKit
 /// relationship but does not add the view:
 ///
 /// ```swift
-/// let child = FineScreenController(content)
+/// let child = FineContentController(content)
 /// addChild(child)
 /// containerView.addSubview(child.view)
 /// // …constraints…
@@ -45,7 +45,7 @@ import UIKit
 /// `FineContent` is a protocol with a method rather than a closure handed to
 /// this initialiser: a stored closure is fixed at the moment it is made, and no
 /// injection can replace it.
-open class FineScreenController: UIViewController {
+open class FineContentController: UIViewController {
     /// The content this controller renders.
     public let content: any FineContent
 
@@ -70,7 +70,7 @@ open class FineScreenController: UIViewController {
 
     @available(*, unavailable)
     public required init?(coder: NSCoder) {
-        fatalError("FineScreenController does not support initialization from a coder")
+        fatalError("FineContentController does not support initialization from a coder")
     }
 
     /// Whether rendering pauses while the view is off screen.

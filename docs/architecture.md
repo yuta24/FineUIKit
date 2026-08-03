@@ -318,7 +318,7 @@ trait 自体は `FineEnvironmentValues.traitCollection` として environment �
 - **セルは例外**。`FineNodeHost` の観測スコープは diffable data source の reconfigure でしか再実行されず、要素が変化していない行は catch-up でも reconfigure されない。そのままだと行が永久に stale になる(観測も失効済み)ため、抑止されたセルは `deferObservedWork` に自分の復帰処理を預け、`resume()` が catch-up の後にそれを実行する。世代チェックにより、catch-up で既に再描画されたセルは二重に走らない。
 - 初回の `build(to:)` は通す(画面外のコンテナに構築したツリーも中身を持つ)。catch-up はアニメーションしない。
 
-`FineScreenController` は `viewDidDisappear` で `suspend()`、`viewIsAppearing` で `resume()` を呼びます(`suspendsWhenDisappeared` で無効化可)。ゲートは `FineRenderContext` に載ってツリー全体(リスト / グリッドのセルを含む)へ配られます。
+`FineContentController` は `viewDidDisappear` で `suspend()`、`viewIsAppearing` で `resume()` を呼びます(`suspendsWhenDisappeared` で無効化可)。ゲートは `FineRenderContext` に載ってツリー全体(リスト / グリッドのセルを含む)へ配られます。
 
 ---
 

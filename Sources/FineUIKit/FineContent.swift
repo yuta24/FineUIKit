@@ -31,7 +31,7 @@
 /// }
 /// ```
 ///
-/// Hand it to `FineScreenController` to put it on screen. Content nested inside
+/// Hand it to `FineContentController` to put it on screen. Content nested inside
 /// other content needs no controller and no conformance at all — see *Scope*
 /// below.
 ///

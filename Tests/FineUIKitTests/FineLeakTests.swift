@@ -46,7 +46,7 @@ private struct CapturingRepresentable: FineViewRepresentable {
 /// windowed test below, which lays out and therefore materialises them.
 @MainActor
 @Observable
-private final class CapturingScreen: FineNavigating {
+private final class CapturingContent: FineNavigating {
     @ObservationIgnored let store: LeakStore
     var taps = 0
     var appearances = 0
@@ -98,7 +98,7 @@ private final class CapturingScreen: FineNavigating {
 /// stack itself rather than the wrapper `.onAppear` and friends install.
 @MainActor
 @Observable
-private final class PlainScreen: FineContent {
+private final class PlainContent: FineContent {
     var title = "title"
 
     func body() -> any Renderable {
@@ -108,10 +108,10 @@ private final class PlainScreen: FineContent {
     }
 }
 
-/// The one shape that still closes a cycle: a screen that reaches its
+/// The one shape that still closes a cycle: content that reaches its
 /// controller strongly.
 @MainActor
-private final class ControllerHoldingScreen: FineContent {
+private final class ControllerHoldingContent: FineContent {
     var controller: UIViewController?
     var taps = 0
 
@@ -120,26 +120,26 @@ private final class ControllerHoldingScreen: FineContent {
     }
 }
 
-/// A screen that reports outward the way the library recommends: through a weak
+/// Content that reports outward the way the library recommends: through a weak
 /// delegate, so the reference that would close the cycle is weak by declaration
 /// rather than by everyone remembering a capture list.
 @MainActor
-private protocol RoutingScreenDelegate: AnyObject {
-    func routingScreenDidSelect()
+private protocol RoutingContentDelegate: AnyObject {
+    func routingContentDidSelect()
 }
 
 @MainActor
-private final class RoutingScreen: FineContent {
-    weak var delegate: (any RoutingScreenDelegate)?
+private final class RoutingContent: FineContent {
+    weak var delegate: (any RoutingContentDelegate)?
 
     func body() -> any Renderable {
-        FineButton(title: "Go") { self.delegate?.routingScreenDidSelect() }
+        FineButton(title: "Go") { self.delegate?.routingContentDidSelect() }
     }
 }
 
 @MainActor
-private final class RoutingController: FineScreenController, RoutingScreenDelegate {
-    func routingScreenDidSelect() {
+private final class RoutingController: FineContentController, RoutingContentDelegate {
+    func routingContentDidSelect() {
         // What a delegate does is not what this test is about; that it can be
         // the controller without retaining it is.
     }
@@ -155,37 +155,37 @@ private final class RoutingController: FineScreenController, RoutingScreenDelega
 ///
 /// That is why a description must not capture the *controller*: the cycle
 /// controller → view → node → closure → controller has nothing to break it.
-/// Capturing the *screen* is a different matter — the controller owns the
-/// screen and the tree, and the screen owns neither — and these tests pin down
+/// Capturing the *content* is a different matter — the controller owns the
+/// content and the tree, and the content owns neither — and these tests pin down
 /// that the difference holds for every shape the runtime retains.
 @MainActor
 @Suite(.serialized)
 struct FineLeakTests {
     /// Renders a controller's tree, drops it, and reports what went away.
     ///
-    /// `loadViewIfNeeded()` is enough to render: `FineScreenController` builds
+    /// `loadViewIfNeeded()` is enough to render: `FineContentController` builds
     /// in `viewDidLoad`. Staying off a window keeps UIKit from holding a
     /// reference of its own, so a survivor means the tree held it.
     private func releases(_ make: () -> (UIViewController, AnyObject)) -> (controller: Bool, content: Bool) {
         weak var releasedController: UIViewController?
-        weak var releasedScreen: AnyObject?
+        weak var releasedContent: AnyObject?
 
         autoreleasepool {
-            let (controller, screen) = make()
+            let (controller, content) = make()
             controller.loadViewIfNeeded()
             releasedController = controller
-            releasedScreen = screen
+            releasedContent = content
         }
 
-        return (releasedController == nil, releasedScreen == nil)
+        return (releasedController == nil, releasedContent == nil)
     }
 
-    /// Every retained handler shape captures the screen strongly, and both the
-    /// controller and the screen still go away.
-    @Test func aScreenCapturingItselfEverywhereIsReleased() {
+    /// Every retained handler shape captures the content strongly, and both the
+    /// controller and the content still go away.
+    @Test func aContentCapturingItselfEverywhereIsReleased() {
         let released = releases {
-            let screen = CapturingScreen(store: LeakStore())
-            return (FineScreenController(screen), screen)
+            let content = CapturingContent(store: LeakStore())
+            return (FineContentController(content), content)
         }
 
         #expect(released.controller)
@@ -193,13 +193,13 @@ struct FineLeakTests {
     }
 
     /// The recommended shape for reporting outward keeps the delegate weak, so
-    /// pointing a screen at its own controller does not retain it.
+    /// pointing content at its own controller does not retain it.
     @Test func aWeakDelegatePointingAtTheControllerIsReleased() {
         let released = releases {
-            let screen = RoutingScreen()
-            let controller = RoutingController(screen)
-            screen.delegate = controller
-            return (controller, screen)
+            let content = RoutingContent()
+            let controller = RoutingController(content)
+            content.delegate = controller
+            return (controller, content)
         }
 
         #expect(released.controller)
@@ -208,18 +208,18 @@ struct FineLeakTests {
 
     /// The boundary, stated as a test so it cannot drift unnoticed.
     ///
-    /// The controller holds its screen, so a screen that holds the controller
-    /// back is a cycle on its own — controller → screen → controller — before
+    /// The controller holds its content, so content that holds the controller
+    /// back is a cycle on its own — controller → content → controller — before
     /// any view exists. Nothing is rendered here on purpose: the rule is about
     /// the reference, not about which handler captured it, and rendering would
     /// only add a longer path to a cycle that already closed.
-    @Test func aScreenHoldingItsControllerLeaks() {
+    @Test func aContentHoldingItsControllerLeaks() {
         weak var releasedController: UIViewController?
 
         autoreleasepool {
-            let screen = ControllerHoldingScreen()
-            let controller = FineScreenController(screen)
-            screen.controller = controller
+            let content = ControllerHoldingContent()
+            let controller = FineContentController(content)
+            content.controller = controller
             releasedController = controller
         }
 
@@ -234,7 +234,7 @@ struct FineLeakTests {
         weak var releasedLabel: UIView?
 
         try autoreleasepool {
-            let controller = FineScreenController(PlainScreen())
+            let controller = FineContentController(PlainContent())
             controller.loadViewIfNeeded()
 
             // Required, not expected: a tree that never rendered would leave
@@ -252,12 +252,12 @@ struct FineLeakTests {
     /// catch-up work the gate recorded for it.
     @Test func aSuspendedControllerIsReleased() {
         weak var releasedController: UIViewController?
-        weak var releasedScreen: AnyObject?
+        weak var releasedContent: AnyObject?
 
         autoreleasepool {
             let store = LeakStore()
-            let screen = CapturingScreen(store: store)
-            let controller = FineScreenController(screen)
+            let content = CapturingContent(store: store)
+            let controller = FineContentController(content)
             controller.loadViewIfNeeded()
             controller.suspendRendering()
 
@@ -265,11 +265,11 @@ struct FineLeakTests {
             store.title = "changed"
 
             releasedController = controller
-            releasedScreen = screen
+            releasedContent = content
         }
 
         #expect(releasedController == nil)
-        #expect(releasedScreen == nil)
+        #expect(releasedContent == nil)
     }
 
     /// `FineUI` holds the tree it built, so releasing it has to release the
@@ -303,34 +303,34 @@ struct FineLeakTests {
     /// `build(to:)`. None of them may keep it alive once its window lets go.
     ///
     /// Release is not immediate here, and that is not a leak: `.task` starts a
-    /// `Task` that captures the screen, and a task scheduled but not yet run
-    /// holds what it captured until it does. So this yields until the screen
-    /// goes rather than asserting on the same turn — a screen that a task kept
+    /// `Task` that captures the content, and a task scheduled but not yet run
+    /// holds what it captured until it does. So this yields until the content
+    /// goes rather than asserting on the same turn — content that a task kept
     /// alive forever would still fail, which is the property worth pinning.
     @Test func controllerShownInAWindowIsReleasedAfterTheWindowLetsGo() async {
         weak var releasedController: UIViewController?
-        weak var releasedScreen: AnyObject?
+        weak var releasedContent: AnyObject?
 
         autoreleasepool {
             let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 480))
-            let screen = CapturingScreen(store: LeakStore())
-            let controller = FineScreenController(screen)
+            let content = CapturingContent(store: LeakStore())
+            let controller = FineContentController(content)
             window.rootViewController = controller
             window.makeKeyAndVisible()
             window.layoutIfNeeded()
 
             releasedController = controller
-            releasedScreen = screen
+            releasedContent = content
             window.rootViewController = nil
             window.isHidden = true
         }
 
-        for _ in 0..<50 where releasedScreen != nil {
+        for _ in 0..<50 where releasedContent != nil {
             await Task.yield()
         }
 
         #expect(releasedController == nil)
-        #expect(releasedScreen == nil)
+        #expect(releasedContent == nil)
     }
 }
 

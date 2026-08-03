@@ -31,14 +31,14 @@ struct CounterTabs: UIViewControllerRepresentable {
         let settings = DemoSettings()
         context.coordinator.tabs = tabs
 
-        let tca = UINavigationController(rootViewController: FineScreenController(TCACounter()))
+        let tca = UINavigationController(rootViewController: FineContentController(TCACounter()))
         tca.tabBarItem = UITabBarItem(
             title: "TCA",
             image: UIImage(systemName: "square.stack.3d.up"),
             tag: 0
         )
 
-        let plain = UINavigationController(rootViewController: FineScreenController(PlainCounter()))
+        let plain = UINavigationController(rootViewController: FineContentController(PlainCounter()))
         plain.tabBarItem = UITabBarItem(
             title: "Plain",
             image: UIImage(systemName: "circle"),
@@ -48,7 +48,7 @@ struct CounterTabs: UIViewControllerRepresentable {
         let settingsForm = SettingsForm(settings: settings)
         settingsForm.delegate = context.coordinator
         let settingsNavigation = UINavigationController(
-            rootViewController: FineScreenController(settingsForm)
+            rootViewController: FineContentController(settingsForm)
         )
         settingsNavigation.tabBarItem = UITabBarItem(
             title: settings.language.settingsTitle,

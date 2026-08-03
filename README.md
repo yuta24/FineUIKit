@@ -42,17 +42,17 @@ final class ToDoList: FineContent {
 }
 
 // 画面として使う
-navigationController.pushViewController(FineScreenController(ToDoList()), animated: true)
+navigationController.pushViewController(FineContentController(ToDoList()), animated: true)
 ```
 
 ハンドラが `self` をキャプチャして構いません。マウントしたコントローラが content とビューツリーの両方を所有し、content はどちらも所有しないので、循環しないからです（[メモリ管理](#メモリ管理)を参照）。
 
-マウントは `FineScreenController` を通します。表示状態に応じた suspend / resume と `navigationItem` の更新を繋ぐのがこのクラスの仕事です。
+マウントは `FineContentController` を通します。表示状態に応じた suspend / resume と `navigationItem` の更新を繋ぐのがこのクラスの仕事です。
 
 既に自前のコントローラがある場合は、子コントローラとして足してください。`addChild(_:)` は親子関係を結ぶだけでビューは足さないので、UIKit の手順どおり 4 段階が要ります。
 
 ```swift
-let child = FineScreenController(content)
+let child = FineContentController(content)
 addChild(child)
 view.addSubview(child.view)
 child.view.translatesAutoresizingMaskIntoConstraints = false
@@ -289,7 +289,7 @@ FineLabel(text: detail.title)
 
 ## 画面が隠れている間のレンダリング
 
-`FineScreenController` は、画面が隠れている間(push で覆われた、タブが切り替わった)は再レンダリングを止めます。その間に届いた状態変更は記録され、再表示時(`viewIsAppearing`)に**1回の catch-up レンダリング**でまとめて反映されます。共有ストアを持つ画面スタックで、見えていない画面が変更ごとに再差分されることはありません。
+`FineContentController` は、画面が隠れている間(push で覆われた、タブが切り替わった)は再レンダリングを止めます。その間に届いた状態変更は記録され、再表示時(`viewIsAppearing`)に**1回の catch-up レンダリング**でまとめて反映されます。共有ストアを持つ画面スタックで、見えていない画面が変更ごとに再差分されることはありません。
 
 ナビゲーションは止まりません。覆われた画面のタイトルは上の画面の戻るボタンとして見えているためです。
 
@@ -308,10 +308,10 @@ override var suspendsWhenDisappeared: Bool { false }   // 隠れている間も�
 
 ## キーボード
 
-ルートビューの下端は既定で `keyboardLayoutGuide` に追従するため、キーボード表示中はコンテンツがその上に詰まり、隠れません(キーボード非表示時は safe area 下端と一致し、レイアウトは従来どおり)。無効にする場合は `FineScreenController(_:avoidsKeyboard:)` に `false` を渡します。
+ルートビューの下端は既定で `keyboardLayoutGuide` に追従するため、キーボード表示中はコンテンツがその上に詰まり、隠れません(キーボード非表示時は safe area 下端と一致し、レイアウトは従来どおり)。無効にする場合は `FineContentController(_:avoidsKeyboard:)` に `false` を渡します。
 
 ```swift
-FineScreenController(ToDoList(), avoidsKeyboard: false)
+FineContentController(ToDoList(), avoidsKeyboard: false)
 ```
 
 スクロールでキーボードを閉じるには `.keyboardDismissMode` を使います(`FineList` / `FineGrid` / `FineScrollView`)。
@@ -607,10 +607,10 @@ FineUIKit が管理していないビュー(UIKit が内部で作るラベルな
 - 内部プリミティブ — 組み込みコンポーネントが持つ `_makeView()` / `_canUpdate(_:)` / `_update(_:context:)` 契約。署名や全プロパティ書き戻しの規則は公開 API ではない
 - `FineRenderer` — 差分適用層。`body` を内部プリミティブへ解決し、「ビュー型互換 + モディファイア署名一致 + key 一致」のときだけ in-place 更新、それ以外は作り直し
 - `FineNode` — 各ビューに紐づく永続「要素」(Flutter の Element 相当)。モディファイア署名・key・ノード局所の観測状態(scheduler の generation / context)に加え、`FineState` のローカル状態を所有する。ビューと同寿命なので、状態は再レンダリングをまたいで保持される
-- `FineUI`(internal) — `withObservationTracking` で差分適用を駆動するランタイム。`body()` は構造、コンテナの builder はそのノード、`FineLabel.text` はラベルノード単位で再評価される。画面が隠れている間は `suspend()` で観測起因のレンダリングを止め、`resume()` で1回だけ catch-up する。マウントは `FineScreenController` が行うので公開していない
+- `FineUI`(internal) — `withObservationTracking` で差分適用を駆動するランタイム。`body()` は構造、コンテナの builder はそのノード、`FineLabel.text` はラベルノード単位で再評価される。画面が隠れている間は `suspend()` で観測起因のレンダリングを止め、`resume()` で1回だけ catch-up する。マウントは `FineContentController` が行うので公開していない
 - `FineContent` — 状態を持ち `body()` でビューツリーを記述するオブジェクト。`@Observable` なクラスとして書く。画面とは限らず、任意のビューにマウントできる
 - `FineNavigating` — `FineContent` に `navigation()` を足したもの。画面として使うときだけ適合する
-- `FineScreenController` — 画面をマウントする view controller。`body()` と `navigation()` を別の observation スコープで追跡し、表示状態に応じて `FineUI` を suspend / resume する。手動で止めたいときの公開 API は `suspendRendering()` / `resumeRendering()`。`open` なので継承してよい
+- `FineContentController` — 画面をマウントする view controller。`body()` と `navigation()` を別の observation スコープで追跡し、表示状態に応じて `FineUI` を suspend / resume する。手動で止めたいときの公開 API は `suspendRendering()` / `resumeRendering()`。`open` なので継承してよい
 
 ## ホットリロード
 
