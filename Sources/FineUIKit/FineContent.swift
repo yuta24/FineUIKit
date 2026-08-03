@@ -86,6 +86,11 @@ public protocol FineContent: AnyObject {
 /// concern: content rendered into a subview has no bar to describe, and would
 /// otherwise be able to implement a method that silently does nothing.
 ///
+/// Conforming is never forbidden. Content that conforms and is then mounted
+/// somewhere that is not a screen keeps its `navigation()`; the method simply
+/// has no effect in that position. The split exists so the method is not grown
+/// where it cannot mean anything — not to prevent a conformance.
+///
 /// This is chrome, not flow. It says what the bar shows, and a bar button's
 /// action reports an intent the same way any other handler does.
 ///
