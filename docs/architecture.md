@@ -545,4 +545,5 @@ xcrun lldb
 ## 参考
 
 - 公開 API と使い方: [README](../README.md)
+- 公開 API が**なぜこの形なのか**（メモリ安全性、命名、`FineUI` を非公開にした理由): [公開 API の設計判断](api-design.md)
 - 中核ファイル: `Renderable.swift` / `FineRenderer.swift` / `FineNode.swift` / `FineNodeScheduler.swift` / `FineUI.swift`
