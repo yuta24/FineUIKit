@@ -19,14 +19,16 @@ import UIKit
 /// ```
 ///
 /// To put content inside a controller you already own, add one of these as a
-/// child — the whole containment sequence, since `addChild(_:)` establishes the
-/// relationship but does not add the view:
+/// child. **`addChild(_:)` alone does not do it**: it establishes the
+/// relationship and leaves the view where it was, so all four steps are
+/// needed — add the child, add its view to the container, constrain it, and
+/// tell it the move is done.
 ///
 /// ```swift
 /// let child = FineContentController(content)
 /// addChild(child)
 /// containerView.addSubview(child.view)
-/// // …constraints…
+/// // …constraints pinning child.view to containerView…
 /// child.didMove(toParent: self)
 /// ```
 ///
