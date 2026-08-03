@@ -89,50 +89,65 @@ private final class ScopeState {
 @MainActor
 @Suite(.serialized)
 struct FineRenderScopeTests {
-    private final class ScopedViewController: FineViewController<ScopeState> {
+    private final class ScopedScreen: FineScreen {
+        let state: ScopeState
         let tag: String
-        var suspends = true
 
         init(state: ScopeState, tag: String) {
+            self.state = state
             self.tag = tag
-            super.init(state: state)
         }
+
+        func body() -> any Renderable {
+            FineStack.vertical {
+                // Eager read: registers on the container's scope, so any
+                // body-scope invalidation re-diffs these children.
+                FineLabel(text: "body")
+                    .backgroundColor(self.state.bodyValue % 2 == 0 ? .red : .blue)
+                CountingProbe(tag: self.tag)
+            }
+        }
+
+        func navigation() -> FineNavigation? {
+            FineNavigation(title: state.title)
+        }
+    }
+
+    private final class ScopedViewController: FineScreenController {
+        var suspends = true
 
         override var suspendsWhenDisappeared: Bool {
             suspends
         }
 
-        override func body(_ state: ScopeState) -> any Renderable {
-            FineStack.vertical {
-                // Eager read: registers on the container's scope, so any
-                // body-scope invalidation re-diffs these children.
-                FineLabel(text: "body")
-                    .backgroundColor(state.bodyValue % 2 == 0 ? .red : .blue)
-                CountingProbe(tag: self.tag)
-            }
-        }
-
-        override func navigation(_ state: ScopeState) -> FineNavigation? {
-            FineNavigation(title: state.title)
+        init(state: ScopeState, tag: String) {
+            super.init(ScopedScreen(state: state, tag: tag))
         }
     }
 
-    /// Reads state in `body(_:)` itself, so the read registers on the root
+    /// Reads state in `body()` itself, so the read registers on the root
     /// scope rather than on the enclosing container's node.
-    private final class RootScopeViewController: FineViewController<ScopeState> {
+    private final class RootScopeScreen: FineScreen {
+        let state: ScopeState
         let tag: String
 
         init(state: ScopeState, tag: String) {
+            self.state = state
             self.tag = tag
-            super.init(state: state)
         }
 
-        override func body(_ state: ScopeState) -> any Renderable {
+        func body() -> any Renderable {
             let value = state.bodyValue
             return FineStack.vertical {
                 FineLabel(text: "\(value)")
                 CountingProbe(tag: self.tag)
             }
+        }
+    }
+
+    private final class RootScopeViewController: FineScreenController {
+        init(state: ScopeState, tag: String) {
+            super.init(RootScopeScreen(state: state, tag: tag))
         }
     }
 
@@ -499,11 +514,23 @@ struct FineRenderScopeTests {
     }
 
     @Test func suspendedCellCatchesUpOnControllerReappearance() async throws {
-        final class ListViewController: FineViewController<RowModel> {
-            override func body(_ state: RowModel) -> any Renderable {
+        final class ListScreen: FineScreen {
+            let state: RowModel
+
+            init(state: RowModel) {
+                self.state = state
+            }
+
+            func body() -> any Renderable {
                 FineList([KeyedRow(id: 1)]) { _ in
-                    FineLabel(text: state.title)
+                    FineLabel(text: self.state.title)
                 }
+            }
+        }
+
+        final class ListViewController: FineScreenController {
+            init(state: RowModel) {
+                super.init(ListScreen(state: state))
             }
         }
 

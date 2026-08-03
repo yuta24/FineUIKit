@@ -1430,9 +1430,21 @@ struct FineViewControllerTests {
         var count: Int = 0
     }
 
-    final class CounterViewController: FineViewController<Counter> {
-        override func body(_ state: Counter) -> any Renderable {
-            FineLabel(text: "\(state.count)")
+    final class CounterScreen: FineScreen {
+        let state: Counter
+
+        init(state: Counter) {
+            self.state = state
+        }
+
+        func body() -> any Renderable {
+            FineLabel(text: "\(self.state.count)")
+        }
+    }
+
+    final class CounterViewController: FineScreenController {
+        init(state: Counter) {
+            super.init(CounterScreen(state: state))
         }
     }
 
@@ -1464,24 +1476,32 @@ struct FineNavigationTests {
         var usesSecondAction: Bool = false
     }
 
-    final class NavigationViewController: FineViewController<NavigationState> {
+    final class NavigationScreen: FineScreen {
+        let state: NavigationState
         var firstActionCount = 0
         var secondActionCount = 0
 
-        override func body(_ state: NavigationState) -> any Renderable {
-            FineLabel(text: state.title)
+        init(state: NavigationState) {
+            self.state = state
         }
 
-        override func navigation(_ state: NavigationState) -> FineNavigation? {
+        func body() -> any Renderable {
+            FineLabel(text: self.state.title)
+        }
+
+        func navigation() -> FineNavigation? {
             FineNavigation(title: state.title)
                 .leading(.init(title: "Close") {})
                 .trailing(
                     .init(title: "Edit") {},
-                    .init(title: "Save") { [unowned self] in
-                        if state.usesSecondAction {
-                            secondActionCount += 1
+                    // Capturing the screen, not the controller: the controller
+                    // owns this object and the bar button alike, so the graph
+                    // stays acyclic without a capture list.
+                    .init(title: "Save") {
+                        if self.state.usesSecondAction {
+                            self.secondActionCount += 1
                         } else {
-                            firstActionCount += 1
+                            self.firstActionCount += 1
                         }
                     }
                     .enabled(state.isSaveEnabled)
@@ -1489,9 +1509,34 @@ struct FineNavigationTests {
         }
     }
 
-    final class ManualNavigationViewController: FineViewController<NavigationState> {
-        override func body(_ state: NavigationState) -> any Renderable {
-            FineLabel(text: state.title)
+    final class NavigationViewController: FineScreenController {
+        private let navigationScreen: NavigationScreen
+
+        var firstActionCount: Int { navigationScreen.firstActionCount }
+        var secondActionCount: Int { navigationScreen.secondActionCount }
+
+        init(state: NavigationState) {
+            let screen = NavigationScreen(state: state)
+            self.navigationScreen = screen
+            super.init(screen)
+        }
+    }
+
+    final class ManualNavigationScreen: FineScreen {
+        let state: NavigationState
+
+        init(state: NavigationState) {
+            self.state = state
+        }
+
+        func body() -> any Renderable {
+            FineLabel(text: self.state.title)
+        }
+    }
+
+    final class ManualNavigationViewController: FineScreenController {
+        init(state: NavigationState) {
+            super.init(ManualNavigationScreen(state: state))
         }
     }
 

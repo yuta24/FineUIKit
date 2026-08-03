@@ -6,42 +6,48 @@ Rust の [Dioxus](https://dioxuslabs.com) と同じ設計方針 — 「UI を記
 
 ## 使い方
 
-`FineViewController` を継承し、`@Observable` な状態を渡して `body(_:_:)` を override します。`body` は**型メソッド**なので `self` はスコープに存在せず、記述がコントローラを掴むことがありません（[メモリ管理](#メモリ管理)を参照）。
+`FineScreen` に適合した `@Observable` なクラスを書き、`FineScreenController` に載せます。画面が状態を持ち、その状態から自分のビューツリーを記述します。
 
 ```swift
 import FineUIKit
 import Observation
 
 @Observable
-final class ToDoListViewModel {
+final class ToDoListScreen: FineScreen {
     var draft: String = ""
     var items: [ToDo] = []
-}
 
-final class ToDoListViewController: FineViewController<ToDoListViewModel> {
-    init() {
-        super.init(state: .init())
+    func add() {
+        items.append(.init(title: draft))
+        draft = ""
     }
 
-    override class func body(_ viewModel: ToDoListViewModel, _ host: FineHost) -> any Renderable {
+    func body() -> any Renderable {
         FineStack.vertical(spacing: 8) {
-            FineLabel(text: "\(viewModel.items.count) items")
+            FineLabel(text: "\(self.items.count) items")
                 .font(.preferredFont(forTextStyle: .headline))
                 .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16))
             FineStack.horizontal(spacing: 8) {
-                FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
-                FineButton(title: "Add") { viewModel.add() }
+                FineTextField(text: .init(self, \.draft), placeholder: "New task")
+                FineButton(title: "Add") { self.add() }
                     .hugging(.defaultHigh, axis: .horizontal)
             }
             .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16))
-            FineList(viewModel.items) { item in
+            FineList(self.items) { item in
                 FineLabel(text: item.title)
             }
-            .onDelete { viewModel.remove($0) }
+            .onDelete { item in self.items.removeAll { $0.id == item.id } }
         }
     }
 }
+
+// 画面として使う
+navigationController.pushViewController(FineScreenController(ToDoListScreen()), animated: true)
 ```
+
+ハンドラが `self`（screen）をキャプチャして構いません。コントローラが screen とビューツリーの両方を所有し、screen はどちらも所有しないので、循環しないからです（[メモリ管理](#メモリ管理)を参照）。
+
+`FineScreenController` は「画面として使うときのラッパー」であって必須ではありません。任意の `UIView` に載せるなら `FineUI` を直接使えます。
 
 `body` 内で読んだ `@Observable` プロパティが変化すると自動で再レンダリングされます。ビューは作り直されず、互換なビューは in-place 更新されます。
 
@@ -96,29 +102,39 @@ FineStack.vertical(spacing: 12) {
 
 ## ナビゲーション
 
-`FineViewController.navigation(_:_:)` を override すると、`body(_:_:)` と同じ observation / hot reload の流れで `navigationItem` を宣言できます。`nil` を返す既定実装では `navigationItem` に触らないため、手動管理もそのまま使えます。
+`FineScreen.navigation()` を実装すると、`body()` と同じ observation / hot reload の流れで `navigationItem` を宣言できます。既定実装は `nil` を返し、その場合 `navigationItem` には触れないので手動管理もそのまま使えます。
 
-ナビゲーションは `body(_:_:)` とは**別の observation スコープ**で追跡されます。`navigation(_:_:)` だけが読んだ値(タイトル、ボタンの `.enabled` など)が変わったときは `navigationItem` だけが更新され、ツリーの再評価・再差分は起きません。下の例で `draft` が1文字変わるたびに全画面が再差分されることはありません。
+ナビゲーションは `body()` とは**別の observation スコープ**で追跡されます。`navigation()` だけが読んだ値(タイトル、ボタンの `.enabled` など)が変わったときは `navigationItem` だけが更新され、ツリーの再評価・再差分は起きません。下の例で `draft` が1文字変わるたびに全画面が再差分されることはありません。
 
 ```swift
-override class func navigation(_ state: ToDoListViewModel, _ host: FineHost) -> FineNavigation? {
-    FineNavigation(title: "ToDo (\(state.items.count))")
+func navigation() -> FineNavigation? {
+    FineNavigation(title: "ToDo (\(items.count))")
         .trailing(
-            FineBarButton(systemItem: .add) { state.addTask() }
-                .enabled(!state.draft.isEmpty)
+            FineBarButton(systemItem: .add) { self.add() }
+                .enabled(!draft.isEmpty)
         )
 }
 ```
 
-画面遷移 DSL は持たず、従来どおり action 内で手続き的に書きます。コントローラへの経路は `FineHost` です。
+これは**遷移ではなく chrome の記述**です。画面遷移そのものは FineUIKit の対象外で、screen は「何が起きたか」を外へ伝えるだけにします。
 
 ```swift
-FineBarButton(title: "Detail") {
-    host.push(DetailViewController())
+protocol ToDoListScreenDelegate: AnyObject {
+    func toDoListScreen(_ screen: ToDoListScreen, didSelect item: ToDo)
+}
+
+@Observable
+final class ToDoListScreen: FineScreen {
+    weak var delegate: (any ToDoListScreenDelegate)?
+
+    func body() -> any Renderable {
+        FineList(self.items) { ... }
+            .onSelect { self.delegate?.toDoListScreen(self, didSelect: $0) }
+    }
 }
 ```
 
-`FineHost` が用意する操作は `push` / `pop` / `present` / `dismiss` / `endEditing` と、それ以外の UIKit 面のための `withController(_:)` です。コントローラは weak に保持され、値としては取り出せません。
+遷移を行うのは screen を組み立てた側です。`Example/Counter` の `SettingsScreen` と `CounterTabs.Coordinator` がこの形の実例です。
 
 ## 双方向バインディング
 
@@ -253,7 +269,7 @@ FineLabel(text: detail.title)
 
 ## 画面が隠れている間のレンダリング
 
-`FineViewController` は、画面が隠れている間(push で覆われた、タブが切り替わった)は再レンダリングを止めます。その間に届いた状態変更は記録され、再表示時(`viewIsAppearing`)に**1回の catch-up レンダリング**でまとめて反映されます。共有ストアを持つ画面スタックで、見えていない画面が変更ごとに再差分されることはありません。
+`FineScreenController` は、画面が隠れている間(push で覆われた、タブが切り替わった)は再レンダリングを止めます。その間に届いた状態変更は記録され、再表示時(`viewIsAppearing`)に**1回の catch-up レンダリング**でまとめて反映されます。共有ストアを持つ画面スタックで、見えていない画面が変更ごとに再差分されることはありません。
 
 ナビゲーションは止まりません。覆われた画面のタイトルは上の画面の戻るボタンとして見えているためです。
 
@@ -272,7 +288,7 @@ override var suspendsWhenDisappeared: Bool { false }   // 隠れている間も�
 
 ## キーボード
 
-ルートビューの下端は既定で `keyboardLayoutGuide` に追従するため、キーボード表示中はコンテンツがその上に詰まり、隠れません(キーボード非表示時は safe area 下端と一致し、レイアウトは従来どおり)。無効にする場合は `FineViewController` の `avoidsKeyboard` を override します(`FineUI` 直接利用なら `init(_:avoidsKeyboard:body:)`)。
+ルートビューの下端は既定で `keyboardLayoutGuide` に追従するため、キーボード表示中はコンテンツがその上に詰まり、隠れません(キーボード非表示時は safe area 下端と一致し、レイアウトは従来どおり)。無効にする場合は `FineScreenController(_:avoidsKeyboard:)` に `false` を渡します(`FineUI` 直接利用なら `init(_:avoidsKeyboard:body:)`)。
 
 ```swift
 override var avoidsKeyboard: Bool { false }
@@ -424,66 +440,64 @@ BlurBackground(style: .systemMaterial)
 
 ## メモリ管理
 
-`FineButton` の `action` や `FineStack` の builder といったクロージャは、node 単位の再レンダリングのためにビュー側(`FineNode`)に保持されます。ビューはコントローラのものなので、**クロージャがコントローラを強参照すると循環参照になり、解放されません**(controller → view → FineNode → クロージャ → controller)。
+`FineButton` の `action` や `FineStack` の builder といったクロージャは、node 単位の再レンダリングのためにビュー側(`FineNode`)に保持されます。`FineList` / `FineGrid` の coordinator も cell content や `onSelect` を保持します。**つまり記述が抱えたクロージャは、ビューが生きている間ずっと生き続けます。**
 
-FineUIKit はこれを規律ではなく**型で**防ぎます。`body(_:_:)` と `navigation(_:_:)` は型メソッドなので、`self` がそもそもスコープに存在しません。
+ビューは hosting controller のものです。したがって —
+
+- **screen をキャプチャするのは安全**。controller が screen とツリーの両方を所有し、screen はどちらも所有しないので、グラフは循環しません
+- **controller をキャプチャすると循環します**。`controller → view → node → クロージャ → controller` を切るものがありません
 
 ```swift
-override class func body(_ viewModel: ToDoListViewModel, _ host: FineHost) -> any Renderable {
+func body() -> any Renderable {
     FineStack.vertical {
-        // ✅ 状態を読む・書く。これが基本形
-        FineButton(title: "Add") { viewModel.addTask() }
-
-        // ✅ コントローラ操作は FineHost 経由。weak 保持なので循環しない
-        FineButton(title: "Detail") { host.push(DetailViewController()) }
-
-        // ❌ そもそも書けない: instance member 'addTask' cannot be used on type '...'
-        // FineButton(title: "Add") { self.addTask() }
+        // ✅ self は screen。capture list は要りません
+        FineButton(title: "Add") { self.add() }
+        FineLabel(text: "\(self.items.count)")
     }
 }
 ```
 
-`[weak self]` / `[unowned self]` を書く必要はありません。書く場所がないからです。
+`[weak self]` を書く必要はありません。書く場所がないからです。`body()` は escaping なクロージャの中で `self.` を明示するよう Swift が要求するので、**何をキャプチャしているかは常に目に見えます**。
 
-`FineHost` がコントローラを**値として渡さない**のも同じ理由です。`let controller = host.controller` のように取り出せてしまうと、それをクロージャが強参照でき、保証が消えます。UIKit 面が必要なときは非 escaping の `withController(_:)` を使ってください。
+### 守るべきルールは 1 つ
 
-### 振る舞いは state に置く
+> **screen は自分の controller を強参照で保持してはいけない。**
 
-コントローラのストアドプロパティやプライベートメソッドは `body` から参照できません。振る舞いは `@Observable` な state に置いてください。
+外へ何かを伝えるときは、クロージャプロパティではなく **`weak var delegate`** を使ってください。`weak` が宣言側に 1 回書かれるだけで、利用側にキャプチャのルールが残りません。
 
 ```swift
+// ✅ 推奨: weak が宣言に 1 回だけ
 @Observable
-final class ToDoListViewModel {
-    var draft: String = ""
-    var items: [ToDo] = []
-
-    func addTask() {
-        items.append(.init(title: draft))
-        draft = ""
-    }
+final class ToDoListScreen: FineScreen {
+    weak var delegate: (any ToDoListScreenDelegate)?
 }
+
+// ⚠️ クロージャでも書けますが、合成する側が毎回 [weak] を守る必要があります
+screen.onSelect = { [weak controller] item in controller?.push(...) }
+// これを忘れると controller → screen → クロージャ → controller で循環します
 ```
 
-外部から注入する依存(コールバック、リポジトリ)も同様に state に持たせます。`Example/Counter` の `DemoSettings.onAppearanceChange` がその例です。
+### 状態の置き場所
+
+| | 寿命 | 用途 |
+|---|---|---|
+| store / model | 画面より長い。外から注入、共有可 | ドメイン状態 |
+| **screen** | マウントされている間 | 画面固有の UI 状態 |
+| `FineState` | ビューの identity と同じ | 局所的な UI 状態（行の展開など） |
+
+screen が store を持つかどうかは、ただのプロパティの持ち方です。FineUIKit は「model」という概念を持ちません。
+
+### 入れ子
+
+screen は入れ子にできますが、ランタイムは子の identity を管理しません。親が子を所有し、`child.body()` を自分の記述に差し込みます。細粒度の再レンダリングは階層を貫通します（子の状態変更で親の `body()` は再評価されません）。
 
 ### 残る限界
 
-型で防げるのは「コントローラを掴むこと」までです。**コントローラを所有する第三者のオブジェクト**(coordinator、router など)をクロージャがキャプチャすれば、同じ循環は作れます。
+**controller を所有する第三者のオブジェクト**（coordinator、router）をクロージャがキャプチャすれば、同じ循環は作れます。Swift はクロージャのキャプチャを制限できないため、ここは原理的な限界です。
 
-```swift
-// ⚠️ coordinator がこのコントローラを所有しているなら循環する
-FineButton(title: "Close") { coordinator.finish() }
-```
+`.task` は screen をキャプチャしたまま実行されるので、**キャンセルを尊重しない task は screen の解放を遅らせます**（循環ではありません）。
 
-Swift はクロージャのキャプチャを制限できないため、ここは原理的な限界です。デフォルトが安全になっただけで、絶対の封じ込めではありません。
-
-### 旧 API(instance メソッドの `body(_:)`)
-
-`open func body(_ state:)` / `open func navigation(_ state:)` は移行のために残してあります。これを override すると `self` がスコープに戻るため、**上記の保証は効きません**。新規のコードでは型メソッドを override してください。
-
-各パターンが実際に解放されるかは `FineLeakTests` が検証しています。旧 API 経由のリークは `withKnownIssue` として1件だけ残っており、それが「instance メソッドを override するとどうなるか」の記録です。
-
-「書けない」ことのほうはテストでは表現できないため、`Scripts/verify-capture-guarantee.sh` が**コンパイルが通らないこと**を CI で検証しています(通らない理由まで照合するので、無関係な理由で失敗した fixture は通りません)。
+各パターンが実際に解放されるかは `FineLeakTests` が検証しています。「screen が controller を持つとリークする」という境界も、テストとして固定してあります。
 
 ## 診断(なぜビューが作り直されたか)
 
@@ -559,7 +573,7 @@ FineUIKit が管理していないビュー(UIKit が内部で作るラベルな
 
 | 区間 | 意味 |
 |---|---|
-| `render` | ルートの再レンダリング(`body(_:_:)` の再評価とツリーの再 diff) |
+| `render` | ルートの再レンダリング(`body()` の再評価とツリーの再 diff) |
 | `node` | ノード単位の更新(観測起因のノードローカル再レンダリングを含む。記述の型名付き) |
 | `cell` | リスト / グリッドのセルが抱えるサブツリー |
 
@@ -572,16 +586,16 @@ FineUIKit が管理していないビュー(UIKit が内部で作るラベルな
 - `FineRenderer` — 差分適用層。`body` を内部プリミティブへ解決し、「ビュー型互換 + モディファイア署名一致 + key 一致」のときだけ in-place 更新、それ以外は作り直し
 - `FineNode` — 各ビューに紐づく永続「要素」(Flutter の Element 相当)。モディファイア署名・key・ノード局所の観測状態(scheduler の generation / context)に加え、`FineState` のローカル状態を所有する。ビューと同寿命なので、状態は再レンダリングをまたいで保持される
 - `FineUI` — `withObservationTracking` で差分適用を駆動するランタイム。root の `body` は構造、コンテナの `content` はそのノード、`FineLabel.text` はラベルノード単位で再評価される。画面が隠れている間は `suspend()` で観測起因のレンダリングを止め、`resume()` で1回だけ catch-up する
-- `FineViewController` — 上記をまとめた推奨インターフェース。`body(_:_:)` と `navigation(_:_:)` を別の observation スコープで追跡し、表示状態に応じて `FineUI` を suspend / resume する
-- `FineHost` — 記述からコントローラへ戻る唯一の経路。weak 保持で、操作メソッドのみを公開する
+- `FineScreen` — 画面。状態を持ち、`body()` でビューツリーを、`navigation()` で navigation item を記述する。`@Observable` なクラスとして書く
+- `FineScreenController` — 画面をマウントする view controller。`body()` と `navigation()` を別の observation スコープで追跡し、表示状態に応じて `FineUI` を suspend / resume する。`open` なので継承してよい
 
 ## ホットリロード
 
 DEBUG ビルドでは、コード注入(InjectionLite / InjectionIII / InjectionNext)の完了通知を `FineUI` が受け取り、自動で再レンダリングします。
 
-`FineViewController` の `body` は vtable 経由で動的ディスパッチされるメソッドなので、注入によって実装が差し替わると、次の再レンダリングから新しいコードが使われます。**アプリ側にホットリロード用のコードは一切不要です。** 状態は `@Observable` オブジェクトに住んでいるため、リロードをまたいで保持されます。
+`FineScreen.body()` は vtable 経由で動的ディスパッチされるメソッドなので、注入によって実装が差し替わると、次の再レンダリングから新しいコードが使われます。**アプリ側にホットリロード用のコードは一切不要です。** 状態は screen(`@Observable` なクラス)に住んでいるため、リロードをまたいで保持されます。
 
-型メソッドであることは影響しません。Swift の `class func` は instance メソッドと同じクラス vtable のスロットを占め(`sil_vtable` に同じ形で並び、呼び出しは `class_method`)、注入はそのスロットを位置で差し替えるためです。
+`FineScreenController` が `any FineScreen` として保持していても同じです。クラスが protocol に適合した場合、protocol witness thunk 自身が `class_method` を発行してクラスの vtable に落ちるためです。**これが `body` をクロージャではなくメソッドにしている理由**でもあります — ストアドクロージャは生成時に確定するので、注入では差し替えられません。
 
 Example アプリでは [InjectionLite](https://github.com/johnno1962/InjectionLite)(GUI アプリ不要)を利用しています。セットアップ:
 
@@ -593,7 +607,7 @@ Example アプリでは [InjectionLite](https://github.com/johnno1962/InjectionL
 
 ### 注意: `body` の外に書いたコードの差し替え
 
-Xcode の新リンカ(chained fixups)環境では、`private` メソッドへの直接呼び出しなど静的ディスパッチされるコードは注入で差し替わりません。確実に差し替わるのは、クラスの vtable 経由(`FineViewController.body` の override)か ObjC ディスパッチ(`@objc dynamic`)のコードです。ホットリロードで書き換えたいロジックはできるだけ `body` から辿れる位置に置いてください。
+Xcode の新リンカ(chained fixups)環境では、`private` メソッドへの直接呼び出しなど静的ディスパッチされるコードは注入で差し替わりません。確実に差し替わるのは、クラスの vtable 経由(`FineScreen.body()` の実装)か ObjC ディスパッチ(`@objc dynamic`)のコードです。ホットリロードで書き換えたいロジックはできるだけ `body` から辿れる位置に置いてください。
 
 ### 既知の問題(Xcode 27 beta + InjectionLite 1.2.x)
 

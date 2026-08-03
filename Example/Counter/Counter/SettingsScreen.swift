@@ -74,13 +74,6 @@ final class DemoSettings {
         }
     }
 
-    // The UIKit side effects a settings change has outside this screen, set by
-    // whoever composes the tab. They live here rather than on the controller
-    // because `body` is a type method and has no instance to read them from —
-    // which is the same reason it cannot accidentally retain that instance.
-    @ObservationIgnored var onAppearanceChange: (Bool) -> Void = { _ in }
-    @ObservationIgnored var onLanguageChange: (DemoLanguage) -> Void = { _ in }
-
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         isDarkModeEnabled = defaults.bool(forKey: Key.darkMode)
@@ -89,12 +82,29 @@ final class DemoSettings {
     }
 }
 
-final class SettingsViewController: FineViewController<DemoSettings> {
-    override class func navigation(_ settings: DemoSettings, _ host: FineHost) -> FineNavigation? {
+// What this screen has to say to the rest of the app. A delegate rather than a
+// closure, and `weak` here rather than a capture list at every call site: a
+// screen must not hold its controller, and declaring that once is more reliable
+// than remembering it everywhere.
+@MainActor
+protocol SettingsScreenDelegate: AnyObject {
+    func settingsScreen(_ screen: SettingsScreen, didChangeDarkMode isEnabled: Bool)
+    func settingsScreen(_ screen: SettingsScreen, didChangeLanguage language: DemoLanguage)
+}
+
+final class SettingsScreen: FineScreen {
+    let settings: DemoSettings
+    weak var delegate: (any SettingsScreenDelegate)?
+
+    init(settings: DemoSettings) {
+        self.settings = settings
+    }
+
+    func navigation() -> FineNavigation? {
         FineNavigation(title: settings.language.settingsTitle)
     }
 
-    override class func body(_ settings: DemoSettings, _ host: FineHost) -> any Renderable {
+    func body() -> any Renderable {
         let language = settings.language
 
         return FineScrollView {
@@ -108,10 +118,10 @@ final class SettingsViewController: FineViewController<DemoSettings> {
                     FineSpacer()
                     FineToggle(
                         isOn: .init(
-                            get: { settings.isDarkModeEnabled },
+                            get: { self.settings.isDarkModeEnabled },
                             set: { isEnabled in
-                                settings.isDarkModeEnabled = isEnabled
-                                settings.onAppearanceChange(isEnabled)
+                                self.settings.isDarkModeEnabled = isEnabled
+                                self.delegate?.settingsScreen(self, didChangeDarkMode: isEnabled)
                             }
                         )
                     )
@@ -130,13 +140,13 @@ final class SettingsViewController: FineViewController<DemoSettings> {
                     titles: DemoLanguage.allCases.map(\.displayName),
                     selection: .init(
                         get: {
-                            DemoLanguage.allCases.firstIndex(of: settings.language) ?? 0
+                            DemoLanguage.allCases.firstIndex(of: self.settings.language) ?? 0
                         },
                         set: { index in
                             guard DemoLanguage.allCases.indices.contains(index) else { return }
                             let language = DemoLanguage.allCases[index]
-                            settings.language = language
-                            settings.onLanguageChange(language)
+                            self.settings.language = language
+                            self.delegate?.settingsScreen(self, didChangeLanguage: language)
                         }
                     )
                 )

@@ -294,7 +294,7 @@ flowchart TD
 ```
 
 - **root**: `body(state)` の中で `state.flag` を直接読み、`if state.flag { A } else { B }` のように**構造**が変われば、`render()` が丸ごと走り差分適用される。
-- **navigation**: `FineViewController.navigation(_:_:)` は `FineObservedScope`(`FineObservedScope.swift`)という独立した観測スコープで実行される。タイトルやボタンの `enabled` の変化は `navigationItem` の更新だけで済み、ツリーには触らない。ここを root の body スコープに同居させると、タイトル1文字の変化が全画面の再差分を引き起こす。
+- **navigation**: `FineScreen.navigation()` は `FineObservedScope`(`FineObservedScope.swift`)という独立した観測スコープで実行される。タイトルやボタンの `enabled` の変化は `navigationItem` の更新だけで済み、ツリーには触らない。ここを root の body スコープに同居させると、タイトル1文字の変化が全画面の再差分を引き起こす。
 - **ノード**: `FineLabel(text: state.title)` は `text` が `@autoclosure`(`FineLabel.swift`)なので、`state.title` の読み取りはラベルの `_update` 内で起きる。→ ラベルノードだけ再更新。
 - **セル**: `FineList` / `FineGrid` のセルは独自の観測スコープで content を描画するため、行の内容変更はそのセルだけを更新する(後述)。
 
@@ -318,7 +318,7 @@ trait 自体は `FineEnvironmentValues.traitCollection` として environment �
 - **セルは例外**。`FineNodeHost` の観測スコープは diffable data source の reconfigure でしか再実行されず、要素が変化していない行は catch-up でも reconfigure されない。そのままだと行が永久に stale になる(観測も失効済み)ため、抑止されたセルは `deferObservedWork` に自分の復帰処理を預け、`resume()` が catch-up の後にそれを実行する。世代チェックにより、catch-up で既に再描画されたセルは二重に走らない。
 - 初回の `build(to:)` は通す(画面外のコンテナに構築したツリーも中身を持つ)。catch-up はアニメーションしない。
 
-`FineViewController` は `viewDidDisappear` で `suspend()`、`viewIsAppearing` で `resume()` を呼びます(`suspendsWhenDisappeared` で無効化可)。ゲートは `FineRenderContext` に載ってツリー全体(リスト / グリッドのセルを含む)へ配られます。
+`FineScreenController` は `viewDidDisappear` で `suspend()`、`viewIsAppearing` で `resume()` を呼びます(`suspendsWhenDisappeared` で無効化可)。ゲートは `FineRenderContext` に載ってツリー全体(リスト / グリッドのセルを含む)へ配られます。
 
 ---
 
