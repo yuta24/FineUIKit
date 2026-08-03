@@ -1,5 +1,5 @@
 //
-//  ToDoListScreen.swift
+//  ToDoList.swift
 //  ToDo
 //
 //  Created by nova on 2026/07/04.
@@ -29,7 +29,7 @@ extension FineEnvironmentValues {
 // so nothing here closes a cycle. The one rule is that a screen must not hold
 // its controller — which is why it has no reason to know about one.
 @Observable
-final class ToDoListScreen: FineNavigating {
+final class ToDoList: FineNavigating {
     var draft: String = ""
     var showsGrid: Bool = false
     var usesAlternateAccent: Bool = false
@@ -154,7 +154,7 @@ final class ToDoListScreen: FineNavigating {
 
 struct TodoListWrapper: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UINavigationController {
-        UINavigationController(rootViewController: FineScreenController(ToDoListScreen()))
+        UINavigationController(rootViewController: FineScreenController(ToDoList()))
     }
 
     func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {

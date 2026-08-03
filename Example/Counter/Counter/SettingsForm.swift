@@ -87,14 +87,14 @@ final class DemoSettings {
 // screen must not hold its controller, and declaring that once is more reliable
 // than remembering it everywhere.
 @MainActor
-protocol SettingsScreenDelegate: AnyObject {
-    func settingsScreen(_ screen: SettingsScreen, didChangeDarkMode isEnabled: Bool)
-    func settingsScreen(_ screen: SettingsScreen, didChangeLanguage language: DemoLanguage)
+protocol SettingsFormDelegate: AnyObject {
+    func settingsForm(_ form: SettingsForm, didChangeDarkMode isEnabled: Bool)
+    func settingsForm(_ form: SettingsForm, didChangeLanguage language: DemoLanguage)
 }
 
-final class SettingsScreen: FineNavigating {
+final class SettingsForm: FineNavigating {
     let settings: DemoSettings
-    weak var delegate: (any SettingsScreenDelegate)?
+    weak var delegate: (any SettingsFormDelegate)?
 
     init(settings: DemoSettings) {
         self.settings = settings
@@ -121,7 +121,7 @@ final class SettingsScreen: FineNavigating {
                             get: { self.settings.isDarkModeEnabled },
                             set: { isEnabled in
                                 self.settings.isDarkModeEnabled = isEnabled
-                                self.delegate?.settingsScreen(self, didChangeDarkMode: isEnabled)
+                                self.delegate?.settingsForm(self, didChangeDarkMode: isEnabled)
                             }
                         )
                     )
@@ -146,7 +146,7 @@ final class SettingsScreen: FineNavigating {
                             guard DemoLanguage.allCases.indices.contains(index) else { return }
                             let language = DemoLanguage.allCases[index]
                             self.settings.language = language
-                            self.delegate?.settingsScreen(self, didChangeLanguage: language)
+                            self.delegate?.settingsForm(self, didChangeLanguage: language)
                         }
                     )
                 )

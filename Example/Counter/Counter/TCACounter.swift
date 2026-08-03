@@ -1,5 +1,5 @@
 //
-//  TCACounterScreen.swift
+//  TCACounter.swift
 //  Counter
 //
 //  Created by nova on 2026/07/09.
@@ -12,7 +12,7 @@ import FineUIKit
 // nothing about FineUIKit is TCA-specific. The render loop tracks whatever
 // observable values `body()` reads, and here those reads go through the
 // store's `@ObservableState`.
-final class TCACounterScreen: FineNavigating {
+final class TCACounter: FineNavigating {
     let store: StoreOf<CounterFeature>
 
     init() {

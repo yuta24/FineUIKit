@@ -13,7 +13,7 @@ import FineUIKit
 import Observation
 
 @Observable
-final class ToDoListScreen: FineContent {
+final class ToDoList: FineContent {
     var draft: String = ""
     var items: [ToDo] = []
 
@@ -42,7 +42,7 @@ final class ToDoListScreen: FineContent {
 }
 
 // 画面として使う
-navigationController.pushViewController(FineScreenController(ToDoListScreen()), animated: true)
+navigationController.pushViewController(FineScreenController(ToDoList()), animated: true)
 ```
 
 ハンドラが `self` をキャプチャして構いません。マウントしたコントローラが content とビューツリーの両方を所有し、content はどちらも所有しないので、循環しないからです（[メモリ管理](#メモリ管理)を参照）。
@@ -121,13 +121,13 @@ func navigation() -> FineNavigation? {
 これは**遷移ではなく chrome の記述**です。画面遷移そのものは FineUIKit の対象外で、content は「何が起きたか」を外へ伝えるだけにします。
 
 ```swift
-protocol ToDoListScreenDelegate: AnyObject {
-    func toDoList(_ list: ToDoListScreen, didSelect item: ToDo)
+protocol ToDoListDelegate: AnyObject {
+    func toDoList(_ list: ToDoList, didSelect item: ToDo)
 }
 
 @Observable
-final class ToDoListScreen: FineContent {
-    @ObservationIgnored weak var delegate: (any ToDoListScreenDelegate)?
+final class ToDoList: FineContent {
+    @ObservationIgnored weak var delegate: (any ToDoListDelegate)?
 
     func body() -> any Renderable {
         FineList(self.items) { ... }
@@ -136,7 +136,7 @@ final class ToDoListScreen: FineContent {
 }
 ```
 
-遷移を行うのは content を組み立てた側です。`Example/Counter` の `SettingsScreen` と `CounterTabs.Coordinator` がこの形の実例です。
+遷移を行うのは content を組み立てた側です。`Example/Counter` の `SettingsForm` と `CounterTabs.Coordinator` がこの形の実例です。
 
 ## 双方向バインディング
 
@@ -293,7 +293,7 @@ override var suspendsWhenDisappeared: Bool { false }   // 隠れている間も�
 ルートビューの下端は既定で `keyboardLayoutGuide` に追従するため、キーボード表示中はコンテンツがその上に詰まり、隠れません(キーボード非表示時は safe area 下端と一致し、レイアウトは従来どおり)。無効にする場合は `FineScreenController(_:avoidsKeyboard:)` に `false` を渡します。
 
 ```swift
-FineScreenController(ToDoListScreen(), avoidsKeyboard: false)
+FineScreenController(ToDoList(), avoidsKeyboard: false)
 ```
 
 スクロールでキーボードを閉じるには `.keyboardDismissMode` を使います(`FineList` / `FineGrid` / `FineScrollView`)。
@@ -470,8 +470,8 @@ func body() -> any Renderable {
 ```swift
 // ✅ 推奨: weak が宣言に 1 回だけ
 @Observable
-final class ToDoListScreen: FineContent {
-    @ObservationIgnored weak var delegate: (any ToDoListScreenDelegate)?
+final class ToDoList: FineContent {
+    @ObservationIgnored weak var delegate: (any ToDoListDelegate)?
 }
 
 // ⚠️ クロージャでも書けますが、合成する側が毎回 [weak] を守る必要があります

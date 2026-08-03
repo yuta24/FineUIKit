@@ -1,5 +1,5 @@
 //
-//  PlainCounterScreen.swift
+//  PlainCounter.swift
 //  Counter
 //
 //  Created by nova on 2026/07/09.
@@ -13,7 +13,7 @@ import Observation
 // reads its properties in `body()`, so mutating them (including from the async
 // `getFact()` task) re-renders the same way the TCA version does.
 @Observable
-final class PlainCounterScreen: FineNavigating {
+final class PlainCounter: FineNavigating {
     var count = 0
     var stepText = "1"
     var fact: String?
