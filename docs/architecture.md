@@ -264,7 +264,7 @@ private func run(_ job: Job) {
 private func render() {
     generation += 1
     let description = withObservationTracking {
-        self.body(self.state)      // body の中で直接読んだ @Observable を追跡
+        self.content.body()        // body の中で直接読んだ @Observable を追跡
     } onChange: { [weak self] in
         Task { @MainActor in
             guard self?.generation == expectedGeneration else { return }
@@ -288,12 +288,12 @@ private func render() {
 flowchart TD
     Change["@Observable プロパティが変化"] --> Where{"どこで読まれた?"}
     Where -->|"root body 内で直接<br/>(例: 構造分岐の条件)"| Root["FineUI.render()<br/>body 全体を再評価 → 構造差分"]
-    Where -->|"navigation(_:) 内<br/>(例: タイトル / ボタンの enabled)"| Nav["FineObservedScope<br/>navigationItem だけ再適用"]
+    Where -->|"navigation() 内<br/>(例: タイトル / ボタンの enabled)"| Nav["FineObservedScope<br/>navigationItem だけ再適用"]
     Where -->|"あるノードの _update 内<br/>(例: FineLabel.text の autoclosure)"| Node["FineNodeScheduler<br/>そのノードだけ _update 再実行"]
     Where -->|"List/Grid のセル content 内"| Cell["セルのローカル観測<br/>そのセルだけ再描画"]
 ```
 
-- **root**: `body(state)` の中で `state.flag` を直接読み、`if state.flag { A } else { B }` のように**構造**が変われば、`render()` が丸ごと走り差分適用される。
+- **root**: `body()` の中で `state.flag` を直接読み、`if state.flag { A } else { B }` のように**構造**が変われば、`render()` が丸ごと走り差分適用される。
 - **navigation**: `FineNavigating.navigation()` は `FineObservedScope`(`FineObservedScope.swift`)という独立した観測スコープで実行される。タイトルやボタンの `enabled` の変化は `navigationItem` の更新だけで済み、ツリーには触らない。ここを root の body スコープに同居させると、タイトル1文字の変化が全画面の再差分を引き起こす。
 - **ノード**: `FineLabel(text: state.title)` は `text` が `@autoclosure`(`FineLabel.swift`)なので、`state.title` の読み取りはラベルの `_update` 内で起きる。→ ラベルノードだけ再更新。
 - **セル**: `FineList` / `FineGrid` のセルは独自の観測スコープで content を描画するため、行の内容変更はそのセルだけを更新する(後述)。

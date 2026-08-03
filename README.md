@@ -47,7 +47,25 @@ navigationController.pushViewController(FineScreenController(ToDoList()), animat
 
 ハンドラが `self` をキャプチャして構いません。マウントしたコントローラが content とビューツリーの両方を所有し、content はどちらも所有しないので、循環しないからです（[メモリ管理](#メモリ管理)を参照）。
 
-マウントは `FineScreenController` を通します。表示状態に応じた suspend / resume と `navigationItem` の更新を繋ぐのがこのクラスの仕事です。既に自前のコントローラがある場合は、子として足してください — `addChild(FineScreenController(content))` なら appearance の転送も効きます。
+マウントは `FineScreenController` を通します。表示状態に応じた suspend / resume と `navigationItem` の更新を繋ぐのがこのクラスの仕事です。
+
+既に自前のコントローラがある場合は、子コントローラとして足してください。`addChild(_:)` は親子関係を結ぶだけでビューは足さないので、UIKit の手順どおり 4 段階が要ります。
+
+```swift
+let child = FineScreenController(content)
+addChild(child)
+view.addSubview(child.view)
+child.view.translatesAutoresizingMaskIntoConstraints = false
+NSLayoutConstraint.activate([
+    child.view.topAnchor.constraint(equalTo: containerView.topAnchor),
+    child.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+    child.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+    child.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+])
+child.didMove(toParent: self)
+```
+
+この形なら appearance の転送も効くので、画面が隠れている間のレンダリング停止もそのまま働きます。
 
 `navigation()` を実装したいときだけ `FineContent` ではなく `FineNavigating` に適合します。`navigationItem` は画面レベルの関心事なので、区画として使う content には生えません。
 
@@ -444,7 +462,7 @@ BlurBackground(style: .systemMaterial)
 
 `FineButton` の `action` や `FineStack` の builder といったクロージャは、node 単位の再レンダリングのためにビュー側(`FineNode`)に保持されます。`FineList` / `FineGrid` の coordinator も cell content や `onSelect` を保持します。**つまり記述が抱えたクロージャは、ビューが生きている間ずっと生き続けます。**
 
-ビューは hosting controller のものです。したがって —
+ビューは hosting controller のものです。ここから 2 つのことが導かれます。
 
 - **content をキャプチャするのは安全**。controller が content とツリーの両方を所有し、content はどちらも所有しないので、グラフは循環しません
 - **controller をキャプチャすると循環します**。`controller → view → node → クロージャ → controller` を切るものがありません
@@ -592,7 +610,7 @@ FineUIKit が管理していないビュー(UIKit が内部で作るラベルな
 - `FineUI`(internal) — `withObservationTracking` で差分適用を駆動するランタイム。`body()` は構造、コンテナの builder はそのノード、`FineLabel.text` はラベルノード単位で再評価される。画面が隠れている間は `suspend()` で観測起因のレンダリングを止め、`resume()` で1回だけ catch-up する。マウントは `FineScreenController` が行うので公開していない
 - `FineContent` — 状態を持ち `body()` でビューツリーを記述するオブジェクト。`@Observable` なクラスとして書く。画面とは限らず、任意のビューにマウントできる
 - `FineNavigating` — `FineContent` に `navigation()` を足したもの。画面として使うときだけ適合する
-- `FineScreenController` — 画面をマウントする view controller。`body()` と `navigation()` を別の observation スコープで追跡し、表示状態に応じて `FineUI` を suspend / resume する。`open` なので継承してよい
+- `FineScreenController` — 画面をマウントする view controller。`body()` と `navigation()` を別の observation スコープで追跡し、表示状態に応じて `FineUI` を suspend / resume する。手動で止めたいときの公開 API は `suspendRendering()` / `resumeRendering()`。`open` なので継承してよい
 
 ## ホットリロード
 

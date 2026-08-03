@@ -19,10 +19,21 @@ import UIKit
 /// ```
 ///
 /// To put content inside a controller you already own, add one of these as a
-/// child: `addChild(FineScreenController(content))` forwards the appearance
-/// transitions, so the render loop still pauses off screen. `navigation()` has
-/// no bar to write to in that position, which is why it lives on
-/// `FineNavigating` rather than on all content.
+/// child — the whole containment sequence, since `addChild(_:)` establishes the
+/// relationship but does not add the view:
+///
+/// ```swift
+/// let child = FineScreenController(content)
+/// addChild(child)
+/// containerView.addSubview(child.view)
+/// // …constraints…
+/// child.didMove(toParent: self)
+/// ```
+///
+/// Done that way the appearance transitions are forwarded, so the render loop
+/// still pauses off screen. `navigation()` has no bar to write to in that
+/// position, which is why it lives on `FineNavigating` rather than on all
+/// content.
 ///
 /// Subclassing is allowed and safe. The cycle this design avoids came from the
 /// description living on the controller, not from the controller being
@@ -41,6 +52,12 @@ open class FineScreenController: UIViewController {
     private let avoidsKeyboard: Bool
     private var fineUI: FineUI?
     private var navigationScope: FineObservedScope?
+    /// Whether `suspendRendering()` was called. Recorded rather than only
+    /// forwarded, because the runtime does not exist until `viewDidLoad`: a
+    /// controller suspended before its view loads — which is exactly the
+    /// "loaded and driven without ever appearing" case — would otherwise start
+    /// rendering the moment it does load.
+    private var isSuspended = false
 
     /// - Parameter avoidsKeyboard: When `true` (the default), the tree's bottom
     ///   edge follows `keyboardLayoutGuide`, so content compresses above the
@@ -84,11 +101,13 @@ open class FineScreenController: UIViewController {
     /// `.overCurrentContext` presentation, which UIKit does not report as a
     /// disappearance, or one that is loaded and driven without ever appearing.
     public func suspendRendering() {
+        isSuspended = true
         fineUI?.suspend()
     }
 
     /// Resumes rendering, applying in one render whatever changed while paused.
     public func resumeRendering() {
+        isSuspended = false
         fineUI?.resume()
     }
 
@@ -101,12 +120,24 @@ open class FineScreenController: UIViewController {
         fineUI.build(to: view)
         self.fineUI = fineUI
 
+        // A suspension asked for before the view loaded had nothing to act on
+        // at the time, so it is applied now. The initial render still happens:
+        // suspension only ever governs observation-driven ones.
+        if isSuspended {
+            fineUI.suspend()
+        }
+
         // Navigation gets its own observation scope: reads that only navigation
         // performs must not invalidate the tree. Content that does not describe
         // a bar gets no scope at all.
         if let navigating = content as? any FineNavigating {
-            let navigationScope = FineObservedScope { [unowned self] in
-                guard let navigation = navigating.navigation() else { return }
+            // Weak rather than unowned: the scope re-arms itself from an
+            // observation callback, so what it holds has to tolerate being
+            // asked after this controller has gone. Nothing keeps the scope
+            // alive past the controller today, but `unowned` would turn any
+            // future arrangement that does into a trap.
+            let navigationScope = FineObservedScope { [weak self] in
+                guard let self, let navigation = navigating.navigation() else { return }
                 navigation.apply(to: self.navigationItem)
             }
             navigationScope.run()

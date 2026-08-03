@@ -738,3 +738,57 @@ struct FineRenderScopeTests {
         return nil
     }
 }
+
+@Observable
+@MainActor
+private final class PreloadState {
+    var title = "A"
+}
+
+@MainActor
+private final class PreloadContent: FineContent {
+    let state: PreloadState
+
+    init(state: PreloadState) {
+        self.state = state
+    }
+
+    func body() -> any Renderable {
+        FineLabel(text: self.state.title)
+    }
+}
+
+/// `suspendRendering()` has to survive being called before the view loads,
+/// which is exactly the case its documentation names — a controller driven
+/// without ever appearing. The runtime does not exist yet at that point.
+@MainActor
+@Suite(.serialized)
+struct FineScreenControllerSuspensionTests {
+    private func label(_ controller: UIViewController) -> UILabel? {
+        controller.view.subviews.first as? UILabel
+    }
+
+    @Test func suspendingBeforeTheViewLoadsStillSuspends() async {
+        let state = PreloadState()
+        let controller = FineScreenController(PreloadContent(state: state))
+
+        controller.suspendRendering()
+        controller.loadViewIfNeeded()
+
+        // The initial render always happens; suspension governs the
+        // observation-driven ones.
+        #expect(label(controller)?.text == "A")
+
+        state.title = "B"
+        for _ in 0..<40 { await Task.yield() }
+
+        #expect(label(controller)?.text == "A")
+
+        controller.resumeRendering()
+        for _ in 0..<40 where label(controller)?.text != "B" {
+            await Task.yield()
+        }
+
+        #expect(label(controller)?.text == "B")
+    }
+}
