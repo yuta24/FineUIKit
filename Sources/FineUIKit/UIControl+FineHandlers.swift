@@ -25,7 +25,7 @@ extension UIControl {
     /// for that event, so handlers under different keys run in order of last
     /// assignment rather than of first registration. No component depends on
     /// that order.
-    func fineSetHandler(_ key: String, for event: UIControl.Event, handler: ((UIControl) -> Void)?) {
+    func fineSetHandler(_ key: String, for event: UIControl.Event, handler: (@MainActor (UIControl) -> Void)?) {
         let identifier = UIAction.Identifier("\(key)#\(event.rawValue)")
 
         guard let handler else {
