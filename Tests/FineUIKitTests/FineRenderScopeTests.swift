@@ -89,50 +89,65 @@ private final class ScopeState {
 @MainActor
 @Suite(.serialized)
 struct FineRenderScopeTests {
-    private final class ScopedViewController: FineViewController<ScopeState> {
+    private final class ScopedContent: FineNavigating {
+        let state: ScopeState
         let tag: String
-        var suspends = true
 
         init(state: ScopeState, tag: String) {
+            self.state = state
             self.tag = tag
-            super.init(state: state)
         }
+
+        func body() -> any Renderable {
+            FineStack.vertical {
+                // Eager read: registers on the container's scope, so any
+                // body-scope invalidation re-diffs these children.
+                FineLabel(text: "body")
+                    .backgroundColor(self.state.bodyValue % 2 == 0 ? .red : .blue)
+                CountingProbe(tag: self.tag)
+            }
+        }
+
+        func navigation() -> FineNavigation? {
+            FineNavigation(title: state.title)
+        }
+    }
+
+    private final class ScopedViewController: FineContentController {
+        var suspends = true
 
         override var suspendsWhenDisappeared: Bool {
             suspends
         }
 
-        override func body(_ state: ScopeState) -> any Renderable {
-            FineStack.vertical {
-                // Eager read: registers on the container's scope, so any
-                // body-scope invalidation re-diffs these children.
-                FineLabel(text: "body")
-                    .backgroundColor(state.bodyValue % 2 == 0 ? .red : .blue)
-                CountingProbe(tag: self.tag)
-            }
-        }
-
-        override func navigation(_ state: ScopeState) -> FineNavigation? {
-            FineNavigation(title: state.title)
+        init(state: ScopeState, tag: String) {
+            super.init(ScopedContent(state: state, tag: tag))
         }
     }
 
-    /// Reads state in `body(_:)` itself, so the read registers on the root
+    /// Reads state in `body()` itself, so the read registers on the root
     /// scope rather than on the enclosing container's node.
-    private final class RootScopeViewController: FineViewController<ScopeState> {
+    private final class RootScopeContent: FineContent {
+        let state: ScopeState
         let tag: String
 
         init(state: ScopeState, tag: String) {
+            self.state = state
             self.tag = tag
-            super.init(state: state)
         }
 
-        override func body(_ state: ScopeState) -> any Renderable {
+        func body() -> any Renderable {
             let value = state.bodyValue
             return FineStack.vertical {
                 FineLabel(text: "\(value)")
                 CountingProbe(tag: self.tag)
             }
+        }
+    }
+
+    private final class RootScopeViewController: FineContentController {
+        init(state: ScopeState, tag: String) {
+            super.init(RootScopeContent(state: state, tag: tag))
         }
     }
 
@@ -231,7 +246,7 @@ struct FineRenderScopeTests {
     @Test func suspendedRootScopeChangeIsDeferredAndFlushed() async throws {
         let state = ScopeState()
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             // Read in the root body itself: this registers on `FineUI`'s own
             // scope, which is a different gate call site than a node's.
             let value = state.bodyValue
@@ -355,7 +370,7 @@ struct FineRenderScopeTests {
     @Test func suspendedRuntimeDefersWorkUntilResume() async throws {
         let state = ScopeState()
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             FineStack.vertical {
                 FineLabel(text: "body")
                     .backgroundColor(state.bodyValue % 2 == 0 ? .red : .blue)
@@ -381,7 +396,7 @@ struct FineRenderScopeTests {
     @Test func resumeWithoutPendingChangeDoesNoWork() async throws {
         let state = ScopeState()
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
-        let ui = FineUI(state) { _ in
+        let ui = FineUI(state: state) { _ in
             FineStack.vertical {
                 CountingProbe(tag: "idle-resume")
             }
@@ -401,7 +416,7 @@ struct FineRenderScopeTests {
     @Test func manyChangesWhileSuspendedFlushOnce() async throws {
         let state = ScopeState()
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             FineStack.vertical {
                 FineLabel(text: "body")
                     .backgroundColor(state.bodyValue % 2 == 0 ? .red : .blue)
@@ -434,7 +449,7 @@ struct FineRenderScopeTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(row) { row in
+        let ui = FineUI(state: row) { row in
             FineList([row]) { row in
                 FineStack.horizontal {
                     FineLabel(text: row.title)
@@ -471,7 +486,7 @@ struct FineRenderScopeTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineList([KeyedRow(id: 1)]) { _ in
                 FineLabel(text: model.title)
             }
@@ -499,11 +514,23 @@ struct FineRenderScopeTests {
     }
 
     @Test func suspendedCellCatchesUpOnControllerReappearance() async throws {
-        final class ListViewController: FineViewController<RowModel> {
-            override func body(_ state: RowModel) -> any Renderable {
+        final class ListContent: FineContent {
+            let state: RowModel
+
+            init(state: RowModel) {
+                self.state = state
+            }
+
+            func body() -> any Renderable {
                 FineList([KeyedRow(id: 1)]) { _ in
-                    FineLabel(text: state.title)
+                    FineLabel(text: self.state.title)
                 }
+            }
+        }
+
+        final class ListViewController: FineContentController {
+            init(state: RowModel) {
+                super.init(ListContent(state: state))
             }
         }
 
@@ -540,7 +567,7 @@ struct FineRenderScopeTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             FineList(state.rows) { row in
                 FineStack.horizontal {
                     FineLabel(text: "\(row.title)-\(state.model.title)")
@@ -583,7 +610,7 @@ struct FineRenderScopeTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineStack.vertical {
                 CountingProbe(tag: "outside-list")
                 FineList([KeyedRow(id: 1)]) { _ in
@@ -618,7 +645,7 @@ struct FineRenderScopeTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineList([KeyedRow(id: 1)]) { _ in
                 FineStack.horizontal {
                     FineLabel(text: model.title)
@@ -655,7 +682,7 @@ struct FineRenderScopeTests {
     @Test func catchUpRenderRunsWithAnimationsDisabled() async throws {
         let state = ScopeState()
         let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             let value = state.bodyValue
             return FineStack.vertical {
                 FineLabel(text: "\(value)")
@@ -709,5 +736,87 @@ struct FineRenderScopeTests {
         }
 
         return nil
+    }
+}
+
+@Observable
+@MainActor
+private final class PreloadState {
+    var title = "A"
+}
+
+@MainActor
+private final class PreloadContent: FineContent {
+    let state: PreloadState
+
+    init(state: PreloadState) {
+        self.state = state
+    }
+
+    func body() -> any Renderable {
+        FineLabel(text: self.state.title)
+    }
+}
+
+/// `suspendRendering()` has to survive being called before the view loads,
+/// which is exactly the case its documentation names — a controller driven
+/// without ever appearing. The runtime does not exist yet at that point.
+@MainActor
+@Suite(.serialized)
+struct FineContentControllerSuspensionTests {
+    private func label(_ controller: UIViewController) -> UILabel? {
+        controller.view.subviews.first as? UILabel
+    }
+
+    @Test func suspendingBeforeTheViewLoadsStillSuspends() async {
+        let state = PreloadState()
+        let controller = FineContentController(PreloadContent(state: state))
+
+        controller.suspendRendering()
+        controller.loadViewIfNeeded()
+
+        // The initial render always happens; suspension governs the
+        // observation-driven ones.
+        #expect(label(controller)?.text == "A")
+
+        state.title = "B"
+        for _ in 0..<40 { await Task.yield() }
+
+        #expect(label(controller)?.text == "A")
+
+        controller.resumeRendering()
+        for _ in 0..<40 where label(controller)?.text != "B" {
+            await Task.yield()
+        }
+
+        #expect(label(controller)?.text == "B")
+    }
+
+    /// `suspendRendering()` promises a pause "until `resumeRendering()`", so
+    /// being shown must not end it. The off-screen pause and the asked-for one
+    /// are separate reasons, and only their own end clears each.
+    @Test func appearingDoesNotUndoAnAskedForSuspension() async {
+        let state = PreloadState()
+        let controller = FineContentController(PreloadContent(state: state))
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 480))
+
+        controller.suspendRendering()
+        window.rootViewController = controller
+        window.isHidden = false
+        window.layoutIfNeeded()
+        for _ in 0..<40 { await Task.yield() }
+
+        state.title = "B"
+        for _ in 0..<40 { await Task.yield() }
+
+        #expect(label(controller)?.text == "A")
+
+        controller.resumeRendering()
+        for _ in 0..<40 where label(controller)?.text != "B" {
+            await Task.yield()
+        }
+
+        #expect(label(controller)?.text == "B")
+        window.isHidden = true
     }
 }

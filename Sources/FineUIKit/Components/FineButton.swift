@@ -12,7 +12,7 @@ public struct FineButton: FinePrimitiveRenderable {
     private static let actionKey = "FineUIKit.FineButton.primaryAction"
 
     private let title: String?
-    private let action: () -> Void
+    private let action: @MainActor () -> Void
     private var image: UIImage?
     private var configuration: UIButton.Configuration?
     private var isEnabled = true
@@ -21,7 +21,7 @@ public struct FineButton: FinePrimitiveRenderable {
         fatalError("Primitive Renderable body should not be evaluated")
     }
 
-    public init(title: String?, action: @escaping () -> Void) {
+    public init(title: String?, action: @escaping @MainActor () -> Void) {
         self.title = title
         self.action = action
     }

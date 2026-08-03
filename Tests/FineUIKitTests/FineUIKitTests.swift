@@ -1303,7 +1303,7 @@ struct FineBindingTests {
         let state = FormState()
         let container = UIView()
 
-        let fineUI = FineUI(state) { state in
+        let fineUI = FineUI(state: state) { state in
             FineTextField(text: .init(state, \.text))
         }
         fineUI.build(to: container)
@@ -1386,7 +1386,7 @@ struct FineBindingTests {
         let state = FormState()
         let container = UIView()
 
-        let fineUI = FineUI(state) { state in
+        let fineUI = FineUI(state: state) { state in
             FineToggle(isOn: .init(state, \.isOn))
         }
         fineUI.build(to: container)
@@ -1424,15 +1424,27 @@ struct FineBindingTests {
 }
 
 @MainActor
-struct FineViewControllerTests {
+struct FineContentControllerTests {
     @Observable
     final class Counter {
         var count: Int = 0
     }
 
-    final class CounterViewController: FineViewController<Counter> {
-        override func body(_ state: Counter) -> any Renderable {
-            FineLabel(text: "\(state.count)")
+    final class CounterContent: FineContent {
+        let state: Counter
+
+        init(state: Counter) {
+            self.state = state
+        }
+
+        func body() -> any Renderable {
+            FineLabel(text: "\(self.state.count)")
+        }
+    }
+
+    final class CounterViewController: FineContentController {
+        init(state: Counter) {
+            super.init(CounterContent(state: state))
         }
     }
 
@@ -1464,24 +1476,32 @@ struct FineNavigationTests {
         var usesSecondAction: Bool = false
     }
 
-    final class NavigationViewController: FineViewController<NavigationState> {
+    final class NavigationContent: FineNavigating {
+        let state: NavigationState
         var firstActionCount = 0
         var secondActionCount = 0
 
-        override func body(_ state: NavigationState) -> any Renderable {
-            FineLabel(text: state.title)
+        init(state: NavigationState) {
+            self.state = state
         }
 
-        override func navigation(_ state: NavigationState) -> FineNavigation? {
+        func body() -> any Renderable {
+            FineLabel(text: self.state.title)
+        }
+
+        func navigation() -> FineNavigation? {
             FineNavigation(title: state.title)
                 .leading(.init(title: "Close") {})
                 .trailing(
                     .init(title: "Edit") {},
-                    .init(title: "Save") { [unowned self] in
-                        if state.usesSecondAction {
-                            secondActionCount += 1
+                    // Capturing the content, not the controller: the controller
+                    // owns this object and the bar button alike, so the graph
+                    // stays acyclic without a capture list.
+                    .init(title: "Save") {
+                        if self.state.usesSecondAction {
+                            self.secondActionCount += 1
                         } else {
-                            firstActionCount += 1
+                            self.firstActionCount += 1
                         }
                     }
                     .enabled(state.isSaveEnabled)
@@ -1489,9 +1509,34 @@ struct FineNavigationTests {
         }
     }
 
-    final class ManualNavigationViewController: FineViewController<NavigationState> {
-        override func body(_ state: NavigationState) -> any Renderable {
-            FineLabel(text: state.title)
+    final class NavigationViewController: FineContentController {
+        private let navigationContent: NavigationContent
+
+        var firstActionCount: Int { navigationContent.firstActionCount }
+        var secondActionCount: Int { navigationContent.secondActionCount }
+
+        init(state: NavigationState) {
+            let content = NavigationContent(state: state)
+            self.navigationContent = content
+            super.init(content)
+        }
+    }
+
+    final class ManualNavigationContent: FineContent {
+        let state: NavigationState
+
+        init(state: NavigationState) {
+            self.state = state
+        }
+
+        func body() -> any Renderable {
+            FineLabel(text: self.state.title)
+        }
+    }
+
+    final class ManualNavigationViewController: FineContentController {
+        init(state: NavigationState) {
+            super.init(ManualNavigationContent(state: state))
         }
     }
 
@@ -1585,7 +1630,9 @@ struct FineNavigationTests {
         #expect(systemItem !== titleItem)
     }
 
-    @Test func nilNavigationLeavesManualNavigationItemUntouched() {
+    /// Content that is not `FineNavigating` gets no navigation scope at all, so
+    /// a manually managed `navigationItem` is left alone.
+    @Test func contentThatDoesNotNavigateLeavesTheNavigationItemUntouched() {
         let state = NavigationState()
         let viewController = ManualNavigationViewController(state: state)
         viewController.navigationItem.title = "Manual"
@@ -1638,7 +1685,7 @@ struct FineUITests {
         let counter = Counter()
         let container = UIView()
 
-        let fineUI = FineUI(counter) { counter in
+        let fineUI = FineUI(state: counter) { counter in
             FineLabel(text: "\(counter.count)")
         }
         fineUI.build(to: container)
@@ -1663,7 +1710,7 @@ struct FineUITests {
         let container = UIView()
         var bodyEvaluationCount = 0
 
-        let fineUI = FineUI(counter) { counter in
+        let fineUI = FineUI(state: counter) { counter in
             bodyEvaluationCount += 1
             let text = "\(counter.count)"
             return FineLabel(text: text)
@@ -1698,7 +1745,7 @@ struct FineUITests {
         let container = UIView()
         var bodyEvaluationCount = 0
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             bodyEvaluationCount += 1
             return FineLabel(text: model.title)
         }
@@ -1724,7 +1771,7 @@ struct FineUITests {
         let container = UIView()
         var bodyEvaluationCount = 0
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             bodyEvaluationCount += 1
             return FineStack.vertical {
                 model.items.map { FineLabel(text: $0) as any Renderable }
@@ -1750,7 +1797,7 @@ struct FineUITests {
         let container = UIView()
         var bodyEvaluationCount = 0
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             bodyEvaluationCount += 1
             let title = model.title
             return FineLabel(text: title)
@@ -1773,7 +1820,7 @@ struct FineUITests {
         let container = UIView()
         var bodyEvaluationCount = 0
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             bodyEvaluationCount += 1
             let title = model.title
             let suffix = model.usesSubtitle ? model.subtitle : "Zero"
@@ -1803,7 +1850,7 @@ struct FineUITests {
         let counter = Counter()
         let container = UIView()
 
-        let fineUI = FineUI(counter) { counter in
+        let fineUI = FineUI(state: counter) { counter in
             FineStack.vertical {
                 [FineLabel(text: "\(counter.count)")]
             }
@@ -1871,7 +1918,7 @@ struct FineAnimationTests {
     @Test func animatedOpacityChangeAddsLayerAnimation() async throws {
         let model = Model()
         let container = UIView()
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineLabel(text: "A").opacity(model.opacity)
         }
         let window = attachToWindow(container)
@@ -1894,7 +1941,7 @@ struct FineAnimationTests {
     @Test func animatedNodeScopedOpacityChangeAddsLayerAnimation() async throws {
         let model = Model()
         let container = UIView()
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineStack.vertical {
                 [FineLabel(text: "A").opacity(model.opacity)]
             }
@@ -1920,7 +1967,7 @@ struct FineAnimationTests {
     @Test func unanimatedOpacityChangeDoesNotAddLayerAnimation() async throws {
         let model = Model()
         let container = UIView()
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineLabel(text: "A").opacity(model.opacity)
         }
         let window = attachToWindow(container)
@@ -1941,7 +1988,7 @@ struct FineAnimationTests {
     @Test func animatedPaddingChangeAddsLayoutAnimation() async throws {
         let model = Model()
         let container = UIView()
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             FineLabel(text: "A").padding(model.padding)
         }
         let window = attachToWindow(container)
@@ -2006,7 +2053,7 @@ struct FineAnimationTests {
     @Test func animatedRootRebuildDoesNotAnimateNewRoot() async throws {
         let model = Model()
         let container = UIView()
-        let ui = FineUI(model) { model in
+        let ui = FineUI(state: model) { model in
             if model.usesStyledRoot {
                 FineLabel(text: "B").backgroundColor(.red)
             } else {
@@ -2829,7 +2876,7 @@ struct FineKeyboardTests {
 
     @Test func rootBottomFollowsKeyboardLayoutGuideByDefault() {
         let container = UIView()
-        let ui = FineUI(Model()) { _ in FineLabel(text: "A") }
+        let ui = FineUI(state: Model()) { _ in FineLabel(text: "A") }
         ui.build(to: container)
 
         let root = container.subviews.first
@@ -2844,7 +2891,7 @@ struct FineKeyboardTests {
 
     @Test func keyboardAvoidanceCanBeDisabled() {
         let container = UIView()
-        let ui = FineUI(Model(), avoidsKeyboard: false) { _ in FineLabel(text: "A") }
+        let ui = FineUI(state: Model(), avoidsKeyboard: false) { _ in FineLabel(text: "A") }
         ui.build(to: container)
 
         let root = container.subviews.first

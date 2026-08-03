@@ -82,28 +82,30 @@ final class DemoSettings {
     }
 }
 
-final class SettingsViewController: FineViewController<DemoSettings> {
-    private let onAppearanceChange: (Bool) -> Void
-    private let onLanguageChange: (DemoLanguage) -> Void
+// What this screen has to say to the rest of the app. A delegate rather than a
+// closure, and `weak` here rather than a capture list at every call site: a
+// screen must not hold its controller, and declaring that once is more reliable
+// than remembering it everywhere.
+@MainActor
+protocol SettingsFormDelegate: AnyObject {
+    func settingsForm(_ form: SettingsForm, didChangeDarkMode isEnabled: Bool)
+    func settingsForm(_ form: SettingsForm, didChangeLanguage language: DemoLanguage)
+}
 
-    init(
-        settings: DemoSettings,
-        onAppearanceChange: @escaping (Bool) -> Void,
-        onLanguageChange: @escaping (DemoLanguage) -> Void
-    ) {
-        self.onAppearanceChange = onAppearanceChange
-        self.onLanguageChange = onLanguageChange
-        super.init(state: settings)
+final class SettingsForm: FineNavigating {
+    let settings: DemoSettings
+    weak var delegate: (any SettingsFormDelegate)?
+
+    init(settings: DemoSettings) {
+        self.settings = settings
     }
 
-    override func navigation(_ settings: DemoSettings) -> FineNavigation? {
+    func navigation() -> FineNavigation? {
         FineNavigation(title: settings.language.settingsTitle)
     }
 
-    override func body(_ settings: DemoSettings) -> any Renderable {
+    func body() -> any Renderable {
         let language = settings.language
-        let onAppearanceChange = self.onAppearanceChange
-        let onLanguageChange = self.onLanguageChange
 
         return FineScrollView {
             FineStack.vertical(spacing: 12) {
@@ -116,10 +118,10 @@ final class SettingsViewController: FineViewController<DemoSettings> {
                     FineSpacer()
                     FineToggle(
                         isOn: .init(
-                            get: { settings.isDarkModeEnabled },
-                            set: { [onAppearanceChange] isEnabled in
-                                settings.isDarkModeEnabled = isEnabled
-                                onAppearanceChange(isEnabled)
+                            get: { self.settings.isDarkModeEnabled },
+                            set: { isEnabled in
+                                self.settings.isDarkModeEnabled = isEnabled
+                                self.delegate?.settingsForm(self, didChangeDarkMode: isEnabled)
                             }
                         )
                     )
@@ -138,13 +140,13 @@ final class SettingsViewController: FineViewController<DemoSettings> {
                     titles: DemoLanguage.allCases.map(\.displayName),
                     selection: .init(
                         get: {
-                            DemoLanguage.allCases.firstIndex(of: settings.language) ?? 0
+                            DemoLanguage.allCases.firstIndex(of: self.settings.language) ?? 0
                         },
-                        set: { [onLanguageChange] index in
+                        set: { index in
                             guard DemoLanguage.allCases.indices.contains(index) else { return }
                             let language = DemoLanguage.allCases[index]
-                            settings.language = language
-                            onLanguageChange(language)
+                            self.settings.language = language
+                            self.delegate?.settingsForm(self, didChangeLanguage: language)
                         }
                     )
                 )

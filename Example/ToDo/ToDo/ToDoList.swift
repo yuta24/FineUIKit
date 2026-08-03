@@ -1,5 +1,5 @@
 //
-//  ToDoListViewController.swift
+//  ToDoList.swift
 //  ToDo
 //
 //  Created by nova on 2026/07/04.
@@ -24,40 +24,34 @@ extension FineEnvironmentValues {
     }
 }
 
+// The screen owns its state and describes its own view tree. Handlers capture
+// `self` freely: the hosting controller owns this object and the views alike,
+// so nothing here closes a cycle. The one rule is that a screen must not hold
+// its controller — which is why it has no reason to know about one.
 @Observable
-final class ToDoListViewModel {
+final class ToDoList: FineNavigating {
     var draft: String = ""
     var showsGrid: Bool = false
     var usesAlternateAccent: Bool = false
     var items: [ToDo] = []
-}
 
-final class ToDoListViewController: FineViewController<ToDoListViewModel> {
-    init() {
-        super.init(state: .init())
+    func addTask() {
+        let title = draft.isEmpty ? "Task \(items.count + 1)" : draft
+        items.append(.init(title: title))
+        draft = ""
     }
 
-    private func addTask(_ viewModel: ToDoListViewModel) {
-        let title = viewModel.draft.isEmpty
-            ? "Task \(viewModel.items.count + 1)"
-            : viewModel.draft
-        viewModel.items.append(.init(title: title))
-        viewModel.draft = ""
-    }
-
-    override func navigation(_ viewModel: ToDoListViewModel) -> FineNavigation? {
-        FineNavigation(title: "ToDo (\(viewModel.items.count))")
+    func navigation() -> FineNavigation? {
+        FineNavigation(title: "ToDo (\(items.count))")
             .trailing(
-                FineBarButton(systemItem: .add) { [unowned self] in
-                    addTask(viewModel)
-                }
-                .enabled(!viewModel.draft.isEmpty)
+                FineBarButton(systemItem: .add) { self.addTask() }
+                    .enabled(!draft.isEmpty)
             )
     }
 
-    override func body(_ viewModel: ToDoListViewModel) -> any Renderable {
-        let activeItems = viewModel.items.filter { !$0.completed }
-        let completedItems = viewModel.items.filter { $0.completed }
+    func body() -> any Renderable {
+        let activeItems = items.filter { !$0.completed }
+        let completedItems = items.filter { $0.completed }
         var listSections = [
             FineListSection(id: "active", header: "Active", items: activeItems),
         ]
@@ -65,18 +59,14 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
             listSections.append(.init(id: "completed", header: "Completed", items: completedItems))
         }
 
-        // `[weak self]` belongs on the builder, not only on the handlers
-        // below: a builder's content closure is stored on the description the
-        // node holds, so touching `self` anywhere inside it captures the
-        // controller strongly no matter what the handlers ask for.
-        return FineStack.vertical(spacing: 8) { [weak self] in
+        return FineStack.vertical(spacing: 8) {
             // Environment sample. The count badge is nested inside a
             // `FineEnvironmentReader` and colors itself with the injected
             // `accentColor`. Flipping the "Pink accent" switch changes the
             // value injected by `.environment(_:_:)`, and the badge follows.
             FineStack.horizontal(spacing: 8, alignment: .center) {
                 FineEnvironmentReader { environment in
-                    FineLabel(text: "\(viewModel.items.count)")
+                    FineLabel(text: "\(self.items.count)")
                         .textColor(.white)
                         .textAlignment(.center)
                         .padding(.init(top: 2, leading: 10, bottom: 2, trailing: 10))
@@ -88,11 +78,11 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
                 FineSpacer()
                 FineLabel(text: "Pink accent")
                     .textColor(.secondaryLabel)
-                FineToggle(isOn: .init(viewModel, \.usesAlternateAccent))
+                FineToggle(isOn: .init(self, \.usesAlternateAccent))
                     .hugging(.defaultHigh, axis: .horizontal)
             }
             .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16))
-            .environment(\.accentColor, viewModel.usesAlternateAccent ? .systemPink : .systemBlue)
+            .environment(\.accentColor, self.usesAlternateAccent ? .systemPink : .systemBlue)
 
             // Local-state sample. The expand/collapse flag lives in the view
             // tree (FineNode.localState via FineState), not in the view model.
@@ -119,11 +109,11 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
             }
 
             FineStack.horizontal(spacing: 8) {
-                FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
-                    .onSubmit { self?.addTask(viewModel) }
+                FineTextField(text: .init(self, \.draft), placeholder: "New task")
+                    .onSubmit { self.addTask() }
                     .accessibilityIdentifier("draft-field")
                 FineButton(title: "Add") {
-                    self?.addTask(viewModel)
+                    self.addTask()
                 }
                 .configuration(.filled())
                 .hugging(.defaultHigh, axis: .horizontal)
@@ -133,18 +123,18 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
             .padding(.init(top: 8, leading: 16, bottom: 0, trailing: 16))
             FineStack.horizontal(spacing: 8) {
                 FineLabel(text: "Grid view")
-                FineToggle(isOn: .init(viewModel, \.showsGrid))
+                FineToggle(isOn: .init(self, \.showsGrid))
             }
             .padding(.init(top: 0, leading: 16, bottom: 0, trailing: 16))
-            if viewModel.showsGrid {
-                FineGrid(viewModel.items, columns: .count(2), spacing: 8) { item in
+            if self.showsGrid {
+                FineGrid(self.items, columns: .count(2), spacing: 8) { item in
                     FineLabel(text: item.title)
                         .padding(8)
                         .backgroundColor(.secondarySystemBackground)
                         .cornerRadius(8)
                 }
                 .onSelect { item in
-                    viewModel.items.removeAll { $0.id == item.id }
+                    self.items.removeAll { $0.id == item.id }
                 }
             } else {
                 FineList(sections: listSections) { item in
@@ -154,7 +144,7 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
                     }
                 }
                 .onDelete { item in
-                    viewModel.items.removeAll { $0.id == item.id }
+                    self.items.removeAll { $0.id == item.id }
                 }
                 .keyboardDismissMode(.onDrag)
             }
@@ -164,7 +154,7 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
 
 struct TodoListWrapper: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UINavigationController {
-        UINavigationController(rootViewController: ToDoListViewController())
+        UINavigationController(rootViewController: FineContentController(ToDoList()))
     }
 
     func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {

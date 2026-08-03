@@ -35,7 +35,7 @@ struct FineUIHostingTests {
         window.addSubview(first)
         window.addSubview(second)
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             FineLabel(text: model.title)
         }
         fineUI.build(to: first)
@@ -65,7 +65,7 @@ struct FineUIHostingTests {
         window.addSubview(first)
         window.addSubview(second)
 
-        let fineUI = FineUI(model) { _ in
+        let fineUI = FineUI(state: model) { _ in
             FineStack.vertical {
                 FineSpacer()
             }
@@ -101,7 +101,7 @@ struct FineUIHostingTests {
         window.addSubview(first)
         window.addSubview(second)
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             FineLabel(text: model.title)
         }
         fineUI.build(to: first)
@@ -126,7 +126,7 @@ struct FineUIHostingTests {
         let container = UIView(frame: window.bounds)
         window.addSubview(container)
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             FineLabel(text: model.title)
         }
         fineUI.build(to: container)
@@ -155,7 +155,7 @@ struct FineUIHostingTests {
         window.addSubview(first)
         window.addSubview(second)
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             FineEnvironmentReader { environment in
                 FineLabel(text: "\(model.title)-\(environment.traitCollection.preferredContentSizeCategory.rawValue)")
             }
@@ -194,7 +194,7 @@ struct FineUIManualReparentTests {
         window.addSubview(first)
         window.addSubview(second)
 
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             FineLabel(text: model.title)
         }
         fineUI.build(to: first)
@@ -239,7 +239,7 @@ struct FineUITraitFollowsContainerTests {
         window.addSubview(second)
 
         let renders = RenderCounter()
-        let fineUI = FineUI(model) { model in
+        let fineUI = FineUI(state: model) { model in
             FineEnvironmentReader { environment in
                 renders.count += 1
                 return FineLabel(text: "\(model.title)-\(environment.traitCollection.preferredContentSizeCategory.rawValue)")

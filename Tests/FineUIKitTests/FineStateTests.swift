@@ -77,7 +77,7 @@ struct FineStateTests {
 
     @Test func rendersInitialValue() throws {
         let container = UIView()
-        let fineUI = FineUI(()) { _ in
+        let fineUI = FineUI(state: ()) { _ in
             FineState(0) { count in
                 FineLabel(text: "\(count.value)")
             }
@@ -90,7 +90,7 @@ struct FineStateTests {
 
     @Test func localUpdateRerendersWithoutExternalState() async throws {
         let container = UIView()
-        let fineUI = FineUI(()) { _ in
+        let fineUI = FineUI(state: ()) { _ in
             FineState(0) { count in
                 FineStack.vertical {
                     [
@@ -115,7 +115,7 @@ struct FineStateTests {
     @Test func preservesLocalStateAcrossParentRerender() async throws {
         let state = ParentState()
         let container = UIView()
-        let fineUI = FineUI(state) { state in
+        let fineUI = FineUI(state: state) { state in
             let tick = state.tick
             return FineStack.vertical {
                 [
@@ -153,7 +153,7 @@ struct FineStateTests {
 
     @Test func siblingStatesAreIndependent() async throws {
         let container = UIView()
-        let fineUI = FineUI(()) { _ in
+        let fineUI = FineUI(state: ()) { _ in
             FineStack.vertical {
                 [
                     FineState(0) { count in

@@ -154,7 +154,7 @@ struct FineListBehaviorTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             let title = state.title
             return FineList(sections: [
                 FineListSection(id: "s", header: FineLabel(text: title), items: [Item(id: "a", title: "A")]),
@@ -193,7 +193,7 @@ struct FineListBehaviorTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             let caption = state.caption
             return FineList(sections: [
                 FineListSection(id: "s", footer: FineLabel(text: caption), items: [Item(id: "a", title: "A")]),
@@ -235,7 +235,7 @@ struct FineListBehaviorTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             let showsFirst = state.showsFirstSection
             let secondHeader = state.secondHeader
             var sections: [FineListSection<Item>] = []
@@ -290,7 +290,7 @@ struct FineListBehaviorTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             let title = state.title
             return FineList(sections: [
                 FineListSection(
@@ -333,7 +333,7 @@ struct FineListBehaviorTests {
         window.addSubview(container)
         window.isHidden = false
 
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             let reversed = state.reversed
             let suffix = state.suffix
             let a = FineListSection(

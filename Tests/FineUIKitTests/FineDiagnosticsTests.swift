@@ -147,7 +147,7 @@ struct FineDiagnosticsTests {
         FineDiagnostics.logsViewReuse = true
 
         let state = DiagnosticsState()
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             FineStack.vertical {
                 state.isRounded
                     ? DiagnosticsMarker().backgroundColor(.red).cornerRadius(8)

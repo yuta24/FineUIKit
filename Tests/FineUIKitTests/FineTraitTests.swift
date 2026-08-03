@@ -82,7 +82,7 @@ struct FineTraitTests {
 
     @Test func labelFollowsContentSizeCategory() async throws {
         let (window, container) = makeWindow()
-        let ui = FineUI(TraitState()) { _ in
+        let ui = FineUI(state: TraitState()) { _ in
             FineLabel(text: "Hello")
                 .font(.preferredFont(forTextStyle: .body))
         }
@@ -106,7 +106,7 @@ struct FineTraitTests {
     @Test func rerenderKeepsTheScaledFont() async throws {
         let (window, container) = makeWindow()
         let state = TraitState()
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             FineStack.vertical {
                 FineLabel(text: "\(state.value)")
                     .font(.preferredFont(forTextStyle: .body))
@@ -138,7 +138,7 @@ struct FineTraitTests {
     @Test func descriptionReadsTraitsFromEnvironment() async throws {
         let (window, container) = makeWindow()
 
-        let ui = FineUI(TraitState()) { _ in
+        let ui = FineUI(state: TraitState()) { _ in
             FineEnvironmentReader { environment in
                 FineLabel(text: environment.traitCollection.userInterfaceStyle == .dark ? "dark" : "light")
             }
@@ -159,7 +159,7 @@ struct FineTraitTests {
 
     @Test func traitChangeRerendersTheTree() async throws {
         let (window, container) = makeWindow()
-        let ui = FineUI(TraitState()) { _ in
+        let ui = FineUI(state: TraitState()) { _ in
             FineStack.vertical {
                 TraitCountingProbe(tag: "trait-tree")
             }
@@ -182,7 +182,7 @@ struct FineTraitTests {
     @Test func traitChangeReachesVisibleCells() async throws {
         let (window, container) = makeWindow()
 
-        let ui = FineUI(TraitState()) { _ in
+        let ui = FineUI(state: TraitState()) { _ in
             FineList([TraitRow(id: 1)]) { _ in
                 FineEnvironmentReader { environment in
                     FineLabel(text: environment.traitCollection.userInterfaceStyle == .dark ? "dark" : "light")
@@ -218,7 +218,7 @@ struct FineTraitTests {
         let (window, container) = makeWindow()
         let state = TraitState()
 
-        let ui = FineUI(state) { state in
+        let ui = FineUI(state: state) { state in
             FineStack.vertical {
                 FineLabel(text: "\(state.value)")
                 FineList([TraitRow(id: 1)]) { _ in
@@ -244,7 +244,7 @@ struct FineTraitTests {
     /// A hidden screen defers trait work like any other observed change.
     @Test func traitChangeWhileSuspendedIsDeferred() async throws {
         let (window, container) = makeWindow()
-        let ui = FineUI(TraitState()) { _ in
+        let ui = FineUI(state: TraitState()) { _ in
             FineStack.vertical {
                 TraitCountingProbe(tag: "trait-suspended")
             }
