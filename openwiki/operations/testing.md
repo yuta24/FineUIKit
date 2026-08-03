@@ -53,13 +53,15 @@ Swift Testing の振る舞いテストが大半を占めます。`RenderingPerfo
 | UIKit コントロール（stepper、segmented、date picker、page control、progress、activity indicator、divider、text view） | `FineComponentTests.swift`、`FineSliderTests.swift` | in-place 差分適用、クランプ書き戻し、modifier リセット、placeholder 描画、focus binding |
 | List/Grid の section、header/footer、行高、セル更新 | `FineListBehaviorTests.swift`、`FineUIKitTests.swift` | diffable、supplementary identity、layout 再計測 |
 | `FineUI.build(to:)`、制約、container 移動 | `FineUIHostingTests.swift` | root の再親子付け、制約、trait registration |
+| handler や builder の capture、保持サイクル | `FineLeakTests.swift` | builder 経由の `[weak self]`、ナビゲーション経由のリーク、解放検証 |
 | 性能回帰 | `RenderingPerformanceTests.swift` | 大量 list と changed-row-only の比較傾向 |
 
 ## 実装変更のチェックリスト
 
 - `Renderable.body` を変更する: 副作用を入れず、再評価回数・メタデータ参照順序に依存しないことを確認します。`044f24d` が示すように、description 解決の余分な繰り返しは性能退化につながります。
 - List/Grid を変更する: 無変更 snapshot apply を復活させないこと、header/footer を snapshot 外の補助要素として更新すること、section index ではなく identity を使うことを確認します。`8a2f4e9` と `3cb909e` がこの経緯です。
-- ホストを変更する: 別コンテナへの再 build で旧制約と trait registration を残さないことを確認します。根拠は `e56854e` と `FineUIHostingTests.swift` です。
+| ホストを変更する: 別コンテナへの再 build で旧制約と trait registration を残さないことを確認します。根拠は `e56854e` と `FineUIHostingTests.swift` です。
+- handler や builder の capture を変更する: handler だけ `[weak self]` を付けても、builder の中で `self` に触れると builder が強参照しリークするため、**最も外側の escaping クロージャ**に `[weak self]` を付けることを確認します。`FineLeakTests.swift` が各形状の解放・リークを検証します。詳しくは[UI 合成と状態の保持とキャプチャ](../domain/ui-composition.md#保持とキャプチャ)を参照してください。
 - handler を変更する: UIKit の再利用時に action や gesture を二重登録せず、最新 closure に置換することを確認します。
 - 可視性ゲートを変更する: root とセルで異なる復帰経路が必要です。`FineRenderScopeTests` と List の振る舞いテストをセットで実行します。
 - 計測・診断を変更する: 計測は `_update` の実行点で行うことでノード局所再レンダリングを取りこぼさない点を確認します。詳しくは[レンダリング計測とデバッグ診断](diagnostics.md)を参照してください。

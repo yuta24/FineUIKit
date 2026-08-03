@@ -32,7 +32,7 @@ flowchart TD
 | 永続要素 | `FineNode` | key、モディファイア署名、最後の primitive/context、世代、ローカル状態を UIView と同寿命で保持する。|
 | 実ビュー | `UIView` | UIKit のレイアウト・描画・イベント処理を担う。|
 
-`FineNode` は associated object として UIView に付加されるため、記述の再生成をまたいで `FineState` や再利用判定の情報を保持できます（[FineNode.swift](../../Sources/FineUIKit/FineNode.swift)、[UIView+Fine.swift](../../Sources/FineUIKit/UIView+Fine.swift)）。
+`FineNode` は associated object として UIView に付加されるため、記述の再生成をまたいで `FineState` や再利用判定の情報を保持できます（[FineNode.swift](../../Sources/FineUIKit/FineNode.swift)、[UIView+Fine.swift](../../Sources/FineUIKit/UIView+Fine.swift)）。ノードは最後に描画した primitive(記述)も保持するため、`@FineBuilder` など escaping クロージャが `self` を強参照すると保持サイクルが閉じます。この契約と回避策は[UI 合成と状態の保持とキャプチャ](../domain/ui-composition.md#保持とキャプチャ)で扱います。
 
 ## 差分適用の契約
 
