@@ -13,7 +13,7 @@ import Observation
 // reads its properties in `body()`, so mutating them (including from the async
 // `getFact()` task) re-renders the same way the TCA version does.
 @Observable
-final class PlainCounterScreen: FineScreen {
+final class PlainCounterScreen: FineNavigating {
     var count = 0
     var stepText = "1"
     var fact: String?

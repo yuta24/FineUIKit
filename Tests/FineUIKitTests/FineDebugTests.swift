@@ -207,7 +207,7 @@ struct FineDebugTests {
         let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 480))
         let notificationName = Notification.Name("FineUIKitTests.toast.\(UUID().uuidString)")
 
-        let trees = (0..<3).map { _ -> FineUI<DebugCounter> in
+        let trees = (0..<3).map { _ -> FineUI in
             let container = UIView()
             window.addSubview(container)
 

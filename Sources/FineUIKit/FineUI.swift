@@ -28,19 +28,22 @@ enum FineObservedTraits {
     ]
 }
 
-/// Drives a `Renderable` tree from an observable state object.
+/// Mounts a `FineContent` into a view and keeps it up to date.
 ///
-/// `FineUI` re-evaluates the smallest tracked description it can: root `body`
-/// for structural reads, and primitive nodes for values read while updating
-/// those nodes.
+/// `FineUI` re-evaluates the smallest tracked description it can: `body()` for
+/// structural reads, and primitive nodes for values read while updating those
+/// nodes.
+///
+/// This is the runtime, and it mounts content anywhere — an arbitrary
+/// container view, a cell, a section of an existing screen. `FineScreenController`
+/// is the convenience on top for when the content is a whole screen.
 ///
 /// Keep a strong reference to this object (e.g. in your view controller);
 /// releasing it stops the render loop.
 @MainActor
-public final class FineUI<State> {
-    private let state: State
+public final class FineUI {
+    private let content: any FineContent
     private let avoidsKeyboard: Bool
-    private let body: (State) -> any Renderable
 
     private weak var container: UIView?
     private var rootView: UIView?
@@ -80,14 +83,24 @@ public final class FineUI<State> {
     ///   above the keyboard instead of being covered by it. With the keyboard
     ///   hidden the guide matches the bottom safe area, so layout is
     ///   unchanged.
-    public init(
+    public init(_ content: any FineContent, avoidsKeyboard: Bool = true) {
+        self.content = content
+        self.avoidsKeyboard = avoidsKeyboard
+    }
+
+    /// Renders a closure instead of a `FineContent`, for trees that do not need
+    /// an object of their own — a test, a throwaway, a fragment.
+    ///
+    /// The description lives in a stored closure here, which is fixed at the
+    /// moment it is made, so **code injection cannot replace it**. Reach for
+    /// the `FineContent` form for anything you intend to hot-reload: its
+    /// `body()` is a method, and a method can be swapped.
+    public convenience init<State>(
         _ state: State,
         avoidsKeyboard: Bool = true,
         body: @escaping @MainActor (State) -> any Renderable
     ) {
-        self.state = state
-        self.avoidsKeyboard = avoidsKeyboard
-        self.body = body
+        self.init(FineClosureContent(state, body), avoidsKeyboard: avoidsKeyboard)
     }
 
     deinit {
@@ -98,7 +111,7 @@ public final class FineUI<State> {
         #endif
     }
 
-    /// Renders the tree into `container` and starts observing `state`.
+    /// Renders the tree into `container` and starts observing the content.
     ///
     /// Calling this again with a different container moves the tree: the root
     /// view is re-parented and re-constrained, and trait observation follows
@@ -161,9 +174,10 @@ public final class FineUI<State> {
     #if DEBUG
     /// Re-renders after a code injection (InjectionIII / InjectionNext /
     /// InjectionLite) so updated component implementations take effect.
-    /// Note: `body` itself is a closure captured at init; to pick up changes
-    /// to the body's source, recreate the `FineUI` from the injection
-    /// notification in your view controller.
+    /// The content's `body()` is a method, so an injected replacement takes
+    /// effect on the next render. The closure initialiser is the exception:
+    /// what it stores is fixed when it is made, so a tree written that way
+    /// has to be rebuilt to pick up a change.
     private func observeInjection() {
         guard injectionObserver == nil else { return }
 
@@ -193,13 +207,13 @@ public final class FineUI<State> {
         let interval = signposter.beginInterval(
             "render",
             id: signposter.makeSignpostID(),
-            "\(String(describing: State.self), privacy: .public)"
+            "\(String(describing: type(of: self.content)), privacy: .public)"
         )
         defer { signposter.endInterval("render", interval) }
 
         let transaction = FineTransactionContext.current
         let description = withObservationTracking {
-            self.body(self.state)
+            self.content.body()
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self,
@@ -298,5 +312,23 @@ public final class FineUI<State> {
         for subview in view.subviews {
             removeAllAnimations(in: subview)
         }
+    }
+}
+
+/// Backs `FineUI`'s closure initialiser, so the runtime has a single shape to
+/// mount. Its `body()` returns whatever the stored closure returns, which is
+/// why that form cannot be hot-reloaded.
+@MainActor
+private final class FineClosureContent<State>: FineContent {
+    private let state: State
+    private let make: @MainActor (State) -> any Renderable
+
+    init(_ state: State, _ make: @escaping @MainActor (State) -> any Renderable) {
+        self.state = state
+        self.make = make
+    }
+
+    func body() -> any Renderable {
+        make(state)
     }
 }

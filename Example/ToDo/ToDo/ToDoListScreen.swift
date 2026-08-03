@@ -29,7 +29,7 @@ extension FineEnvironmentValues {
 // so nothing here closes a cycle. The one rule is that a screen must not hold
 // its controller — which is why it has no reason to know about one.
 @Observable
-final class ToDoListScreen: FineScreen {
+final class ToDoListScreen: FineNavigating {
     var draft: String = ""
     var showsGrid: Bool = false
     var usesAlternateAccent: Bool = false

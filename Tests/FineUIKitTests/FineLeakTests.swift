@@ -46,7 +46,7 @@ private struct CapturingRepresentable: FineViewRepresentable {
 /// windowed test below, which lays out and therefore materialises them.
 @MainActor
 @Observable
-private final class CapturingScreen: FineScreen {
+private final class CapturingScreen: FineNavigating {
     @ObservationIgnored let store: LeakStore
     var taps = 0
     var appearances = 0
@@ -98,7 +98,7 @@ private final class CapturingScreen: FineScreen {
 /// stack itself rather than the wrapper `.onAppear` and friends install.
 @MainActor
 @Observable
-private final class PlainScreen: FineScreen {
+private final class PlainScreen: FineContent {
     var title = "title"
 
     func body() -> any Renderable {
@@ -111,7 +111,7 @@ private final class PlainScreen: FineScreen {
 /// The one shape that still closes a cycle: a screen that reaches its
 /// controller strongly.
 @MainActor
-private final class ControllerHoldingScreen: FineScreen {
+private final class ControllerHoldingScreen: FineContent {
     var controller: UIViewController?
     var taps = 0
 
@@ -129,7 +129,7 @@ private protocol RoutingScreenDelegate: AnyObject {
 }
 
 @MainActor
-private final class RoutingScreen: FineScreen {
+private final class RoutingScreen: FineContent {
     weak var delegate: (any RoutingScreenDelegate)?
 
     func body() -> any Renderable {
@@ -166,7 +166,7 @@ struct FineLeakTests {
     /// `loadViewIfNeeded()` is enough to render: `FineScreenController` builds
     /// in `viewDidLoad`. Staying off a window keeps UIKit from holding a
     /// reference of its own, so a survivor means the tree held it.
-    private func releases(_ make: () -> (UIViewController, AnyObject)) -> (controller: Bool, screen: Bool) {
+    private func releases(_ make: () -> (UIViewController, AnyObject)) -> (controller: Bool, content: Bool) {
         weak var releasedController: UIViewController?
         weak var releasedScreen: AnyObject?
 
@@ -189,7 +189,7 @@ struct FineLeakTests {
         }
 
         #expect(released.controller)
-        #expect(released.screen)
+        #expect(released.content)
     }
 
     /// The recommended shape for reporting outward keeps the delegate weak, so
@@ -203,7 +203,7 @@ struct FineLeakTests {
         }
 
         #expect(released.controller)
-        #expect(released.screen)
+        #expect(released.content)
     }
 
     /// The boundary, stated as a test so it cannot drift unnoticed.

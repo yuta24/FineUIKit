@@ -7,38 +7,44 @@
 
 import UIKit
 
-/// Hosts a `FineScreen`: renders its description into a view controller and
-/// keeps the two observation scopes running.
+/// Hosts a `FineContent` as a screen: renders its description into a view
+/// controller, drives suspend/resume from the appearance transitions, and — when
+/// the content is also `FineNavigating` — keeps `navigationItem` up to date in
+/// an observation scope of its own.
 ///
 /// ```swift
-/// let screen = ToDoScreen()
-/// screen.delegate = self
-/// navigationController.pushViewController(FineScreenController(screen), animated: true)
+/// let list = ToDoList()
+/// list.delegate = self
+/// navigationController.pushViewController(FineScreenController(list), animated: true)
 /// ```
+///
+/// This is the convenience for content that fills a screen. To render content
+/// into a view you already own — a section of an existing screen — use `FineUI`
+/// directly; it needs no controller.
 ///
 /// Subclassing is allowed and safe. The cycle this design avoids came from the
 /// description living on the controller, not from the controller being
 /// subclassable — a subclass here has no way to put itself into the view tree.
-/// The one rule is the screen's: it must not hold this controller strongly.
+/// The one rule is the content's: it must not hold this controller strongly.
 ///
-/// `body()` is dispatched through the screen's class, so code injection can
+/// `body()` is dispatched through the content's class, so code injection can
 /// replace it and the injection-triggered re-render picks it up. That is why
-/// `FineScreen` is a protocol with a method rather than a closure handed to
+/// `FineContent` is a protocol with a method rather than a closure handed to
 /// this initialiser: a stored closure is fixed at the moment it is made, and no
 /// injection can replace it.
 open class FineScreenController: UIViewController {
-    /// The screen this controller renders.
-    public let screen: any FineScreen
+    /// The content this controller renders.
+    public let content: any FineContent
 
     private let avoidsKeyboard: Bool
-    private var fineUI: FineUI<any FineScreen>?
+    private var fineUI: FineUI?
     private var navigationScope: FineObservedScope?
 
     /// - Parameter avoidsKeyboard: When `true` (the default), the tree's bottom
     ///   edge follows `keyboardLayoutGuide`, so content compresses above the
     ///   keyboard instead of being covered by it.
-    public init(_ screen: any FineScreen, avoidsKeyboard: Bool = true) {
-        self.screen = screen
+    public init(_ content: any FineContent, avoidsKeyboard: Bool = true) {
+        self.content = content
         self.avoidsKeyboard = avoidsKeyboard
         super.init(nibName: nil, bundle: nil)
     }
@@ -89,18 +95,17 @@ open class FineScreenController: UIViewController {
 
         view.backgroundColor = .systemBackground
 
-        // The closure is stored, but what it does is call through the screen's
-        // class, so an injected `body()` takes effect on the next render.
-        let fineUI = FineUI(screen, avoidsKeyboard: avoidsKeyboard) { screen in
-            screen.body()
-        }
+        let fineUI = FineUI(content, avoidsKeyboard: avoidsKeyboard)
         fineUI.build(to: view)
         self.fineUI = fineUI
 
         // Navigation gets its own observation scope: reads that only navigation
-        // performs must not invalidate the tree.
+        // performs must not invalidate the tree. Content that does not describe
+        // a bar gets no scope at all.
+        guard let navigating = content as? any FineNavigating else { return }
+
         let navigationScope = FineObservedScope { [unowned self] in
-            guard let navigation = self.screen.navigation() else { return }
+            guard let navigation = navigating.navigation() else { return }
             navigation.apply(to: self.navigationItem)
         }
         navigationScope.run()

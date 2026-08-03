@@ -92,7 +92,7 @@ protocol SettingsScreenDelegate: AnyObject {
     func settingsScreen(_ screen: SettingsScreen, didChangeLanguage language: DemoLanguage)
 }
 
-final class SettingsScreen: FineScreen {
+final class SettingsScreen: FineNavigating {
     let settings: DemoSettings
     weak var delegate: (any SettingsScreenDelegate)?
 

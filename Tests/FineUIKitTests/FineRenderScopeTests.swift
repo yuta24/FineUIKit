@@ -89,7 +89,7 @@ private final class ScopeState {
 @MainActor
 @Suite(.serialized)
 struct FineRenderScopeTests {
-    private final class ScopedScreen: FineScreen {
+    private final class ScopedScreen: FineNavigating {
         let state: ScopeState
         let tag: String
 
@@ -127,7 +127,7 @@ struct FineRenderScopeTests {
 
     /// Reads state in `body()` itself, so the read registers on the root
     /// scope rather than on the enclosing container's node.
-    private final class RootScopeScreen: FineScreen {
+    private final class RootScopeScreen: FineContent {
         let state: ScopeState
         let tag: String
 
@@ -514,7 +514,7 @@ struct FineRenderScopeTests {
     }
 
     @Test func suspendedCellCatchesUpOnControllerReappearance() async throws {
-        final class ListScreen: FineScreen {
+        final class ListScreen: FineContent {
             let state: RowModel
 
             init(state: RowModel) {

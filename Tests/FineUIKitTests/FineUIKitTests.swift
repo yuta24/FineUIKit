@@ -1430,7 +1430,7 @@ struct FineScreenControllerTests {
         var count: Int = 0
     }
 
-    final class CounterScreen: FineScreen {
+    final class CounterScreen: FineContent {
         let state: Counter
 
         init(state: Counter) {
@@ -1476,7 +1476,7 @@ struct FineNavigationTests {
         var usesSecondAction: Bool = false
     }
 
-    final class NavigationScreen: FineScreen {
+    final class NavigationScreen: FineNavigating {
         let state: NavigationState
         var firstActionCount = 0
         var secondActionCount = 0
@@ -1522,7 +1522,7 @@ struct FineNavigationTests {
         }
     }
 
-    final class ManualNavigationScreen: FineScreen {
+    final class ManualNavigationScreen: FineContent {
         let state: NavigationState
 
         init(state: NavigationState) {
