@@ -54,5 +54,6 @@ tags: [source-map, navigation, swift, uikit]
 - `FineComponentTests.swift`: UIKit コントロール（stepper、segmented、date picker、page control、progress、activity indicator、divider、text view）の in-place 差分適用、クランプ書き戻し、modifier リセット。
 - `FineSliderTests.swift`: slider のクランプ書き戻しと範囲移動。
 - `RenderingPerformanceTests.swift`: 性能の傾向確認。
+- `FineLeakTests.swift`: handler/builder のキャプチャ形状による保持サイクル(リーク)と解放の検証。
 
 テストの実行方法と変更別選択は[テストと運用](operations/testing.md)が正本です。内部設計のより詳細な一次資料は [`docs/architecture.md`](../docs/architecture.md)、公開 API の例は [`README.md`](../README.md) にあります。
