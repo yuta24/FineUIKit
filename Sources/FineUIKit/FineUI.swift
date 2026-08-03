@@ -88,19 +88,20 @@ public final class FineUI {
         self.avoidsKeyboard = avoidsKeyboard
     }
 
-    /// Renders a closure instead of a `FineContent`, for trees that do not need
-    /// an object of their own — a test, a throwaway, a fragment.
+    /// Renders a closure instead of a `FineContent`, for a tree that does not
+    /// need an object of its own.
     ///
-    /// The description lives in a stored closure here, which is fixed at the
-    /// moment it is made, so **code injection cannot replace it**. Reach for
-    /// the `FineContent` form for anything you intend to hot-reload: its
-    /// `body()` is a method, and a method can be swapped.
+    /// Deliberately not public. The description lives in a stored closure, and
+    /// a stored closure is fixed at the moment it is made, so **code injection
+    /// cannot replace it** — a tree written this way silently gives up hot
+    /// reload, which is half of what this library is for. Tests reach it
+    /// through `@testable`, because a test has no use for injection and every
+    /// use for saying a tree in one expression.
     ///
-    /// The `state:` label is what keeps the two apart. Without it,
-    /// `FineUI(content)` and `FineUI(content) { ... }` would differ only by a
-    /// trailing closure, and the second — the one that cannot be hot-reloaded —
-    /// is the easier of the two to write by accident.
-    public convenience init<State>(
+    /// The `state:` label keeps it from being mistaken for the content
+    /// initialiser: without one, the two would differ only by a trailing
+    /// closure.
+    convenience init<State>(
         state: State,
         avoidsKeyboard: Bool = true,
         body: @escaping @MainActor (State) -> any Renderable
