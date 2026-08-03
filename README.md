@@ -47,12 +47,7 @@ navigationController.pushViewController(FineScreenController(ToDoListScreen()), 
 
 ハンドラが `self` をキャプチャして構いません。マウントしたコントローラが content とビューツリーの両方を所有し、content はどちらも所有しないので、循環しないからです（[メモリ管理](#メモリ管理)を参照）。
 
-マウントの仕方は 2 つあります。
-
-| | 使うもの | 用途 |
-|---|---|---|
-| 画面として | `FineScreenController(content)` | ライフサイクルと `navigationItem` を繋いでくれる |
-| 既存ビューの一区画として | `FineUI(content).build(to: someView)` | コントローラ不要。既存の UIKit 画面への部分適用 |
+マウントは `FineScreenController` を通します。表示状態に応じた suspend / resume と `navigationItem` の更新を繋ぐのがこのクラスの仕事です。既に自前のコントローラがある場合は、子として足してください — `addChild(FineScreenController(content))` なら appearance の転送も効きます。
 
 `navigation()` を実装したいときだけ `FineContent` ではなく `FineNavigating` に適合します。`navigationItem` は画面レベルの関心事なので、区画として使う content には生えません。
 
@@ -295,7 +290,7 @@ override var suspendsWhenDisappeared: Bool { false }   // 隠れている間も�
 
 ## キーボード
 
-ルートビューの下端は既定で `keyboardLayoutGuide` に追従するため、キーボード表示中はコンテンツがその上に詰まり、隠れません(キーボード非表示時は safe area 下端と一致し、レイアウトは従来どおり)。無効にする場合は `FineScreenController(_:avoidsKeyboard:)` に `false` を渡します(`FineUI` 直接利用なら `init(_:avoidsKeyboard:)`)。
+ルートビューの下端は既定で `keyboardLayoutGuide` に追従するため、キーボード表示中はコンテンツがその上に詰まり、隠れません(キーボード非表示時は safe area 下端と一致し、レイアウトは従来どおり)。無効にする場合は `FineScreenController(_:avoidsKeyboard:)` に `false` を渡します。
 
 ```swift
 FineScreenController(ToDoListScreen(), avoidsKeyboard: false)
@@ -594,7 +589,7 @@ FineUIKit が管理していないビュー(UIKit が内部で作るラベルな
 - 内部プリミティブ — 組み込みコンポーネントが持つ `_makeView()` / `_canUpdate(_:)` / `_update(_:context:)` 契約。署名や全プロパティ書き戻しの規則は公開 API ではない
 - `FineRenderer` — 差分適用層。`body` を内部プリミティブへ解決し、「ビュー型互換 + モディファイア署名一致 + key 一致」のときだけ in-place 更新、それ以外は作り直し
 - `FineNode` — 各ビューに紐づく永続「要素」(Flutter の Element 相当)。モディファイア署名・key・ノード局所の観測状態(scheduler の generation / context)に加え、`FineState` のローカル状態を所有する。ビューと同寿命なので、状態は再レンダリングをまたいで保持される
-- `FineUI` — `withObservationTracking` で差分適用を駆動するランタイム。`FineContent` を任意のビューにマウントする。`body()` は構造、コンテナの builder はそのノード、`FineLabel.text` はラベルノード単位で再評価される。画面が隠れている間は `suspend()` で観測起因のレンダリングを止め、`resume()` で1回だけ catch-up する
+- `FineUI`(internal) — `withObservationTracking` で差分適用を駆動するランタイム。`body()` は構造、コンテナの builder はそのノード、`FineLabel.text` はラベルノード単位で再評価される。画面が隠れている間は `suspend()` で観測起因のレンダリングを止め、`resume()` で1回だけ catch-up する。マウントは `FineScreenController` が行うので公開していない
 - `FineContent` — 状態を持ち `body()` でビューツリーを記述するオブジェクト。`@Observable` なクラスとして書く。画面とは限らず、任意のビューにマウントできる
 - `FineNavigating` — `FineContent` に `navigation()` を足したもの。画面として使うときだけ適合する
 - `FineScreenController` — 画面をマウントする view controller。`body()` と `navigation()` を別の observation スコープで追跡し、表示状態に応じて `FineUI` を suspend / resume する。`open` なので継承してよい

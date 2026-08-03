@@ -18,9 +18,11 @@ import UIKit
 /// navigationController.pushViewController(FineScreenController(list), animated: true)
 /// ```
 ///
-/// This is the convenience for content that fills a screen. To render content
-/// into a view you already own — a section of an existing screen — use `FineUI`
-/// directly; it needs no controller.
+/// To put content inside a controller you already own, add one of these as a
+/// child: `addChild(FineScreenController(content))` forwards the appearance
+/// transitions, so the render loop still pauses off screen. `navigation()` has
+/// no bar to write to in that position, which is why it lives on
+/// `FineNavigating` rather than on all content.
 ///
 /// Subclassing is allowed and safe. The cycle this design avoids came from the
 /// description living on the controller, not from the controller being

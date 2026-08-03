@@ -34,14 +34,16 @@ enum FineObservedTraits {
 /// structural reads, and primitive nodes for values read while updating those
 /// nodes.
 ///
-/// This is the runtime, and it mounts content anywhere — an arbitrary
-/// container view, a cell, a section of an existing screen. `FineScreenController`
-/// is the convenience on top for when the content is a whole screen.
+/// Deliberately not public. Mounting by hand means owning the lifecycle by
+/// hand — a tree whose owner forgets `suspend()` keeps re-diffing while it is
+/// off screen, silently — and `FineScreenController` is the one place that
+/// wiring is written correctly. Widening this later is source-compatible;
+/// narrowing it would not be, so it stays closed until something needs it
+/// open.
 ///
-/// Keep a strong reference to this object (e.g. in your view controller);
-/// releasing it stops the render loop.
+/// Keep a strong reference to this object; releasing it stops the render loop.
 @MainActor
-public final class FineUI {
+final class FineUI {
     private let content: any FineContent
     private let avoidsKeyboard: Bool
 
@@ -83,7 +85,7 @@ public final class FineUI {
     ///   above the keyboard instead of being covered by it. With the keyboard
     ///   hidden the guide matches the bottom safe area, so layout is
     ///   unchanged.
-    public init(_ content: any FineContent, avoidsKeyboard: Bool = true) {
+    init(_ content: any FineContent, avoidsKeyboard: Bool = true) {
         self.content = content
         self.avoidsKeyboard = avoidsKeyboard
     }
@@ -123,7 +125,7 @@ public final class FineUI {
     /// view is re-parented and re-constrained, and trait observation follows
     /// the new container. Calling it again with the same container re-renders
     /// without disturbing the hierarchy.
-    public func build(to container: UIView) {
+    func build(to container: UIView) {
         self.container = container
         renderGate.onFlush = { [weak self] in
             self?.render()
@@ -168,12 +170,12 @@ public final class FineUI {
     /// Suspension only affects observation-driven renders. `build(to:)` always
     /// renders, and a catch-up render is never animated, because animating
     /// changes that happened off screen is not meaningful.
-    public func suspend() {
+    func suspend() {
         renderGate.suspend()
     }
 
     /// Resumes re-rendering, applying any change recorded while suspended.
-    public func resume() {
+    func resume() {
         renderGate.resume()
     }
 

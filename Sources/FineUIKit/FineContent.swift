@@ -31,9 +31,9 @@
 /// }
 /// ```
 ///
-/// Mount it with `FineUI` into any view, or with `FineScreenController` to make
-/// it a screen. Content nested inside other content needs neither — see
-/// *Scope* below.
+/// Hand it to `FineScreenController` to put it on screen. Content nested inside
+/// other content needs no controller and no conformance at all — see *Scope*
+/// below.
 ///
 /// ## Why a class, and why capturing `self` here is safe
 ///
