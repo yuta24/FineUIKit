@@ -54,7 +54,7 @@ navigationController.pushViewController(FineContentController(ToDoList()), anima
 ```swift
 let child = FineContentController(content)
 addChild(child)
-view.addSubview(child.view)
+containerView.addSubview(child.view)
 child.view.translatesAutoresizingMaskIntoConstraints = false
 NSLayoutConstraint.activate([
     child.view.topAnchor.constraint(equalTo: containerView.topAnchor),

@@ -791,4 +791,32 @@ struct FineContentControllerSuspensionTests {
 
         #expect(label(controller)?.text == "B")
     }
+
+    /// `suspendRendering()` promises a pause "until `resumeRendering()`", so
+    /// being shown must not end it. The off-screen pause and the asked-for one
+    /// are separate reasons, and only their own end clears each.
+    @Test func appearingDoesNotUndoAnAskedForSuspension() async {
+        let state = PreloadState()
+        let controller = FineContentController(PreloadContent(state: state))
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 480))
+
+        controller.suspendRendering()
+        window.rootViewController = controller
+        window.isHidden = false
+        window.layoutIfNeeded()
+        for _ in 0..<40 { await Task.yield() }
+
+        state.title = "B"
+        for _ in 0..<40 { await Task.yield() }
+
+        #expect(label(controller)?.text == "A")
+
+        controller.resumeRendering()
+        for _ in 0..<40 where label(controller)?.text != "B" {
+            await Task.yield()
+        }
+
+        #expect(label(controller)?.text == "B")
+        window.isHidden = true
+    }
 }

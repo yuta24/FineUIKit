@@ -52,12 +52,17 @@ open class FineContentController: UIViewController {
     private let avoidsKeyboard: Bool
     private var fineUI: FineUI?
     private var navigationScope: FineObservedScope?
-    /// Whether `suspendRendering()` was called. Recorded rather than only
-    /// forwarded, because the runtime does not exist until `viewDidLoad`: a
-    /// controller suspended before its view loads — which is exactly the
-    /// "loaded and driven without ever appearing" case — would otherwise start
-    /// rendering the moment it does load.
-    private var isSuspended = false
+    /// The two reasons rendering can be paused, kept apart because they end
+    /// independently. An appearance clears only the off-screen one: a caller
+    /// who asked for a pause got the pause "until `resumeRendering()`" that the
+    /// method promises, and being shown is not that call.
+    ///
+    /// They are recorded rather than only forwarded, because the runtime does
+    /// not exist until `viewDidLoad`: a controller suspended before its view
+    /// loads — the "loaded and driven without ever appearing" case — would
+    /// otherwise start rendering the moment it does load.
+    private var isSuspendedByCaller = false
+    private var isSuspendedOffScreen = false
 
     /// - Parameter avoidsKeyboard: When `true` (the default), the tree's bottom
     ///   edge follows `keyboardLayoutGuide`, so content compresses above the
@@ -101,14 +106,30 @@ open class FineContentController: UIViewController {
     /// `.overCurrentContext` presentation, which UIKit does not report as a
     /// disappearance, or one that is loaded and driven without ever appearing.
     public func suspendRendering() {
-        isSuspended = true
-        fineUI?.suspend()
+        isSuspendedByCaller = true
+        applySuspension()
     }
 
     /// Resumes rendering, applying in one render whatever changed while paused.
+    ///
+    /// Rendering only actually resumes if the controller is also on screen; a
+    /// call made behind a pushed screen takes effect when this one comes back.
     public func resumeRendering() {
-        isSuspended = false
-        fineUI?.resume()
+        isSuspendedByCaller = false
+        applySuspension()
+    }
+
+    /// Brings the runtime in line with the reasons currently in force. Both
+    /// `suspend()` and `resume()` are idempotent, so this can run on any change
+    /// to either reason.
+    private func applySuspension() {
+        guard let fineUI else { return }
+
+        if isSuspendedByCaller || isSuspendedOffScreen {
+            fineUI.suspend()
+        } else {
+            fineUI.resume()
+        }
     }
 
     open override func viewDidLoad() {
@@ -123,9 +144,7 @@ open class FineContentController: UIViewController {
         // A suspension asked for before the view loaded had nothing to act on
         // at the time, so it is applied now. The initial render still happens:
         // suspension only ever governs observation-driven ones.
-        if isSuspended {
-            fineUI.suspend()
-        }
+        applySuspension()
 
         // Navigation gets its own observation scope: reads that only navigation
         // performs must not invalidate the tree. Content that does not describe
@@ -153,12 +172,13 @@ open class FineContentController: UIViewController {
         }
     }
 
-    /// Resumes rendering. An override must call `super`, or the controller
-    /// never resumes after its first disappearance.
+    /// Clears the off-screen suspension. An override must call `super`, or the
+    /// controller never resumes after its first disappearance.
     open override func viewIsAppearing(_ animated: Bool) {
         super.viewIsAppearing(animated)
 
-        fineUI?.resume()
+        isSuspendedOffScreen = false
+        applySuspension()
     }
 
     /// Pauses rendering when `suspendsWhenDisappeared` is `true`. An override
@@ -167,7 +187,8 @@ open class FineContentController: UIViewController {
         super.viewDidDisappear(animated)
 
         if suspendsWhenDisappeared {
-            fineUI?.suspend()
+            isSuspendedOffScreen = true
         }
+        applySuspension()
     }
 }
