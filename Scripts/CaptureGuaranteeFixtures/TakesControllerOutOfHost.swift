@@ -1,6 +1,6 @@
 // expect-error: 'controller' is inaccessible due to 'private' protection level
 //
-// `FineScreen` holds the controller weakly and never hands it over as a value.
+// `FineHost` holds the controller weakly and never hands it over as a value.
 // Being able to would reopen the cycle: the local could then be captured
 // strongly by a handler the node keeps.
 
@@ -9,13 +9,13 @@ import Observation
 import UIKit
 
 @Observable
-final class ScreenEscapeModel {
+final class HostEscapeModel {
     var title = "title"
 }
 
-final class ScreenEscapeController: FineViewController<ScreenEscapeModel> {
-    override class func body(_ state: ScreenEscapeModel, _ screen: FineScreen) -> any Renderable {
-        let controller = screen.controller
+final class HostEscapeController: FineViewController<HostEscapeModel> {
+    override class func body(_ state: HostEscapeModel, _ host: FineHost) -> any Renderable {
+        let controller = host.controller
         return FineButton(title: "Close") { controller?.dismiss(animated: true) }
     }
 }

@@ -23,7 +23,7 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
         super.init(state: .init())
     }
 
-    override class func body(_ viewModel: ToDoListViewModel, _ screen: FineScreen) -> any Renderable {
+    override class func body(_ viewModel: ToDoListViewModel, _ host: FineHost) -> any Renderable {
         FineStack.vertical(spacing: 8) {
             FineLabel(text: "\(viewModel.items.count) items")
                 .font(.preferredFont(forTextStyle: .headline))
@@ -101,7 +101,7 @@ FineStack.vertical(spacing: 12) {
 ナビゲーションは `body(_:_:)` とは**別の observation スコープ**で追跡されます。`navigation(_:_:)` だけが読んだ値(タイトル、ボタンの `.enabled` など)が変わったときは `navigationItem` だけが更新され、ツリーの再評価・再差分は起きません。下の例で `draft` が1文字変わるたびに全画面が再差分されることはありません。
 
 ```swift
-override class func navigation(_ state: ToDoListViewModel, _ screen: FineScreen) -> FineNavigation? {
+override class func navigation(_ state: ToDoListViewModel, _ host: FineHost) -> FineNavigation? {
     FineNavigation(title: "ToDo (\(state.items.count))")
         .trailing(
             FineBarButton(systemItem: .add) { state.addTask() }
@@ -110,15 +110,15 @@ override class func navigation(_ state: ToDoListViewModel, _ screen: FineScreen)
 }
 ```
 
-画面遷移 DSL は持たず、従来どおり action 内で手続き的に書きます。コントローラへの経路は `FineScreen` です。
+画面遷移 DSL は持たず、従来どおり action 内で手続き的に書きます。コントローラへの経路は `FineHost` です。
 
 ```swift
 FineBarButton(title: "Detail") {
-    screen.push(DetailViewController())
+    host.push(DetailViewController())
 }
 ```
 
-`FineScreen` が用意する操作は `push` / `pop` / `present` / `dismiss` / `endEditing` と、それ以外の UIKit 面のための `withController(_:)` です。コントローラは weak に保持され、値としては取り出せません。
+`FineHost` が用意する操作は `push` / `pop` / `present` / `dismiss` / `endEditing` と、それ以外の UIKit 面のための `withController(_:)` です。コントローラは weak に保持され、値としては取り出せません。
 
 ## 双方向バインディング
 
@@ -429,13 +429,13 @@ BlurBackground(style: .systemMaterial)
 FineUIKit はこれを規律ではなく**型で**防ぎます。`body(_:_:)` と `navigation(_:_:)` は型メソッドなので、`self` がそもそもスコープに存在しません。
 
 ```swift
-override class func body(_ viewModel: ToDoListViewModel, _ screen: FineScreen) -> any Renderable {
+override class func body(_ viewModel: ToDoListViewModel, _ host: FineHost) -> any Renderable {
     FineStack.vertical {
         // ✅ 状態を読む・書く。これが基本形
         FineButton(title: "Add") { viewModel.addTask() }
 
-        // ✅ コントローラ操作は FineScreen 経由。weak 保持なので循環しない
-        FineButton(title: "Detail") { screen.push(DetailViewController()) }
+        // ✅ コントローラ操作は FineHost 経由。weak 保持なので循環しない
+        FineButton(title: "Detail") { host.push(DetailViewController()) }
 
         // ❌ そもそも書けない: instance member 'addTask' cannot be used on type '...'
         // FineButton(title: "Add") { self.addTask() }
@@ -445,7 +445,7 @@ override class func body(_ viewModel: ToDoListViewModel, _ screen: FineScreen) -
 
 `[weak self]` / `[unowned self]` を書く必要はありません。書く場所がないからです。
 
-`FineScreen` がコントローラを**値として渡さない**のも同じ理由です。`let controller = screen.controller` のように取り出せてしまうと、それをクロージャが強参照でき、保証が消えます。UIKit 面が必要なときは非 escaping の `withController(_:)` を使ってください。
+`FineHost` がコントローラを**値として渡さない**のも同じ理由です。`let controller = host.controller` のように取り出せてしまうと、それをクロージャが強参照でき、保証が消えます。UIKit 面が必要なときは非 escaping の `withController(_:)` を使ってください。
 
 ### 振る舞いは state に置く
 
@@ -573,7 +573,7 @@ FineUIKit が管理していないビュー(UIKit が内部で作るラベルな
 - `FineNode` — 各ビューに紐づく永続「要素」(Flutter の Element 相当)。モディファイア署名・key・ノード局所の観測状態(scheduler の generation / context)に加え、`FineState` のローカル状態を所有する。ビューと同寿命なので、状態は再レンダリングをまたいで保持される
 - `FineUI` — `withObservationTracking` で差分適用を駆動するランタイム。root の `body` は構造、コンテナの `content` はそのノード、`FineLabel.text` はラベルノード単位で再評価される。画面が隠れている間は `suspend()` で観測起因のレンダリングを止め、`resume()` で1回だけ catch-up する
 - `FineViewController` — 上記をまとめた推奨インターフェース。`body(_:_:)` と `navigation(_:_:)` を別の observation スコープで追跡し、表示状態に応じて `FineUI` を suspend / resume する
-- `FineScreen` — 記述からコントローラへ戻る唯一の経路。weak 保持で、操作メソッドのみを公開する
+- `FineHost` — 記述からコントローラへ戻る唯一の経路。weak 保持で、操作メソッドのみを公開する
 
 ## ホットリロード
 

@@ -90,11 +90,11 @@ final class DemoSettings {
 }
 
 final class SettingsViewController: FineViewController<DemoSettings> {
-    override class func navigation(_ settings: DemoSettings, _ screen: FineScreen) -> FineNavigation? {
+    override class func navigation(_ settings: DemoSettings, _ host: FineHost) -> FineNavigation? {
         FineNavigation(title: settings.language.settingsTitle)
     }
 
-    override class func body(_ settings: DemoSettings, _ screen: FineScreen) -> any Renderable {
+    override class func body(_ settings: DemoSettings, _ host: FineHost) -> any Renderable {
         let language = settings.language
 
         return FineScrollView {

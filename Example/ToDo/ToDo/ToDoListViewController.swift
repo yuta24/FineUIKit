@@ -45,7 +45,7 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
         super.init(state: .init())
     }
 
-    override class func navigation(_ viewModel: ToDoListViewModel, _ screen: FineScreen) -> FineNavigation? {
+    override class func navigation(_ viewModel: ToDoListViewModel, _ host: FineHost) -> FineNavigation? {
         FineNavigation(title: "ToDo (\(viewModel.items.count))")
             .trailing(
                 FineBarButton(systemItem: .add) { viewModel.addTask() }
@@ -53,7 +53,7 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
             )
     }
 
-    override class func body(_ viewModel: ToDoListViewModel, _ screen: FineScreen) -> any Renderable {
+    override class func body(_ viewModel: ToDoListViewModel, _ host: FineHost) -> any Renderable {
         let activeItems = viewModel.items.filter { !$0.completed }
         let completedItems = viewModel.items.filter { $0.completed }
         var listSections = [

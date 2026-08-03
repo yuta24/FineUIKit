@@ -1,5 +1,5 @@
 //
-//  FineScreen.swift
+//  FineHost.swift
 //  FineUIKit
 //
 //  Created by nova on 2026/08/03.
@@ -15,21 +15,21 @@ import UIKit
 /// as the view lives, and the view belongs to the controller, so a captured
 /// controller could never be released.
 ///
-/// `FineScreen` is the sanctioned way back to the controller, and it holds it
-/// weakly. Capturing a `FineScreen` in a handler is safe — capturing the
+/// `FineHost` is the sanctioned way back to the controller, and it holds it
+/// weakly. Capturing a `FineHost` in a handler is safe — capturing the
 /// controller is what is not, which is why this type exposes operations rather
 /// than the controller itself. Handing out the controller as a value would put
 /// it back in scope for a closure to retain, and the guarantee would be gone:
 ///
 /// ```swift
 /// // What this type deliberately makes impossible.
-/// let controller = screen.controller
+/// let controller = host.controller
 /// return FineButton(title: "Close") { controller?.dismiss() }
 /// ```
 ///
 /// An operation performed after the controller has gone away does nothing.
 @MainActor
-public struct FineScreen {
+public struct FineHost {
     private weak var controller: UIViewController?
 
     init(_ controller: UIViewController?) {

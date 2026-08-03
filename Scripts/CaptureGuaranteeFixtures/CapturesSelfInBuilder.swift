@@ -15,7 +15,7 @@ final class BuilderCaptureModel {
 final class BuilderCaptureController: FineViewController<BuilderCaptureModel> {
     var taps = 0
 
-    override class func body(_ state: BuilderCaptureModel, _ screen: FineScreen) -> any Renderable {
+    override class func body(_ state: BuilderCaptureModel, _ host: FineHost) -> any Renderable {
         FineStack.vertical {
             FineLabel(text: state.title)
             FineButton(title: "Tap") { self.taps += 1 }

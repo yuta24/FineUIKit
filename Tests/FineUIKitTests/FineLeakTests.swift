@@ -20,7 +20,7 @@ private final class LeakModel {
 /// Captures only the state object, which is all a description normally needs.
 @MainActor
 private final class StateCapturingController: FineViewController<LeakModel> {
-    override class func body(_ state: LeakModel, _ screen: FineScreen) -> any Renderable {
+    override class func body(_ state: LeakModel, _ host: FineHost) -> any Renderable {
         FineStack.vertical {
             FineLabel(text: state.title)
             FineButton(title: "Tap") { state.taps += 1 }
@@ -28,15 +28,15 @@ private final class StateCapturingController: FineViewController<LeakModel> {
     }
 }
 
-/// Captures the `FineScreen` from inside a builder — the shape that used to
+/// Captures the `FineHost` from inside a builder — the shape that used to
 /// leak when the same reach for the controller was spelled `self`.
 @MainActor
-private final class ScreenCapturingController: FineViewController<LeakModel> {
-    override class func body(_ state: LeakModel, _ screen: FineScreen) -> any Renderable {
+private final class HostCapturingController: FineViewController<LeakModel> {
+    override class func body(_ state: LeakModel, _ host: FineHost) -> any Renderable {
         FineStack.vertical {
             FineLabel(text: state.title)
-            FineButton(title: "Close") { screen.dismiss() }
-            FineButton(title: "Edit") { screen.withController { $0.setEditing(true, animated: false) } }
+            FineButton(title: "Close") { host.dismiss() }
+            FineButton(title: "Edit") { host.withController { $0.setEditing(true, animated: false) } }
         }
     }
 }
@@ -44,17 +44,17 @@ private final class ScreenCapturingController: FineViewController<LeakModel> {
 /// Reaches the controller from a bar button, which `navigationItem` retains.
 @MainActor
 private final class NavigationCapturingController: FineViewController<LeakModel> {
-    override class func body(_ state: LeakModel, _ screen: FineScreen) -> any Renderable {
+    override class func body(_ state: LeakModel, _ host: FineHost) -> any Renderable {
         FineLabel(text: state.title)
     }
 
-    override class func navigation(_ state: LeakModel, _ screen: FineScreen) -> FineNavigation? {
+    override class func navigation(_ state: LeakModel, _ host: FineHost) -> FineNavigation? {
         FineNavigation(title: state.title)
-            .trailing(FineBarButton(title: "Add") { screen.endEditing() })
+            .trailing(FineBarButton(title: "Add") { host.endEditing() })
     }
 }
 
-/// Overrides the pre-`FineScreen` instance method, which puts the controller
+/// Overrides the pre-`FineHost` instance method, which puts the controller
 /// back in scope. Kept to pin down that the legacy path still carries the old
 /// hazard, and that nothing else does.
 @MainActor
@@ -78,7 +78,7 @@ private final class LegacyInstanceBodyController: FineViewController<LeakModel> 
 /// controller → view → node → primitive → closure → controller.
 ///
 /// `body(_:_:)` and `navigation(_:_:)` are type methods, so that closure cannot
-/// be written: the controller is not in scope, and `FineScreen` — the way back
+/// be written: the controller is not in scope, and `FineHost` — the way back
 /// to it — holds it weakly. These tests pin down that the shapes which remain
 /// writable all release, and that the one route still able to capture the
 /// controller is the deprecated instance override.
@@ -106,17 +106,17 @@ struct FineLeakTests {
         #expect(!controllerSurvivesRelease { StateCapturingController(state: LeakModel()) })
     }
 
-    /// `FineScreen` is the sanctioned route back to the controller, so a
+    /// `FineHost` is the sanctioned route back to the controller, so a
     /// description that uses it — from inside a builder, which is where the
     /// old capture rule broke down — must still release.
-    @Test func aTreeCapturingTheScreenReleasesTheController() {
-        #expect(!controllerSurvivesRelease { ScreenCapturingController(state: LeakModel()) })
+    @Test func aTreeCapturingTheHostReleasesTheController() {
+        #expect(!controllerSurvivesRelease { HostCapturingController(state: LeakModel()) })
     }
 
     /// Navigation reaches the controller by a route of its own: controller →
     /// `navigationItem` → `UIBarButtonItem` → `primaryAction` → handler. A
-    /// handler that can only hold the screen weakly cannot close it.
-    @Test func aBarButtonCapturingTheScreenReleasesTheController() {
+    /// handler that can only hold the host weakly cannot close it.
+    @Test func aBarButtonCapturingTheHostReleasesTheController() {
         #expect(!controllerSurvivesRelease { NavigationCapturingController(state: LeakModel()) })
     }
 

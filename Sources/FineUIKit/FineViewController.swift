@@ -20,7 +20,7 @@ import UIKit
 /// holds every closure a description carries for as long as the view lives, and
 /// the view belongs to the controller, so a captured controller could never be
 /// released. Behaviour belongs in `State`; the UIKit operations that genuinely
-/// need the controller are reached through `FineScreen`, which holds it weakly.
+/// need the controller are reached through `FineHost`, which holds it weakly.
 ///
 /// Because `body` is an overridable method dispatched through the class
 /// vtable (not a closure captured at init), code injection can replace its
@@ -35,8 +35,8 @@ open class FineViewController<State>: UIViewController {
     private var navigationScope: FineObservedScope?
 
     /// Handed to `body(_:_:)` and `navigation(_:_:)`. Holds this controller
-    /// weakly, so a description that captures it does not retain the screen.
-    private lazy var screen = FineScreen(self)
+    /// weakly, so a description that captures it does not retain the controller.
+    private lazy var host = FineHost(self)
 
     public init(state: State) {
         self.state = state
@@ -50,14 +50,14 @@ open class FineViewController<State>: UIViewController {
 
     /// The UI description for the current state. Subclasses must override.
     ///
-    /// Nothing here can reach the controller except through `screen`, which is
+    /// Nothing here can reach the controller except through `host`, which is
     /// the point: a handler or builder that captured it would keep it alive for
     /// as long as the view tree it is stored in.
-    open class func body(_ state: State, _ screen: FineScreen) -> any Renderable {
+    open class func body(_ state: State, _ host: FineHost) -> any Renderable {
         fatalError("Subclasses of FineViewController must override body(_:_:)")
     }
 
-    /// The pre-`FineScreen` form of `body`, kept so subclasses that override it
+    /// The pre-`FineHost` form of `body`, kept so subclasses that override it
     /// keep working. Overriding it opts out of the capture guarantee, because
     /// an instance method has the controller in scope.
     ///
@@ -65,7 +65,7 @@ open class FineViewController<State>: UIViewController {
     /// would warn at that call site as well as at the ones it is meant for.
     /// It goes on once the migration is done.
     open func body(_ state: State) -> any Renderable {
-        Self.body(state, screen)
+        Self.body(state, host)
     }
 
     /// The navigation bar description for the current state.
@@ -81,13 +81,13 @@ open class FineViewController<State>: UIViewController {
     ///
     /// A bar button's action is retained by `navigationItem`, which the
     /// controller owns, so this is a type method for the same reason `body` is.
-    open class func navigation(_ state: State, _ screen: FineScreen) -> FineNavigation? {
+    open class func navigation(_ state: State, _ host: FineHost) -> FineNavigation? {
         nil
     }
 
-    /// The pre-`FineScreen` form of `navigation`. See `body(_:)`.
+    /// The pre-`FineHost` form of `navigation`. See `body(_:)`.
     open func navigation(_ state: State) -> FineNavigation? {
-        Self.navigation(state, screen)
+        Self.navigation(state, host)
     }
 
     /// Whether the rendered tree's bottom edge follows the keyboard.
