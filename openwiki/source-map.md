@@ -16,7 +16,8 @@ tags: [source-map, navigation, swift, uikit]
 | `Renderable.swift`, `FineRenderer.swift` | 記述契約、primitive 解決、再利用判定 | [レンダリングランタイムの構造](architecture/overview.md) |
 | `FineNode.swift`, `UIView+Fine.swift` | UIView に付随する identity・状態・世代 | [UI 合成と状態](domain/ui-composition.md) |
 | `FineNodeScheduler.swift`, `FineRenderContext.swift` | ノード局所観測と context 伝播 | [レンダリングワークフロー](workflows/rendering.md) |
-| `FineUI.swift`, `FineRenderGate.swift`, `FineObservedScope.swift` | root render、停止・復帰、navigation 用観測 | [レンダリングワークフロー](workflows/rendering.md) |
+| `FineUI.swift`, `FineRenderGate.swift`, `FineObservedScope.swift` | root render、停止・復帰、navigation 用観測（`FineUI` は internal） | [レンダリングワークフロー](workflows/rendering.md) |
+| `FineContent.swift`, `FineContentController.swift` | Public なエントリ: `FineContent`/`FineNavigating` プロトコルと `FineContentController` | [UI 合成と状態](domain/ui-composition.md) |
 | `FineNodeHost.swift` | List/Grid セルと supplementary view の局所レンダー | [UIKit 統合とコレクション](integrations/uikit-collections.md) |
 | `FineDiagnostics.swift`, `FineDebugHighlight.swift`, `FineDebugToast.swift`, `FineSignpost.swift`, `UIView+FineDebug.swift` | レンダリング計測、ハイライト、注入トースト、signpost、デバッガ内省 | [レンダリング計測とデバッグ診断](operations/diagnostics.md) |
 
@@ -34,13 +35,13 @@ tags: [source-map, navigation, swift, uikit]
 
 | ファイル群 | 担当 | 詳細 |
 |---|---|---|
-| `FineViewController.swift`, `FineNavigation.swift` | 画面ホスト、navigation item、bar button | [UIKit 統合とコレクション](integrations/uikit-collections.md) |
+| `FineContent.swift`, `FineContentController.swift`, `FineNavigation.swift` | `FineContent`/`FineNavigating` プロトコル、画面ホスト、bar button | [UIKit 統合とコレクション](integrations/uikit-collections.md) |
 | `Components/FineStack.swift`, `FineLabel.swift`, `FineButton.swift`, `FineImage.swift` | 基本レイアウト・表示・操作 | [UI 合成と状態](domain/ui-composition.md) |
 | `Components/FineTextField.swift`, `FineTextView.swift`, `FineToggle.swift`, `FineSlider.swift`, `FineStepper.swift` | binding、focus、入力制御 | [UI 合成と状態](domain/ui-composition.md) |
 | `Components/FineSegmentedControl.swift`, `FineDatePicker.swift`, `FinePageControl.swift` | binding ベースの選択コントロール | [UI 合成と状態](domain/ui-composition.md) |
 | `Components/FineProgressView.swift`, `FineActivityIndicator.swift`, `FineDivider.swift`, `FineSpacer.swift` | 表示・区切り・余白（autoclosure または非 binding） | [UI 合成と状態](domain/ui-composition.md) |
 | `Components/FineList.swift`, `FineGrid.swift` | diffable data source、sections、セル、layout | [UIKit 統合とコレクション](integrations/uikit-collections.md) |
-| `UIControl+FineHandlers.swift`, `FineTapGesture.swift` | 再利用可能なイベント handler | [テストと運用](operations/testing.md) |
+| `UIControl+FineHandlers.swift`, `FineTapGesture.swift` | 再利用可能な `@MainActor` イベント handler | [テストと運用](operations/testing.md) |
 
 ## テストと既存資料
 

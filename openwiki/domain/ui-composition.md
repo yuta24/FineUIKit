@@ -72,4 +72,4 @@ FineStack.vertical {
 
 各キャプチャ形状が実際に解放されるか・リークするかは `FineLeakTests` が検証しています。リークする形状は `withKnownIssue` で将来修正されたときに報告されるように書かれています。テストの選択と確認方法は[テストと運用](../operations/testing.md)を参照してください。
 
-画面レベルの入口は `FineViewController` と `FineUI` です。コンテナ制約、キーボード回避、navigation、再ホストの振る舞いは[UIKit 統合とコレクション](../integrations/uikit-collections.md)へ、対象ファイルの一覧は[ソースマップ](../source-map.md)へ進んでください。
+画面レベルの入口は `FineContent` プロトコルと `FineContentController` です。`@Observable final class` を `FineContent` に適合させて `body() -> any Renderable` を実装し、`FineContentController(content)` でマウントします。`FineNavigating` に適合した content だけが `navigation() -> FineNavigation?` で画面の navigationItem を宣言します。`FineUI` は意図的に非公開で、mounting ライフサイクルは `FineContentController` を経由します。コンテナ制約、キーボード回避、navigation、ホスティングの振る舞いは[UIKit 統合とコレクション](../integrations/uikit-collections.md)へ、対象ファイルの一覧は[ソースマップ](../source-map.md)へ進んでください。
