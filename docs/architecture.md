@@ -294,7 +294,7 @@ flowchart TD
 ```
 
 - **root**: `body(state)` の中で `state.flag` を直接読み、`if state.flag { A } else { B }` のように**構造**が変われば、`render()` が丸ごと走り差分適用される。
-- **navigation**: `FineViewController.navigation(_:)` は `FineObservedScope`(`FineObservedScope.swift`)という独立した観測スコープで実行される。タイトルやボタンの `enabled` の変化は `navigationItem` の更新だけで済み、ツリーには触らない。ここを root の body スコープに同居させると、タイトル1文字の変化が全画面の再差分を引き起こす。
+- **navigation**: `FineViewController.navigation(_:_:)` は `FineObservedScope`(`FineObservedScope.swift`)という独立した観測スコープで実行される。タイトルやボタンの `enabled` の変化は `navigationItem` の更新だけで済み、ツリーには触らない。ここを root の body スコープに同居させると、タイトル1文字の変化が全画面の再差分を引き起こす。
 - **ノード**: `FineLabel(text: state.title)` は `text` が `@autoclosure`(`FineLabel.swift`)なので、`state.title` の読み取りはラベルの `_update` 内で起きる。→ ラベルノードだけ再更新。
 - **セル**: `FineList` / `FineGrid` のセルは独自の観測スコープで content を描画するため、行の内容変更はそのセルだけを更新する(後述)。
 

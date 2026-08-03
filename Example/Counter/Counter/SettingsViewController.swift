@@ -74,6 +74,13 @@ final class DemoSettings {
         }
     }
 
+    // The UIKit side effects a settings change has outside this screen, set by
+    // whoever composes the tab. They live here rather than on the controller
+    // because `body` is a type method and has no instance to read them from —
+    // which is the same reason it cannot accidentally retain that instance.
+    @ObservationIgnored var onAppearanceChange: (Bool) -> Void = { _ in }
+    @ObservationIgnored var onLanguageChange: (DemoLanguage) -> Void = { _ in }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         isDarkModeEnabled = defaults.bool(forKey: Key.darkMode)
@@ -83,27 +90,12 @@ final class DemoSettings {
 }
 
 final class SettingsViewController: FineViewController<DemoSettings> {
-    private let onAppearanceChange: (Bool) -> Void
-    private let onLanguageChange: (DemoLanguage) -> Void
-
-    init(
-        settings: DemoSettings,
-        onAppearanceChange: @escaping (Bool) -> Void,
-        onLanguageChange: @escaping (DemoLanguage) -> Void
-    ) {
-        self.onAppearanceChange = onAppearanceChange
-        self.onLanguageChange = onLanguageChange
-        super.init(state: settings)
-    }
-
-    override func navigation(_ settings: DemoSettings) -> FineNavigation? {
+    override class func navigation(_ settings: DemoSettings, _ screen: FineScreen) -> FineNavigation? {
         FineNavigation(title: settings.language.settingsTitle)
     }
 
-    override func body(_ settings: DemoSettings) -> any Renderable {
+    override class func body(_ settings: DemoSettings, _ screen: FineScreen) -> any Renderable {
         let language = settings.language
-        let onAppearanceChange = self.onAppearanceChange
-        let onLanguageChange = self.onLanguageChange
 
         return FineScrollView {
             FineStack.vertical(spacing: 12) {
@@ -117,9 +109,9 @@ final class SettingsViewController: FineViewController<DemoSettings> {
                     FineToggle(
                         isOn: .init(
                             get: { settings.isDarkModeEnabled },
-                            set: { [onAppearanceChange] isEnabled in
+                            set: { isEnabled in
                                 settings.isDarkModeEnabled = isEnabled
-                                onAppearanceChange(isEnabled)
+                                settings.onAppearanceChange(isEnabled)
                             }
                         )
                     )
@@ -140,11 +132,11 @@ final class SettingsViewController: FineViewController<DemoSettings> {
                         get: {
                             DemoLanguage.allCases.firstIndex(of: settings.language) ?? 0
                         },
-                        set: { [onLanguageChange] index in
+                        set: { index in
                             guard DemoLanguage.allCases.indices.contains(index) else { return }
                             let language = DemoLanguage.allCases[index]
                             settings.language = language
-                            onLanguageChange(language)
+                            settings.onLanguageChange(language)
                         }
                     )
                 )

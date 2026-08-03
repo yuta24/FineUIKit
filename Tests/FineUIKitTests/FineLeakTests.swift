@@ -17,10 +17,10 @@ private final class LeakModel {
     var taps = 0
 }
 
-/// Captures only the state object, which is the shape the README asks for.
+/// Captures only the state object, which is all a description normally needs.
 @MainActor
 private final class StateCapturingController: FineViewController<LeakModel> {
-    override func body(_ state: LeakModel) -> any Renderable {
+    override class func body(_ state: LeakModel, _ screen: FineScreen) -> any Renderable {
         FineStack.vertical {
             FineLabel(text: state.title)
             FineButton(title: "Tap") { state.taps += 1 }
@@ -28,94 +28,44 @@ private final class StateCapturingController: FineViewController<LeakModel> {
     }
 }
 
-/// Captures `self` strongly from a handler, with no builder in between, so the
-/// only capture in play is the handler's own.
+/// Captures the `FineScreen` from inside a builder — the shape that used to
+/// leak when the same reach for the controller was spelled `self`.
 @MainActor
-private final class StrongSelfWithoutBuilderController: FineViewController<LeakModel> {
-    var taps = 0
-
-    override func body(_ state: LeakModel) -> any Renderable {
-        FineButton(title: "Tap") { self.taps += 1 }
-    }
-}
-
-/// The escape hatch the README used to prescribe — `[weak self]` on the handler
-/// — written inside a builder, which is how a real screen is shaped.
-@MainActor
-private final class WeakSelfInsideBuilderController: FineViewController<LeakModel> {
-    var taps = 0
-
-    override func body(_ state: LeakModel) -> any Renderable {
-        // `[self]` on the builder is exactly what writing nothing there already
-        // means, and it is spelled out so the capture under test is visible.
-        // The two forms are the same capture to the compiler, whose own
-        // diagnostic calls the implicit one an "implicitly-captured strong
-        // reference".
-        //
-        // Writing it also keeps `#ImplicitStrongCapture` out of the build, but
-        // only Swift 6.4 (Xcode 27) and later raise that warning at all —
-        // Xcode 26, which CI runs, compiles the implicit form silently. So the
-        // warning is a bonus for whoever has the newer toolchain, not the
-        // thing that catches this mistake.
-        FineStack.vertical { [self] in
+private final class ScreenCapturingController: FineViewController<LeakModel> {
+    override class func body(_ state: LeakModel, _ screen: FineScreen) -> any Renderable {
+        FineStack.vertical {
             FineLabel(text: state.title)
-            FineButton(title: "Tap") { [weak self] in self?.taps += 1 }
+            FineButton(title: "Close") { screen.dismiss() }
+            FineButton(title: "Edit") { screen.withController { $0.setEditing(true, animated: false) } }
         }
     }
 }
 
-/// The same handler with no builder between it and `body`, which isolates the
-/// handler's own capture from the builder's.
-@MainActor
-private final class WeakSelfWithoutBuilderController: FineViewController<LeakModel> {
-    var taps = 0
-
-    override func body(_ state: LeakModel) -> any Renderable {
-        FineButton(title: "Tap") { [weak self] in self?.taps += 1 }
-    }
-}
-
-/// `[unowned self]` on the handler inside a builder, which is the shape the
-/// ToDo example was written in.
-@MainActor
-private final class UnownedSelfInsideBuilderController: FineViewController<LeakModel> {
-    var taps = 0
-
-    override func body(_ state: LeakModel) -> any Renderable {
-        FineStack.vertical { [self] in
-            FineLabel(text: state.title)
-            FineButton(title: "Tap") { [unowned self] in taps += 1 }
-        }
-    }
-}
-
-/// `[weak self]` on the builder, and nothing on the handler inside: weakening
-/// the outermost closure that captures `self` is enough, because what the
-/// handler then captures is already the weak binding.
-@MainActor
-private final class WeakSelfOnBuilderController: FineViewController<LeakModel> {
-    var taps = 0
-
-    override func body(_ state: LeakModel) -> any Renderable {
-        FineStack.vertical { [weak self] in
-            FineLabel(text: state.title)
-            FineButton(title: "Tap") { self?.taps += 1 }
-        }
-    }
-}
-
-/// Captures `self` strongly from a navigation button rather than from the tree.
+/// Reaches the controller from a bar button, which `navigationItem` retains.
 @MainActor
 private final class NavigationCapturingController: FineViewController<LeakModel> {
-    var taps = 0
-
-    override func body(_ state: LeakModel) -> any Renderable {
+    override class func body(_ state: LeakModel, _ screen: FineScreen) -> any Renderable {
         FineLabel(text: state.title)
     }
 
-    override func navigation(_ state: LeakModel) -> FineNavigation? {
+    override class func navigation(_ state: LeakModel, _ screen: FineScreen) -> FineNavigation? {
         FineNavigation(title: state.title)
-            .trailing(FineBarButton(title: "Add") { self.taps += 1 })
+            .trailing(FineBarButton(title: "Add") { screen.endEditing() })
+    }
+}
+
+/// Overrides the pre-`FineScreen` instance method, which puts the controller
+/// back in scope. Kept to pin down that the legacy path still carries the old
+/// hazard, and that nothing else does.
+@MainActor
+private final class LegacyInstanceBodyController: FineViewController<LeakModel> {
+    var taps = 0
+
+    override func body(_ state: LeakModel) -> any Renderable {
+        FineStack.vertical {
+            FineLabel(text: state.title)
+            FineButton(title: "Tap") { self.taps += 1 }
+        }
     }
 }
 
@@ -124,13 +74,14 @@ private final class NavigationCapturingController: FineViewController<LeakModel>
 /// The runtime attaches a `FineNode` to every managed view and holds the
 /// primitive that last rendered it (`FineNodeScheduler.renderChild`), so a
 /// handler closure lives on the view for as long as the view does. A closure
-/// that captures the controller therefore closes the cycle
-/// controller → view → node → primitive → closure → controller. These tests
-/// pin down which shapes pay that cost and which do not.
+/// that captured the controller would therefore close the cycle
+/// controller → view → node → primitive → closure → controller.
 ///
-/// The shapes that currently leak are written as the release they ought to
-/// achieve and marked `withKnownIssue`, so closing the cycle in the runtime
-/// reports the known issue as no longer occurring rather than passing quietly.
+/// `body(_:_:)` and `navigation(_:_:)` are type methods, so that closure cannot
+/// be written: the controller is not in scope, and `FineScreen` — the way back
+/// to it — holds it weakly. These tests pin down that the shapes which remain
+/// writable all release, and that the one route still able to capture the
+/// controller is the deprecated instance override.
 @MainActor
 @Suite(.serialized)
 struct FineLeakTests {
@@ -155,60 +106,28 @@ struct FineLeakTests {
         #expect(!controllerSurvivesRelease { StateCapturingController(state: LeakModel()) })
     }
 
-    @Test func weakSelfInAHandlerReleasesTheController() {
-        #expect(!controllerSurvivesRelease { WeakSelfWithoutBuilderController(state: LeakModel()) })
+    /// `FineScreen` is the sanctioned route back to the controller, so a
+    /// description that uses it — from inside a builder, which is where the
+    /// old capture rule broke down — must still release.
+    @Test func aTreeCapturingTheScreenReleasesTheController() {
+        #expect(!controllerSurvivesRelease { ScreenCapturingController(state: LeakModel()) })
     }
 
-    /// The capture that does work through a builder: weaken the builder too.
-    @Test func weakSelfOnTheBuilderReleasesTheController() {
-        #expect(!controllerSurvivesRelease { WeakSelfOnBuilderController(state: LeakModel()) })
+    /// Navigation reaches the controller by a route of its own: controller →
+    /// `navigationItem` → `UIBarButtonItem` → `primaryAction` → handler. A
+    /// handler that can only hold the screen weakly cannot close it.
+    @Test func aBarButtonCapturingTheScreenReleasesTheController() {
+        #expect(!controllerSurvivesRelease { NavigationCapturingController(state: LeakModel()) })
     }
 
-    /// A handler that reaches the controller strongly cannot release it: the
-    /// view the runtime keeps the handler on is the controller's own view.
+    /// The one shape that still leaks, and the reason the type method exists.
     ///
-    /// No builder stands between the handler and `body` here, so this pins the
-    /// handler's capture on its own rather than a builder's.
-    @Test func aHandlerCapturingSelfStronglyReleasesTheController() {
-        withKnownIssue("The node holds the primitive, and the primitive holds the handler that holds the controller.") {
-            #expect(!controllerSurvivesRelease { StrongSelfWithoutBuilderController(state: LeakModel()) })
-        }
-    }
-
-    /// `[weak self]` on the handler is not enough once a builder stands between
-    /// the handler and `body`.
-    ///
-    /// A builder's content closure is `@escaping` and is stored on the
-    /// description (`FineStack.vertical`), because a node-local re-render has to
-    /// be able to evaluate it again. Mentioning `self` anywhere inside it —
-    /// even only to weakly capture it further in — makes the builder itself
-    /// capture `self` strongly, and the builder is what the node holds.
-    @Test func weakSelfInsideABuilderReleasesTheController() {
-        withKnownIssue("The builder captures the controller strongly, whatever ownership the handler inside asks for.") {
-            #expect(!controllerSurvivesRelease { WeakSelfInsideBuilderController(state: LeakModel()) })
-        }
-    }
-
-    /// `unowned` fares no better. What holds the controller is the builder's
-    /// capture, so the ownership the handler inside asks for cannot help.
-    @Test func unownedSelfInsideABuilderReleasesTheController() {
-        withKnownIssue("The builder captures the controller strongly, whatever ownership the handler inside asks for.") {
-            #expect(!controllerSurvivesRelease { UnownedSelfInsideBuilderController(state: LeakModel()) })
-        }
-    }
-
-    /// Navigation reaches the controller by a route of its own, and it is not
-    /// the node's.
-    ///
-    /// `FineObservedScope` holds only its body closure, which
-    /// `FineViewController.viewDidLoad` gives `[unowned self]`, and it keeps
-    /// neither the `FineNavigation` value nor the bar button once `apply(to:)`
-    /// has run. What retains the controller is UIKit's own item:
-    /// controller → `navigationItem` → `UIBarButtonItem` → `primaryAction`
-    /// (`FineNavigation.update(_:)`) → handler → controller.
-    @Test func aBarButtonCapturingSelfStronglyReleasesTheController() {
-        withKnownIssue("The navigation item holds the bar button whose action holds the controller.") {
-            #expect(!controllerSurvivesRelease { NavigationCapturingController(state: LeakModel()) })
+    /// Written as the release it ought to achieve and marked `withKnownIssue`,
+    /// so retiring the instance override reports the known issue as no longer
+    /// occurring rather than passing quietly.
+    @Test func aLegacyInstanceBodyCapturingSelfReleasesTheController() {
+        withKnownIssue("Overriding the instance method puts the controller back in scope, and the node holds what the description captured.") {
+            #expect(!controllerSurvivesRelease { LegacyInstanceBodyController(state: LeakModel()) })
         }
     }
 

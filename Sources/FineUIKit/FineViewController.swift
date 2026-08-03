@@ -7,22 +7,36 @@
 
 import UIKit
 
-/// A view controller that renders a `Renderable` tree from its `body(_:)`
+/// A view controller that renders a `Renderable` tree from its `body(_:_:)`
 /// method.
 ///
 /// Subclass it, pass your `@Observable` state to `init(state:)`, and
-/// override `body(_:)`. The view rebuilds in place whenever observed state
+/// override `body(_:_:)`. The view rebuilds in place whenever observed state
 /// changes.
+///
+/// `body` is a *type* method, so the instance is not in scope and a
+/// description cannot capture the controller. That is deliberate, and it is
+/// what keeps the runtime leak-free without asking for capture lists: the tree
+/// holds every closure a description carries for as long as the view lives, and
+/// the view belongs to the controller, so a captured controller could never be
+/// released. Behaviour belongs in `State`; the UIKit operations that genuinely
+/// need the controller are reached through `FineScreen`, which holds it weakly.
 ///
 /// Because `body` is an overridable method dispatched through the class
 /// vtable (not a closure captured at init), code injection can replace its
 /// implementation, and the injection-triggered re-render in `FineUI` picks
-/// it up — no per-controller hot-reload wiring required.
+/// it up — no per-controller hot-reload wiring required. A type method occupies
+/// the same vtable as an instance method and is patched the same way, so
+/// nothing about hot reload changes.
 open class FineViewController<State>: UIViewController {
     public let state: State
 
     private var fineUI: FineUI<State>?
     private var navigationScope: FineObservedScope?
+
+    /// Handed to `body(_:_:)` and `navigation(_:_:)`. Holds this controller
+    /// weakly, so a description that captures it does not retain the screen.
+    private lazy var screen = FineScreen(self)
 
     public init(state: State) {
         self.state = state
@@ -35,8 +49,23 @@ open class FineViewController<State>: UIViewController {
     }
 
     /// The UI description for the current state. Subclasses must override.
+    ///
+    /// Nothing here can reach the controller except through `screen`, which is
+    /// the point: a handler or builder that captured it would keep it alive for
+    /// as long as the view tree it is stored in.
+    open class func body(_ state: State, _ screen: FineScreen) -> any Renderable {
+        fatalError("Subclasses of FineViewController must override body(_:_:)")
+    }
+
+    /// The pre-`FineScreen` form of `body`, kept so subclasses that override it
+    /// keep working. Overriding it opts out of the capture guarantee, because
+    /// an instance method has the controller in scope.
+    ///
+    /// Not marked deprecated yet: the runtime still calls it, and the attribute
+    /// would warn at that call site as well as at the ones it is meant for.
+    /// It goes on once the migration is done.
     open func body(_ state: State) -> any Renderable {
-        fatalError("Subclasses of FineViewController must override body(_:)")
+        Self.body(state, screen)
     }
 
     /// The navigation bar description for the current state.
@@ -47,10 +76,18 @@ open class FineViewController<State>: UIViewController {
     /// so observed state changes and hot reload update navigation as well.
     ///
     /// Navigation is tracked in its own observation scope, separate from
-    /// `body(_:)`: a value read only here — a title, a button's enabled state —
-    /// updates `navigationItem` without re-evaluating or re-diffing the tree.
-    open func navigation(_ state: State) -> FineNavigation? {
+    /// `body(_:_:)`: a value read only here — a title, a button's enabled state
+    /// — updates `navigationItem` without re-evaluating or re-diffing the tree.
+    ///
+    /// A bar button's action is retained by `navigationItem`, which the
+    /// controller owns, so this is a type method for the same reason `body` is.
+    open class func navigation(_ state: State, _ screen: FineScreen) -> FineNavigation? {
         nil
+    }
+
+    /// The pre-`FineScreen` form of `navigation`. See `body(_:)`.
+    open func navigation(_ state: State) -> FineNavigation? {
+        Self.navigation(state, screen)
     }
 
     /// Whether the rendered tree's bottom edge follows the keyboard.

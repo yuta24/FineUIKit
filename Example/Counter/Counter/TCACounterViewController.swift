@@ -20,11 +20,11 @@ final class TCACounterViewController: FineViewController<StoreOf<CounterFeature>
         })
     }
 
-    override func navigation(_ store: StoreOf<CounterFeature>) -> FineNavigation? {
+    override class func navigation(_ store: StoreOf<CounterFeature>, _ screen: FineScreen) -> FineNavigation? {
         FineNavigation(title: "TCA")
     }
 
-    override func body(_ store: StoreOf<CounterFeature>) -> any Renderable {
+    override class func body(_ store: StoreOf<CounterFeature>, _ screen: FineScreen) -> any Renderable {
         counterBody(
             count: store.count,
             // Two-way binding into TCA state. The setter writes through the

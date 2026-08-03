@@ -23,15 +23,13 @@ struct CounterTabs: UIViewControllerRepresentable {
             tag: 1
         )
 
-        let settingsController = SettingsViewController(
-            settings: settings,
-            onAppearanceChange: { [weak tabs] isDarkModeEnabled in
-                tabs?.overrideUserInterfaceStyle = isDarkModeEnabled ? .dark : .light
-            },
-            onLanguageChange: { [weak tabs] language in
-                tabs?.viewControllers?.last?.tabBarItem.title = language.settingsTitle
-            }
-        )
+        settings.onAppearanceChange = { [weak tabs] isDarkModeEnabled in
+            tabs?.overrideUserInterfaceStyle = isDarkModeEnabled ? .dark : .light
+        }
+        settings.onLanguageChange = { [weak tabs] language in
+            tabs?.viewControllers?.last?.tabBarItem.title = language.settingsTitle
+        }
+        let settingsController = SettingsViewController(state: settings)
         let settingsNavigation = UINavigationController(rootViewController: settingsController)
         settingsNavigation.tabBarItem = UITabBarItem(
             title: settings.language.settingsTitle,

@@ -30,6 +30,14 @@ final class ToDoListViewModel {
     var showsGrid: Bool = false
     var usesAlternateAccent: Bool = false
     var items: [ToDo] = []
+
+    // Behaviour lives on the state, not on the controller: `body` is a type
+    // method and has no instance to call back into.
+    func addTask() {
+        let title = draft.isEmpty ? "Task \(items.count + 1)" : draft
+        items.append(.init(title: title))
+        draft = ""
+    }
 }
 
 final class ToDoListViewController: FineViewController<ToDoListViewModel> {
@@ -37,25 +45,15 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
         super.init(state: .init())
     }
 
-    private func addTask(_ viewModel: ToDoListViewModel) {
-        let title = viewModel.draft.isEmpty
-            ? "Task \(viewModel.items.count + 1)"
-            : viewModel.draft
-        viewModel.items.append(.init(title: title))
-        viewModel.draft = ""
-    }
-
-    override func navigation(_ viewModel: ToDoListViewModel) -> FineNavigation? {
+    override class func navigation(_ viewModel: ToDoListViewModel, _ screen: FineScreen) -> FineNavigation? {
         FineNavigation(title: "ToDo (\(viewModel.items.count))")
             .trailing(
-                FineBarButton(systemItem: .add) { [unowned self] in
-                    addTask(viewModel)
-                }
-                .enabled(!viewModel.draft.isEmpty)
+                FineBarButton(systemItem: .add) { viewModel.addTask() }
+                    .enabled(!viewModel.draft.isEmpty)
             )
     }
 
-    override func body(_ viewModel: ToDoListViewModel) -> any Renderable {
+    override class func body(_ viewModel: ToDoListViewModel, _ screen: FineScreen) -> any Renderable {
         let activeItems = viewModel.items.filter { !$0.completed }
         let completedItems = viewModel.items.filter { $0.completed }
         var listSections = [
@@ -65,11 +63,7 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
             listSections.append(.init(id: "completed", header: "Completed", items: completedItems))
         }
 
-        // `[weak self]` belongs on the builder, not only on the handlers
-        // below: a builder's content closure is stored on the description the
-        // node holds, so touching `self` anywhere inside it captures the
-        // controller strongly no matter what the handlers ask for.
-        return FineStack.vertical(spacing: 8) { [weak self] in
+        return FineStack.vertical(spacing: 8) {
             // Environment sample. The count badge is nested inside a
             // `FineEnvironmentReader` and colors itself with the injected
             // `accentColor`. Flipping the "Pink accent" switch changes the
@@ -120,10 +114,10 @@ final class ToDoListViewController: FineViewController<ToDoListViewModel> {
 
             FineStack.horizontal(spacing: 8) {
                 FineTextField(text: .init(viewModel, \.draft), placeholder: "New task")
-                    .onSubmit { self?.addTask(viewModel) }
+                    .onSubmit { viewModel.addTask() }
                     .accessibilityIdentifier("draft-field")
                 FineButton(title: "Add") {
-                    self?.addTask(viewModel)
+                    viewModel.addTask()
                 }
                 .configuration(.filled())
                 .hugging(.defaultHigh, axis: .horizontal)

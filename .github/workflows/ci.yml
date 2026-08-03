@@ -104,3 +104,10 @@ jobs:
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 120 \
             test
+
+      # The suite can only check what runs. That a description cannot capture
+      # the controller is a property of what compiles, so it is checked by
+      # type-checking fixtures that must fail — see the script's header.
+      - name: Verify the capture guarantee
+        timeout-minutes: 10
+        run: ./Scripts/verify-capture-guarantee.sh
