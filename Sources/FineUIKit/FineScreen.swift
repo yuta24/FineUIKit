@@ -5,8 +5,6 @@
 //  Created by nova on 2026/08/03.
 //
 
-import UIKit
-
 /// An object that describes a view tree and owns the state that tree reads.
 ///
 /// Conform an `@Observable final class` to it and return a description from

@@ -10,7 +10,7 @@ import Testing
 import UIKit
 @testable import FineUIKit
 
-private struct LeakRow: Identifiable, Equatable {
+private struct LeakRow: Identifiable {
     let id: Int
     var title: String
 }
@@ -70,7 +70,7 @@ private final class CapturingScreen: FineScreen {
                     isOn.value.toggle()
                 }
             }
-            CapturingRepresentable { self.taps += 0 }
+            CapturingRepresentable { _ = self.taps }
             FineList(self.store.rows) { row in
                 FineLabel(text: "\(row.title) \(self.taps)")
             }
@@ -139,10 +139,9 @@ private final class RoutingScreen: FineScreen {
 
 @MainActor
 private final class RoutingController: FineScreenController, RoutingScreenDelegate {
-    var selections = 0
-
     func routingScreenDidSelect() {
-        selections += 1
+        // What a delegate does is not what this test is about; that it can be
+        // the controller without retaining it is.
     }
 }
 

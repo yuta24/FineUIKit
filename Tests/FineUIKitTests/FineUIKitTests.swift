@@ -1424,7 +1424,7 @@ struct FineBindingTests {
 }
 
 @MainActor
-struct FineViewControllerTests {
+struct FineScreenControllerTests {
     @Observable
     final class Counter {
         var count: Int = 0

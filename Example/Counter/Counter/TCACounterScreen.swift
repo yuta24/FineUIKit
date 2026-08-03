@@ -7,7 +7,6 @@
 
 import ComposableArchitecture
 import FineUIKit
-import UIKit
 
 // The TCA-backed counter. The screen holds a store rather than its own state;
 // nothing about FineUIKit is TCA-specific. The render loop tracks whatever

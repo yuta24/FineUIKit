@@ -6,9 +6,7 @@
 //
 
 import FineUIKit
-import Foundation
 import Observation
-import UIKit
 
 // The plain counter. The screen is the state: a bare `@Observable` class with
 // methods that mutate it directly — no reducer, no actions, no store. FineUIKit
