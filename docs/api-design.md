@@ -201,6 +201,6 @@ content が store を持つかどうかは、ただのプロパティの持ち�
 
 ## 参考
 
-- 使い方: [README](../README.md)
+- 使い方: [README](../README.md) / [ドキュメント索引](README.md)
 - 内部構造: [内部アーキテクチャ](architecture.md)
 - 検証: `Tests/FineUIKitTests/FineLeakTests.swift` — ランタイムが保持するすべての形（builder / button / tap / lifecycle / bar button / list と grid のセル content と行コールバック / environment reader / `FineState` サブツリー / representable adapter）を押さえています
