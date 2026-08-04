@@ -16,7 +16,7 @@
 
 そしてビューは、それをマウントしたコントローラのものです。したがって記述がコントローラをキャプチャすると、
 
-```
+```text
 controller → view → node → closure → controller
 ```
 
@@ -86,7 +86,7 @@ final class ToDoList: FineContent {
 **理由**:
 
 - UIKit の遷移面（presentation style の適応、`UISplitViewController`、popover、detent、interactive dismissal、state restoration）はレンダリングランタイム本体より大きい
-- 遷移を所有すると、既存アプリの 1 画面だけに導入することができなくなる
+- 遷移を所有すると、既存アプリの 1 画面だけに導入できなくなる
 - エコシステムに合意がない（coordinator / router / TCA / `NavigationStack`）。SwiftUI 自身、navigation が最も作り直されている領域
 
 **代わりに推奨する形**: `weak var delegate`。
@@ -160,7 +160,7 @@ final class ToDoList: FineContent {
 
 **実測した非対称**: 親が `if showsChild { child.body() }` で子を出し入れすると、
 
-```
+```text
 初期            → "child 7 local 1"   （子の taps=7、FineState の counter=1）
 showsChild=false → 消える
 showsChild=true  → "child 7 local 0"   ← 子オブジェクトの状態は残り、FineState は破棄される
