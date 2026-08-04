@@ -64,7 +64,7 @@ final class ToDoList: FineContent {
 
 **決定**: `FineContent` は `body()` を要求するプロトコルにする。クロージャを受け取る初期化子を公開 API に置かない。
 
-**理由はホットリロード**です。ストアドクロージャは生成時に記述が確定するため、コード注入では差し替えられません。メソッドなら vtable 経由で差し替わります。
+**理由はホットリロード**です。ストアドクロージャは生成時に記述が確定するため、コード注入では差し替えられません。メソッドなら注入が名前で辿れます — `final` なら symbol の再バインド、非 `final` なら vtable スロットの差し替えで届きます。
 
 **実測（Swift 6.4 / Xcode 27）**:
 
@@ -77,6 +77,8 @@ final class ToDoList: FineContent {
 | struct のメソッドは | `function_ref` / `witness_method`。interposition 依存（`-Xlinker -interposable`）になる | `swiftc -emit-sil` |
 
 `FineContent` を protocol にできる根拠は 3 行目です。ただし **4 行目が実務上の条件を決めます** — README も Example も content を `final class` で書いており、その場合の差し替えは vtable パッチではなく symbol interposition なので、`-Xlinker -interposable` が要ります。
+
+**実行時にも確認済み**です。`Example/ToDo`(`final class ToDoList: FineNavigating`、`-interposable` あり、iOS 26 シミュレータ)で `body()` を編集すると、InjectionLite が `Loaded and rebound 20 symbols [ToDo.ToDoList]` を出して画面が更新されます。*rebound*(再バインド)であって vtable のパッチではない、というのがまさにこの区別です。
 
 この区別は当初見落としていました。最初のスパイクで witness thunk を調べたとき使ったのが非 final のクラスで、そこから `final` の場合へ一般化してしまっています。値型（struct）を選ばなかった判断自体は変わりません（struct は `final` class と同じく interposition 依存で、かつインスタンス状態も持てない）が、「protocol にすればフラグが要らない」という含意は誤りでした。
 

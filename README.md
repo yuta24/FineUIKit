@@ -618,7 +618,7 @@ FineUIKit が管理していないビュー(UIKit が内部で作るラベルな
 
 DEBUG ビルドでは、コード注入(InjectionLite / InjectionIII / InjectionNext)の完了通知を `FineUI` が受け取り、自動で再レンダリングします。
 
-`FineContent.body()` は vtable 経由で動的ディスパッチされるメソッドなので、注入によって実装が差し替わると、次の再レンダリングから新しいコードが使われます。**アプリ側にホットリロード用のコードは一切不要です。** 状態は content(`@Observable` なクラス)に住んでいるため、リロードをまたいで保持されます。
+`FineContent.body()` はメソッドなので注入が名前で辿れます(`final` なら symbol の再バインド、非 `final` なら vtable スロットの差し替え)。実装が差し替わると、次の再レンダリングから新しいコードが使われます。**アプリ側にホットリロード用のコードは一切不要です。** 状態は content(`@Observable` なクラス)に住んでいるため、リロードをまたいで保持されます。
 
 **これが `body` をクロージャではなくメソッドにしている理由**です。ストアドクロージャは生成時に記述が確定してしまい、注入では差し替えられません。公開 API に記述をクロージャで受け取る入口が無いのはこのためです。
 
@@ -641,7 +641,7 @@ Example アプリでは [InjectionLite](https://github.com/johnno1962/InjectionL
 
 ### 注意: `body` の外に書いたコードの差し替え
 
-Xcode の新リンカ(chained fixups)環境では、`private` メソッドへの直接呼び出しなど静的ディスパッチされるコードは注入で差し替わりません。確実に差し替わるのは、クラスの vtable 経由(`FineContent.body()` の実装)か ObjC ディスパッチ(`@objc dynamic`)のコードです。ホットリロードで書き換えたいロジックはできるだけ `body` から辿れる位置に置いてください。
+Xcode の新リンカ(chained fixups)環境では、`private` メソッドへの直接呼び出しなど静的ディスパッチされるコードは注入で差し替わりません。確実に差し替わるのは、メソッドとして宣言されたコード(`FineContent.body()` の実装)か ObjC ディスパッチ(`@objc dynamic`)のコードです。ホットリロードで書き換えたいロジックはできるだけ `body` から辿れる位置に置いてください。
 
 ### 既知の問題(Xcode 27 beta + InjectionLite 1.2.x)
 
