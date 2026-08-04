@@ -55,7 +55,7 @@ Scripts/injectionlite-xcode27-fix.sh ToDo   # ビルドのたびに実行(スキ
 
 **iOS 27 のシミュレータランタイムは `usr/lib/swift/libswift_Concurrency.dylib` をファイルとして持ちません**(dyld shared cache に取り込まれました)。スクリプトが張ろうとする symlink のリンク元が存在しないため、注入 dylib の `dlopen` は次のように失敗します。
 
-```
+```text
 ⚠️ dlopen failed ... Library not loaded: @rpath/libswift_Concurrency.dylib
 ```
 

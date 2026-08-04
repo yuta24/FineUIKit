@@ -115,8 +115,10 @@ final class ToDoList: FineContent {
     @ObservationIgnored weak var delegate: (any ToDoListDelegate)?
 
     func body() -> any Renderable {
-        FineList(self.items) { ... }
-            .onSelect { self.delegate?.toDoList(self, didSelect: $0) }
+        FineList(self.items) { item in
+            FineLabel(text: item.title)
+        }
+        .onSelect { self.delegate?.toDoList(self, didSelect: $0) }
     }
 }
 ```

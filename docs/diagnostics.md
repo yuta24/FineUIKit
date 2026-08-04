@@ -8,7 +8,7 @@ FineDiagnostics.logsViewReuse = true
 
 スキームの環境変数 `FINEUIKIT_LOG_REUSE=1` でも有効になります。出力例:
 
-```
+```text
 FineUIKit rebuilt UILabel for FineLabel: modifier composition changed ("|backgroundColor" → "|backgroundColor|cornerRadius")
 FineUIKit rebuilt UITextField for FineTextField: key changed (a → b)
 FineUIKit rebuilt UILabel for FineImage: view type is incompatible
@@ -28,7 +28,7 @@ FineUIKit rebuilt UILabel for FineImage: view type is incompatible
 FineDiagnostics.logsRenders = true  // または FINEUIKIT_LOG_RENDERS=1
 ```
 
-```
+```text
 FineUIKit created UILabel for FineLabel (render #1, 0 rebuilt)
 FineUIKit rebuilt UILabel for FineLabel (render #2, 1 rebuilt)
 ```
@@ -53,7 +53,7 @@ FineDiagnostics.highlightsRenders = true  // または FINEUIKIT_HIGHLIGHT_RENDE
 
 Xcode の View Debugger は `UILabel` は見せますが、それを作った `FineLabel`・key・モディファイア署名は見せません。デバッガから:
 
-```
+```text
 (lldb) po view.fineDumpTree()
 FineStack → UIStackView  renders 1
   FinePadded → FinePaddingView  renders 1  modifiers "padding"
