@@ -221,7 +221,7 @@ func _update(_ view: UIView, context: FineRenderContext) {
 }
 ```
 
-透過ラッパーが「同じビューへの追記」、ホストラッパーが「ビュー階層に1層挟む」という違いです。順序に意味がある(README「モディファイア」節)のはこの合成のためです。
+透過ラッパーが「同じビューへの追記」、ホストラッパーが「ビュー階層に1層挟む」という違いです。順序に意味がある([モディファイアとレイアウト](layout.md))のはこの合成のためです。
 
 ---
 
@@ -544,6 +544,6 @@ xcrun lldb
 
 ## 参考
 
-- 公開 API と使い方: [README](../README.md)
+- 公開 API と使い方: [README](../README.md) / [ドキュメント索引](README.md)
 - 公開 API が**なぜこの形なのか**（メモリ安全性、命名、`FineUI` を非公開にした理由): [公開 API の設計判断](api-design.md)
 - 中核ファイル: `Renderable.swift` / `FineRenderer.swift` / `FineNode.swift` / `FineNodeScheduler.swift` / `FineUI.swift`
