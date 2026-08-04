@@ -612,6 +612,8 @@ FineUIKit が管理していないビュー(UIKit が内部で作るラベルな
 - `FineNavigating` — `FineContent` に `navigation()` を足したもの。画面として使うときだけ適合する
 - `FineContentController` — 画面をマウントする view controller。`body()` と `navigation()` を別の observation スコープで追跡し、表示状態に応じて `FineUI` を suspend / resume する。手動で止めたいときの公開 API は `suspendRendering()` / `resumeRendering()`。`open` なので継承してよい
 
+内部構造は [内部アーキテクチャ](docs/architecture.md)、**この API 形状に至った判断とその根拠**は [公開 API の設計判断](docs/api-design.md) にまとめてあります。
+
 ## ホットリロード
 
 DEBUG ビルドでは、コード注入(InjectionLite / InjectionIII / InjectionNext)の完了通知を `FineUI` が受け取り、自動で再レンダリングします。
