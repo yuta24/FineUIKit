@@ -47,29 +47,46 @@ UIKit が値をクランプまたは丸めるコントロール（`FineSlider`�
 
 `Renderable` の記述は使い捨ての値ですが、ノードが管理する UIView には[レンダリングランタイムの構造](../architecture/overview.md)の `FineNode` が付随し、最後に描画した primitive(記述) を保持します。`FineStack` などの `@FineBuilder` クロージャは `@escaping` で記述値に保持され、ノードがその記述を持つため、node 単位の再レンダリングが content を再評価できます。
 
-ここから保持サイクルの制約が生まれます。クロージャがコントローラ(`self`)を強参照すると、`controller → view → node → primitive → closure → controller` が閉じ、コントローラが解放されません。重要なのは、**builder の中で `self` に一度でも触れると、内側のハンドラを `[weak self]` にしていても builder 自身が `self` を強参照**することです。実際の画面はほぼ必ず builder を経由するため、ハンドラだけを弱参照にしても足りません。
+保持サイクルは、**保持されたクロージャがマウントしたコントローラをキャプチャしたとき**に閉じます: `controller → view → node → primitive → closure → controller`。コントローラの `view` はコントローラ自身が所有しているため、外から切る契機がありません。かつての `FineViewController<State>` を継承して `body(_:)` を override する API では `self` が常にコントローラだったため、この循環は「普通に書くと起きる」ものでした。
 
-指針: クロージャには状態(`@Observable` モデル)だけをキャプチャし、`self` に触れる必要がある場合は **`self` を最初にキャプチャする最も外側の escaping クロージャ**に `[weak self]` / `[unowned self]` を付けます。`body` 直下のハンドラならそのハンドラ、builder に囲まれているならその builder です。内側のクロージャは弱参照になった `self` を引き継ぐため、重ねて capture list を書く必要はありません。
+現在の `FineContent` API は `body()` をコントローラではなく content オブジェクトのメソッドに置くことで、これを既定で安全にします。`body()` 内の `self` は **content であってコントローラではありません**。コントローラが content とツリーの両方を所有し、content はどちらも所有しないため、グラフは循環せず DAG になります。したがって `body()` や builder の中で **`self`(content)を強参照キャプチャしてもリークしません** — capture list は不要です。
 
 ```swift
-// ❌ builder が self を強参照キャプチャするためリーク
-FineStack.vertical {
-    FineButton(title: "Add") { [weak self] in self?.addTask() }
-}
+@Observable
+final class ToDoList: FineContent {
+    var items: [ToDo] = []
+    func add() { items.append(.init(title: "New")) }
 
-// ✅ 外側の builder に [weak self] を付けると内側は弱参照を引き継ぐ
-FineStack.vertical { [weak self] in
-    FineButton(title: "Add") { self?.addTask() }
-}
-
-// ✅ self に触れない(状態オブジェクトだけを読む)のが最も安全
-FineStack.vertical {
-    FineButton(title: "Add") { viewModel.add() }
+    func body() -> any Renderable {
+        FineStack.vertical {
+            FineButton(title: "Add") { self.add() }   // self は content。強参照で安全
+        }
+    }
 }
 ```
 
-**Swift 6.4(Xcode 27)以降**のコンパイラはこの取り違えを `#ImplicitStrongCapture`(`'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope`)として警告します。ただし**それより前のツールチェーン(Xcode 26 系を含む)では警告が出ない**ため、コンパイラ任せにせず builder 内で `self` に触れていないか自分で確認する必要があります。
+残るルールは **1 つだけ**: content は自分の controller を強参照で保持してはいけません。content が外へ伝えるもの(画面遷移の意図を含む)は `weak var delegate` に置きます。これにより、循環を閉じる参照が capture list の暗黙の規律ではなく**宣言で弱参照**になります。
 
-各キャプチャ形状が実際に解放されるか・リークするかは `FineLeakTests` が検証しています。リークする形状は `withKnownIssue` で将来修正されたときに報告されるように書かれています。テストの選択と確認方法は[テストと運用](../operations/testing.md)を参照してください。
+```swift
+protocol ToDoListDelegate: AnyObject {
+    func toDoList(_ list: ToDoList, didSelect item: ToDo)
+}
+
+@Observable
+final class ToDoList: FineContent {
+    @ObservationIgnored weak var delegate: (any ToDoListDelegate)?
+}
+```
+
+これらの判断と根拠(型メソッド化の不採用理由、hot reload のため `body()` をクロージャではなくメソッドにした理由、`FineUI` を internal にした理由、命名変更)は [`docs/api-design.md`](../../docs/api-design.md) が正本です。
+
+### 残る限界
+
+強参照キャプチャの安全性は content が controller へ戻らない限り成り立ちます。原理的な限界が二つあり、どちらも未修正です([`docs/api-design.md`](../../docs/api-design.md) §9)。
+
+- **第三者オブジェクト経由の循環**: コントローラを所有する coordinator や router をクロージャがキャプチャすれば、同じ循環が作れます。Swift はクロージャのキャプチャを制限できないため、既定が安全になっただけで絶対の封じ込めではありません。
+- **`.task` による解放の遅延**: task は content をキャプチャしたまま実行されるため、キャンセルを尊重しない task は content の解放を遅らせます(循環ではありません)。
+
+各キャプチャ形状が実際に解放されるかは `FineLeakTests` が検証しています — content が `self` をすべてのハンドラ形状(builder / button / tap / lifecycle / bar button / list と grid のセル content と行コールバック / environment reader / `FineState` サブツリー / representable adapter)で強キャプチャして解放されること(`aContentCapturingItselfEverywhereIsReleased`)、content が controller を強参照するとリークすること(`aContentHoldingItsControllerLeaks`)、weak delegate であれば解放されること(`aWeakDelegatePointingAtTheControllerIsReleased`)を固定しています。テストの選択と確認方法は[テストと運用](../operations/testing.md)を参照してください。
 
 画面レベルの入口は `FineContent` プロトコルと `FineContentController` です。`@Observable final class` を `FineContent` に適合させて `body() -> any Renderable` を実装し、`FineContentController(content)` でマウントします。`FineNavigating` に適合した content だけが `navigation() -> FineNavigation?` で画面の navigationItem を宣言します。`FineUI` は意図的に非公開で、mounting ライフサイクルは `FineContentController` を経由します。コンテナ制約、キーボード回避、navigation、ホスティングの振る舞いは[UIKit 統合とコレクション](../integrations/uikit-collections.md)へ、対象ファイルの一覧は[ソースマップ](../source-map.md)へ進んでください。

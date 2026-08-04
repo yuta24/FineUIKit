@@ -47,7 +47,7 @@ navigationController.pushViewController(controller, animated: true)
 
 - `Sources/FineUIKit/`: ランタイム、公開 DSL、UIKit コンポーネント。
 - `Tests/FineUIKitTests/`: Swift Testing 中心の振る舞い・回帰テストと、XCTest ベースの性能テスト。
-- `docs/architecture.md`: 実装内部を詳細に解説する既存設計書。本 Wiki は更新時の導線と判断を優先して要約します。
+- `docs/architecture.md`: 実装内部を詳細に解説する既存設計書。`docs/api-design.md` は公開 API(`FineContent` / `FineNavigating` / `FineContentController`)がなぜこの形なのか、判断と根拠(メモリ安全性、hot reload と vtable、`FineUI` を internal にした理由、命名変更の経緯)を記録した一次資料。本 Wiki はこれらを更新時の導線と判断を優先して要約します。
 - `Example/`: 利用例アプリ、`Scripts/`: 補助スクリプト。
 
 領域別の入口は[ソースマップ](source-map.md)に集約しています。

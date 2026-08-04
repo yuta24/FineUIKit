@@ -48,7 +48,7 @@ flowchart TD
 
 ## 役割分担
 
-- `FineUI`(internal): root `body` を観測し、コンテナへの設置、trait 監視、可視性ゲートを管理します。公開 API からは直接露出せず、`FineContentController` 経由で利用します（[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)、[FineContentController.swift](../../Sources/FineUIKit/FineContentController.swift)）。
+- `FineUI`(internal): root `body` を観測し、コンテナへの設置、trait 監視、可視性ゲートを管理します。公開 API からは直接露出せず、`FineContentController` 経由で利用します（[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)、[FineContentController.swift](../../Sources/FineUIKit/FineContentController.swift)）。ランタイムを非公開にした判断と根拠は [`docs/api-design.md`](../../docs/api-design.md) §5 にあります。
 - `FineRenderer`: 記述の primitive 解決と、同期的な再利用判定を行います。
 - `FineNodeScheduler`: 通常のツリーでは子ノードの `_update` を個別に観測し、該当ノードだけを再キューします（[FineNodeScheduler.swift](../../Sources/FineUIKit/FineNodeScheduler.swift)）。
 - `FineRenderContext`: scheduler、render gate、environment を子孫へ渡します（[FineRenderContext.swift](../../Sources/FineUIKit/FineRenderContext.swift)）。
