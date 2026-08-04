@@ -25,7 +25,7 @@ flowchart TD
 
 ## 1. root の構造変更
 
-`FineUI.render()` は `content.body()` を `withObservationTracking` 内で評価します。`if`、配列の構造、モディファイア引数のように、記述を組み立てる最中に読まれた値が変わると root が再評価され、`FineRenderer` が前回の root view と差分適用します（[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)）。`body()` は protocol メソッドとして content のクラス経由で呼ばれるため、コード注入が次回 render で差し替えられます(`9864cee` で `FineUI<State>` の stored closure から `any FineContent` の method へ移行した理由です)。
+`FineUI.render()` は `content.body()` を `withObservationTracking` 内で評価します。`if`、配列の構造、モディファイア引数のように、記述を組み立てる最中に読まれた値が変わると root が再評価され、`FineRenderer` が前回の root view と差分適用します（[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)）。`body()` をクロージャではなくメソッドにしているのはコード注入で差し替えられるようにするためです(`9864cee` で `FineUI<State>` の stored closure から `any FineContent` の method へ移行した理由)。差し替えの経路は content の宣言に依存し、`final class`(推奨・Example もこちら)では symbol interposition なので `-Xlinker -interposable` が必須、非 `final` な class では vtable スロットの差し替えでフラグ不要です。経路の区別と実測の根拠は [`docs/api-design.md`](../../docs/api-design.md) と [`README.md`](../../README.md) のホットリロード節が正本です。
 
 ここでは `FineNodeScheduler` を新たに用意し、子ノードの更新をキューへ積んで `drain()` します。古い render や observation callback は generation で捨てるため、作り直されたビューに stale な更新が入らない設計です（[FineNodeScheduler.swift](../../Sources/FineUIKit/FineNodeScheduler.swift)）。
 
