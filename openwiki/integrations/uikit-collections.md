@@ -13,7 +13,7 @@ FineUIKit は UIKit を置き換えず、`FineContentController` が `FineConten
 
 画面として使う場合は `FineContentController` に `any FineContent` を渡します（`init(_ content:avoidsKeyboard:)`、`avoidsKeyboard` は既定で `true`）。`viewDidLoad` で内部の `FineUI` を生成し、自身の `view` へ `build(to:)` します（[FineContent.swift](../../Sources/FineUIKit/FineContent.swift)、[FineContentController.swift](../../Sources/FineUIKit/FineContentController.swift)、[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)）。
 
-`FineUI` は意図的に公開していません（`da73abc`）。mounting を自分で書くと suspend/resume のライフサイクル管理も自分で担うことになり、`suspend()` を忘れたツリーは画面外でも黙って再差分され続けます。`FineContentController` はそれを正しく行う唯一の場所です。公開 API の拡張は source-compatible ですが縮小は互換性を壊すため、必要が生じるまで閉じています。自分のコントローラ内に埋め込む場合は、UIKit の containment 手順をすべて踏んでください — `addChild(_:)` は親子関係を結ぶだけでビューを足さないので、`addChild(_:)` → コンテナへの `addSubview(_:)` → 制約 → `didMove(toParent:)` の 4 段階が要ります。そうすれば外観遷移が転送され、画面外で停止する render loop も保たれます。
+`FineUI` は意図的に公開していません（`da73abc`）。mounting を自分で書くと suspend/resume のライフサイクル管理も自分で担うことになり、`suspend()` を忘れたツリーは画面外でも黙って再差分され続けます。`FineContentController` はそれを正しく行う唯一の場所です。公開 API の拡張は source-compatible ですが縮小は互換性を壊すため、必要が生じるまで閉じています（この判断の根拠は [`docs/api-design.md`](../../docs/api-design.md) §5）。自分のコントローラ内に埋め込む場合は、UIKit の containment 手順をすべて踏んでください — `addChild(_:)` は親子関係を結ぶだけでビューを足さないので、`addChild(_:)` → コンテナへの `addSubview(_:)` → 制約 → `didMove(toParent:)` の 4 段階が要ります。そうすれば外観遷移が転送され、画面外で停止する render loop も保たれます。
 
 `build(to:)` を別コンテナで再度呼ぶと、同じ root view を移し、旧コンテナにまたがる制約と trait registration を外して新コンテナに再設置します。同じコンテナへの再 build は階層を壊さない idempotent な再レンダーです。この再ホスト経路は `e56854e` とその後の修正で強化され、`FineUIHostingTests.swift` が root 移動、制約の張り直し、状態と trait の追従を保護するため、変更時の必須確認先です。
 

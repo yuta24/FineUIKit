@@ -57,4 +57,4 @@ tags: [source-map, navigation, swift, uikit]
 - `RenderingPerformanceTests.swift`: 性能の傾向確認。
 - `FineLeakTests.swift`: handler/builder のキャプチャ形状による保持サイクル(リーク)と解放の検証。
 
-テストの実行方法と変更別選択は[テストと運用](operations/testing.md)が正本です。内部設計のより詳細な一次資料は [`docs/architecture.md`](../docs/architecture.md)、公開 API の例は [`README.md`](../README.md) にあります。
+テストの実行方法と変更別選択は[テストと運用](operations/testing.md)が正本です。内部設計のより詳細な一次資料は [`docs/architecture.md`](../docs/architecture.md)、公開 API の形状に至った判断と根拠は [`docs/api-design.md`](../docs/api-design.md)、公開 API の例は [`README.md`](../README.md) にあります。
