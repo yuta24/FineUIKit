@@ -620,9 +620,16 @@ DEBUG ビルドでは、コード注入(InjectionLite / InjectionIII / Injection
 
 `FineContent.body()` は vtable 経由で動的ディスパッチされるメソッドなので、注入によって実装が差し替わると、次の再レンダリングから新しいコードが使われます。**アプリ側にホットリロード用のコードは一切不要です。** 状態は content(`@Observable` なクラス)に住んでいるため、リロードをまたいで保持されます。
 
-`any FineContent` として保持していても同じです。クラスが protocol に適合した場合、protocol witness thunk 自身が `class_method` を発行してクラスの vtable に落ちるためです。
+**これが `body` をクロージャではなくメソッドにしている理由**です。ストアドクロージャは生成時に記述が確定してしまい、注入では差し替えられません。公開 API に記述をクロージャで受け取る入口が無いのはこのためです。
 
-**これが `body` をクロージャではなくメソッドにしている理由**でもあります。ストアドクロージャは生成時に記述が確定してしまい、注入では差し替えられません。公開 API に記述をクロージャで受け取る入口が無いのはこのためです。
+差し替えの経路は content クラスが `final` かどうかで変わります。
+
+| content の宣言 | 呼び出し | 注入の経路 |
+|---|---|---|
+| `final class`（推奨・例もこちら） | protocol witness が直接呼び出し | **symbol interposition** → `-Xlinker -interposable` が必要 |
+| 非 `final` な `class` | witness thunk が vtable 経由 | vtable スロットの差し替え → フラグ不要 |
+
+つまり **`final class` で書く限り `-Xlinker -interposable` は必須**です（下のセットアップ手順 2 がこれにあたります）。`final` を外せばフラグ無しでも差し替わりますが、Swift の慣習に反するので推奨しません。
 
 Example アプリでは [InjectionLite](https://github.com/johnno1962/InjectionLite)(GUI アプリ不要)を利用しています。セットアップ:
 
