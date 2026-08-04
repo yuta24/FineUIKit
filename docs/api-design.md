@@ -64,7 +64,7 @@ final class ToDoList: FineContent {
 
 **決定**: `FineContent` は `body()` を要求するプロトコルにする。クロージャを受け取る初期化子を公開 API に置かない。
 
-**理由はホットリロード**です。ストアドクロージャは生成時に記述が確定するため、コード注入では差し替えられません。メソッドなら vtable 経由で差し替わります。
+**理由はホットリロード**です。ストアドクロージャは生成時に記述が確定するため、コード注入では差し替えられません。メソッドなら注入が名前で辿れます — `final` なら symbol の再バインド、非 `final` なら vtable スロットの差し替えで届きます。
 
 **実測（Swift 6.4 / Xcode 27）**:
 
@@ -72,10 +72,15 @@ final class ToDoList: FineContent {
 |---|---|---|
 | `class func` は vtable スロットに載るか | 載る。instance method と同じ `sil_vtable`、呼び出しは `class_method` | `swiftc -emit-sil` |
 | injection は IsInstance で弾かないか | 弾かない。スロットを位置で総なめし、injectable 接尾辞に `Z`(static) を含む | InjectionLite `Reloader.swift` |
-| class が protocol に適合した場合 | **protocol witness thunk 自身が `class_method` を発行**する。`any FineContent` 経由でも vtable に落ちる | `swiftc -emit-sil` |
+| **非 final** な class が protocol に適合した場合 | witness thunk が `class_method` を発行し、`any FineContent` 経由でも vtable に落ちる | `swiftc -emit-sil` |
+| **`final` な** class が protocol に適合した場合 | witness thunk は `function_ref`（直接呼び出し）。`body()` は vtable に載らない（init と deinit だけ）| `swiftc -emit-sil` |
 | struct のメソッドは | `function_ref` / `witness_method`。interposition 依存（`-Xlinker -interposable`）になる | `swiftc -emit-sil` |
 
-3 行目が `FineContent` を protocol にできる根拠です。値型で設計していたら、利用者にリンカフラグを要求することになっていました。
+`FineContent` を protocol にできる根拠は 3 行目です。ただし **4 行目が実務上の条件を決めます** — README も Example も content を `final class` で書いており、その場合の差し替えは vtable パッチではなく symbol interposition なので、`-Xlinker -interposable` が要ります。
+
+**実行時にも確認済み**です。`Example/ToDo`(`final class ToDoList: FineNavigating`、`-interposable` あり、iOS 26 シミュレータ)で `body()` を編集すると、InjectionLite が `Loaded and rebound 20 symbols [ToDo.ToDoList]` を出して画面が更新されます。*rebound*(再バインド)であって vtable のパッチではない、というのがまさにこの区別です。
+
+この区別は当初見落としていました。最初のスパイクで witness thunk を調べたとき使ったのが非 final のクラスで、そこから `final` の場合へ一般化してしまっています。値型（struct）を選ばなかった判断自体は変わりません（struct は `final` class と同じく interposition 依存で、かつインスタンス状態も持てない）が、「protocol にすればフラグが要らない」という含意は誤りでした。
 
 ---
 
