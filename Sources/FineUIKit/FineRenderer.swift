@@ -101,22 +101,40 @@ public enum FineRenderer {
         return true
     }
 
+    /// Resolves a description to the primitive that builds its view.
+    ///
+    /// Composite types passed through on the way are recorded in the result's
+    /// signature (`FineComposite`), because resolution would otherwise discard
+    /// them and two composites resolving to the same primitive would update
+    /// each other's views. A description that reaches a primitive without
+    /// passing through a composite is returned as it is.
     static func primitive(for node: any Renderable) -> any FinePrimitiveRenderable {
         var current = node
+        var composites: String?
         for _ in 0..<64 {
             if let primitive = current as? any FinePrimitiveRenderable {
-                return primitive
+                return composed(primitive, through: composites)
             }
+            let name = fineCompositeName(of: current)
+            composites = composites.map { $0 + ">" + name } ?? name
             current = current.body
         }
         if let primitive = current as? any FinePrimitiveRenderable {
-            return primitive
+            return composed(primitive, through: composites)
         }
 
         assertionFailure("Renderable body nesting exceeded 64 levels")
         guard let primitive = current as? any FinePrimitiveRenderable else {
             fatalError("Renderable body did not resolve to a primitive")
         }
-        return primitive
+        return composed(primitive, through: composites)
+    }
+
+    private static func composed(
+        _ primitive: any FinePrimitiveRenderable,
+        through composites: String?
+    ) -> any FinePrimitiveRenderable {
+        guard let composites else { return primitive }
+        return FineComposite(types: composites, primitive: primitive)
     }
 }

@@ -19,8 +19,10 @@ import UIKit
 ///
 /// Reuse follows the same rules as built-in components: the view is reused
 /// when the representable's concrete type, its modifier signature, and its
-/// `.key(_:)` all match. Two representable types that share a `ViewType`
-/// never reuse each other's views.
+/// `.key(_:)` all match. Two representable types that share a `ViewType` never
+/// reuse each other's views — the concrete type reaches the signature the same
+/// way any `Renderable`'s does, by being recorded as resolution passes through
+/// it.
 @MainActor
 public protocol FineViewRepresentable: Renderable {
     associatedtype ViewType: UIView
@@ -61,21 +63,8 @@ struct FineRepresentableAdapter<R: FineViewRepresentable>: FinePrimitiveRenderab
         representable.updateView(view, environment: context.environment)
     }
 
-    // The concrete representable type is part of the signature so two
-    // representables sharing a ViewType never update each other's views.
-    // Cached per type: String(reflecting:) demangles at runtime and the
-    // signature is compared on every render.
-    var _modifierSignature: String {
-        let key = ObjectIdentifier(R.self)
-        if let cached = fineRepresentableSignatures[key] {
-            return cached
-        }
-
-        let signature = "representable.\(String(reflecting: R.self))"
-        fineRepresentableSignatures[key] = signature
-        return signature
-    }
+    // The concrete representable type is not recorded here. This adapter is
+    // only ever reached through `FineViewRepresentable.body`, so resolution
+    // has already passed through `R` and `FineComposite` carries its identity
+    // — the same mechanism that keeps two plain `Renderable` types apart.
 }
-
-@MainActor
-private var fineRepresentableSignatures: [ObjectIdentifier: String] = [:]
