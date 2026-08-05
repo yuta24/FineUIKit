@@ -71,7 +71,7 @@ FineList(self.items) { item in
 
 **ホットリロードは効きます。** `body` は computed property ですが、注入の差し替え単位はシンボルであり、getter もその対象です([ホットリロード](hot-reload.md))。
 
-- **再利用の判定に型が効きます**。`Header` と `Footer` がどちらも `FineLabel` に解決される場合でも、入れ替えればビューは作り直されます(そのノードの `FineState` も破棄されます)。同じ型どうしなら in-place 更新です
+- **再利用の判定に型が効きます**。`Header` と `Footer` がどちらも `FineLabel` に解決される場合でも、入れ替えればビューは作り直されます(作り直されたノードの `FineState` は破棄されます)。型は既存の判定に畳み込まれるので、in-place 更新になるのは「ビュー型互換 + モディファイア署名 + key」が揃い、**かつ**型も同じときです
 - **observation の粒度は切り出しても細かくなりません**。`body` は「解決される位置」で評価されるので、そこで読んだ observable の変化は**解決した側のスコープ**を再実行します — `FineStack` の子ならその stack ノードの `_update` と builder、ルート直下なら `FineUI` のルートスコープ、セルの中なら `FineNodeHost` のスコープです。ノード単位に閉じたいときは、`FineLabel(text:)` のように値を `@autoclosure` で受け取る組み込みか、builder クロージャの内側で読んでください。上の例のように**値を引数で渡す**形なら、読み取りは呼び出し元で起きるので迷う必要はありません
 - 状態やメソッドを持たせたくなったら、それは `Renderable` ではなく入れ子の content(`@Observable` なクラス)の役目です([状態とバインディング](state.md))
 
