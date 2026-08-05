@@ -53,14 +53,14 @@ navigationController.pushViewController(FineContentController(ToDoList()), anima
 
 `FineLabel` / `FineButton` / `FineImage` / `FineStack` / `FineScrollView` / `FineSpacer` / `FineDivider`、コレクション系の `FineList` / `FineGrid`、入力系の `FineTextField` / `FineTextView` / `FineToggle` / `FineSlider` / `FineStepper` / `FineSegmentedControl` / `FineDatePicker`、表示系の `FinePageControl` / `FineProgressView` / `FineActivityIndicator` があります。
 
-対応する UIKit クラスと使えるモディファイアの一覧は [コンポーネント](docs/components.md) にまとめてあります。組み込みにないビューは `FineViewRepresentable` で任意の `UIView` をラップできます。
+対応する UIKit クラスと使えるモディファイアの一覧は [コンポーネント](docs/components.md) にまとめてあります。組み込みにないビューは `FineViewRepresentable` で任意の `UIView` をラップできます。`body` が長くなったら `Renderable` に適合した struct へ切り出せます — ホットリロードは効いたままです。
 
 ## ドキュメント
 
 | ドキュメント | 内容 |
 |---|---|
 | [はじめかた](docs/getting-started.md) | `FineContent` の書き方、`FineContentController` でのマウント、ナビゲーション |
-| [コンポーネント](docs/components.md) | 組み込みコンポーネント一覧、`FineViewRepresentable`、キーボード |
+| [コンポーネント](docs/components.md) | 組み込みコンポーネント一覧、`Renderable` での記述の分割、`FineViewRepresentable`、キーボード |
 | [状態とバインディング](docs/state.md) | `FineBinding`、フォーカス、`FineState`、Environment |
 | [モディファイアとレイアウト](docs/layout.md) | 外観・レイアウト・インタラクションのモディファイア、Auto Layout ネイティブな制約 API |
 | [レンダリングの挙動](docs/rendering.md) | keyed diff、Dynamic Type と trait、ライフサイクル、画面が隠れている間の停止、アニメーション |
@@ -72,7 +72,7 @@ navigationController.pushViewController(FineContentController(ToDoList()), anima
 
 ## アーキテクチャ
 
-- `Renderable` — UI 記述の公開プロトコル。アプリ側は `body` で組み込みコンポーネントを合成する
+- `Renderable` — UI 記述の公開プロトコル。アプリ側は `body` で組み込みコンポーネントを合成する。長い記述を名前の付いた部品へ切り出す単位でもあり、struct で書ける(ホットリロードは効く。通った型はビューの identity に入る)
 - 内部プリミティブ — 組み込みコンポーネントが持つ `_makeView()` / `_canUpdate(_:)` / `_update(_:context:)` 契約。署名や全プロパティ書き戻しの規則は公開 API ではない
 - `FineRenderer` — 差分適用層。`body` を内部プリミティブへ解決し、「ビュー型互換 + モディファイア署名一致 + key 一致」のときだけ in-place 更新、それ以外は作り直す
 - `FineNode` — 各ビューに紐づく永続「要素」(Flutter の Element 相当)。モディファイア署名・key・ノード局所の観測状態(scheduler の generation / context)に加え、`FineState` のローカル状態を所有する。ビューと同寿命なので、状態は再レンダリングをまたいで保持される

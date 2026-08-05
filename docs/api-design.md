@@ -60,31 +60,101 @@ final class ToDoList: FineContent {
 
 ---
 
-## 2. `body()` はメソッドであり、クロージャではない
+## 2. 差し替えの単位はシンボルであり、クロージャは差し替えられない
 
 **決定**: `FineContent` は `body()` を要求するプロトコルにする。クロージャを受け取る初期化子を公開 API に置かない。
 
-**理由はホットリロード**です。ストアドクロージャは生成時に記述が確定するため、コード注入では差し替えられません。メソッドなら注入が名前で辿れます — `final` なら symbol の再バインド、非 `final` なら vtable スロットの差し替えで届きます。
+**理由はホットリロード**です。ストアドクロージャは生成時に記述が確定するため、コード注入では差し替えられません。
 
-**実測（Swift 6.4 / Xcode 27）**:
+決定は当初から変わっていませんが、**根拠は一度置き換わっています**。最初は「メソッドなら vtable スロットを差し替えられる」と考えていました。実際に効いているのは `-Xlinker -interposable` による **symbol interposition** で、こちらは vtable と違い型の種別を問いません。
 
-| 確かめたこと | 結果 | 確かめ方 |
+**実測（Swift 6.4 / Xcode 27）**。InjectionLite は再コンパイルした 1 ファイルを dylib にし、その中の「injectable」なシンボルをアプリ側のバインディングへ fishhook で rebind します。したがって差し替えの可否は **シンボルが external linkage を持つか**で決まります。`swiftc -frontend -primary-file`（注入時と同じ単一ファイル再コンパイル）の出力を `nm` で見たものです。
+
+| 書き方 | linkage | 差し替え |
 |---|---|---|
-| `class func` は vtable スロットに載るか | 載る。instance method と同じ `sil_vtable`、呼び出しは `class_method` | `swiftc -emit-sil` |
-| injection は IsInstance で弾かないか | 弾かない。スロットを位置で総なめし、injectable 接尾辞に `Z`(static) を含む | InjectionLite `Reloader.swift` |
-| **非 final** な class が protocol に適合した場合 | witness thunk が `class_method` を発行し、`any FineContent` 経由でも vtable に落ちる | `swiftc -emit-sil` |
-| **`final` な** class が protocol に適合した場合 | witness thunk は `function_ref`（直接呼び出し）。`body()` は vtable に載らない（init と deinit だけ）| `swiftc -emit-sil` |
-| struct のメソッドは | `function_ref` / `witness_method`。interposition 依存（`-Xlinker -interposable`）になる | `swiftc -emit-sil` |
+| `final class` のメソッド | `T` external | ✅ |
+| 非 `final` class のメソッド | `T` external | ✅（vtable パッチも並行して起きる） |
+| **struct の computed property（`body` getter）** | `T` external | ✅ |
+| struct のメソッド / トップレベル関数 | `T` external | ✅ |
+| `private` / `fileprivate` | **`t` local** | ❌ |
+| protocol witness thunk | `t` local | ❌（中身の呼び出しが間接化されるので実害なし） |
 
-`FineContent` を protocol にできる根拠は 3 行目です。ただし **4 行目が実務上の条件を決めます** — README も Example も content を `final class` で書いており、その場合の差し替えは vtable パッチではなく symbol interposition なので、`-Xlinker -interposable` が要ります。
+InjectionLite 側の `injectableSymbol`（`Reloader.swift`）は末尾 `F`(関数) / `g`(getter) / `s`(setter) / `ZF`(static) を受理し、`interposeSymbols` は dylib 内の**全**シンボルを走査します — vtable パッチと違い class 限定ではありません。
 
-**実行時にも確認済み**です。`Example/ToDo`(`final class ToDoList: FineNavigating`、`-interposable` あり、iOS 26 シミュレータ)で `body()` を編集すると、InjectionLite が `Loaded and rebound 20 symbols [ToDo.ToDoList]` を出して画面が更新されます。*rebound*(再バインド)であって vtable のパッチではない、というのがまさにこの区別です。
+**この表から出る帰結**:
 
-この区別は当初見落としていました。最初のスパイクで witness thunk を調べたとき使ったのが非 final のクラスで、そこから `final` の場合へ一般化してしまっています。値型（struct）を選ばなかった判断自体は変わりません（struct は `final` class と同じく interposition 依存で、かつインスタンス状態も持てない）が、「protocol にすればフラグが要らない」という含意は誤りでした。
+- **`body` がメソッドである必要はありません**。getter も差し替え対象なので、`FineContent.body()` がメソッドで `Renderable.body` がプロパティ、という非対称はホットリロードとは無関係です（歴史的な形です）
+- 効いている条件は「**ストアドクロージャでないこと**」だけです。`FineUI.init(state:body:)` を internal に留める判断は変わりません
+- **`final class` は推奨ではなく要件です** → [§3](#3-content-は-final-class-でなければならない)
+- **記述を struct へ切り出してもホットリロードを失いません** → [§4](#4-記述の分割単位は-renderable-型)
+
+**実行時にも確認済み**です。`Example/ToDo`(`final class ToDoList: FineNavigating`、`-interposable` あり、iOS 26 シミュレータ)で `body()` を編集すると、InjectionLite が `Loaded and rebound 20 symbols [ToDo.ToDoList]` を出して画面が更新されます。*rebound*(再バインド)であって vtable のパッチではない、というのがこの区別です。
+
+値型（struct）を content に選ばなかった判断自体は変わりません。理由がホットリロードから[§3 のもの](#3-content-は-final-class-でなければならない)へ移っただけです。
 
 ---
 
-## 3. 画面遷移はライブラリの対象外
+## 3. content は `final class` でなければならない
+
+**決定**: `FineContent` の class 制約(`AnyObject`)を維持し、`final` を要件として案内する。非 `final` を「フラグが要らない代替」として案内しない。
+
+**class 制約の根拠**（vtable とは無関係になりました）:
+
+- `@Observable` は class にしか付けられない
+- コントローラが content を所有し、ハンドラが content をキャプチャする（[§1](#1-記述をコントローラから引き剥がす)）。値型ならコピーが渡り、どのコピーの状態が画面に出ているのか決まらない
+- `FineBinding(_:_:)` が `ReferenceWritableKeyPath` を要求する
+
+**`final` の根拠**は Swift の慣習ではなく、**非 final だとホットリロード中にクラッシュする**ことです。InjectionLite は非 final class の vtable もパッチしますが、メソッドを追加・削除するとクラスのメタデータサイズが変わり、既存インスタンスと整合しなくなります。`Reloader.swift` はこう警告します。
+
+```text
+⚠️ Adding or [re]moving methods of non-final classes is not supported.
+Your application will likely crash. Paradoxically, you can avoid this by
+making the class you are trying to inject (and add methods to) "final". ⚠️
+```
+
+`body()` が長くなったのでヘルパーを切り出す、というのはホットリロード中に最もよくやる編集です。それがクラッシュする経路を代替として案内する理由がありません。
+
+`final` にすると差し替えは symbol interposition になるので、**`-Xlinker -interposable` は必須**です。フラグが無いとき InjectionLite は `ℹ️ No symbols replaced, have you added -Xlinker -interposable ...` を出します。FineUIKit 側で重ねて検出はしていません。
+
+---
+
+## 4. 記述の分割単位は `Renderable` 型
+
+**決定**: ユーザーが `Renderable` に適合した型（典型的には struct）を定義して記述を分割することを、公開 API として認める。
+
+```swift
+struct ToDoRow: Renderable {
+    let item: ToDo
+    let onToggle: @MainActor () -> Void
+
+    var body: any Renderable {
+        FineStack.horizontal(spacing: 8) {
+            FineButton(title: self.item.isDone ? "☑" : "☐") { self.onToggle() }
+            FineLabel(text: self.item.title)
+        }
+    }
+}
+```
+
+**なぜ以前は認めていなかったか**: vtable 前提の理解では struct の `body` getter は差し替えられないと考えていたので、記述を struct へ切り出すことは「黙ってホットリロードを失う」罠でした。だから公開 API は content class の `body()` への集約を促し、ドキュメントは `FineViewRepresentable`（UIView のラップ）しか分割手段として案内していませんでした。[§2 の表](#2-差し替えの単位はシンボルでありクロージャは差し替えられない)の 3 行目がこの前提を崩しています。
+
+**API の追加はありません**。`Renderable` は最初から public で、`FineRenderer.primitive(for:)` は `body` を primitive に到達するまで辿ります。変わったのは位置づけと、次の identity の扱いです。
+
+**identity**: 解決は `body` を辿って primitive に着き、通り過ぎた型を捨てます。そのままだと `Header` と `Footer` がどちらも `FineLabel` に解決される場合、ビュー型もモディファイア署名も key も一致し、**入れ替えても in-place 更新されます** — そのノードが持つ `FineState` ごと引き継がれます。分割を推奨する以上これは罠なので、`FineComposite` が通り過ぎた composite 型をモディファイア署名に記録します。型が変われば作り直されます（`.padding()` のように自前のビューを持つモディファイアを挟んだ場合、そのビューは残り、中に置かれたビューが作り直されます）。
+
+composite を 1 つも通らなかった記述（組み込みコンポーネントだけのツリー）はラップされないので、署名も割り当ても増えません。`FineViewRepresentable` の型 identity もこの仕組みに一本化しました（以前は `FineRepresentableAdapter` が自前で型名を署名に入れていました）。
+
+**observation のスコープは「どこで解決されたか」で決まります**。`body` は `primitive(for:)` が辿るときに評価されるので、そこで読んだ observable は**解決した側のスコープ**に属します — コンテナの子なら親ノード、ルート直下なら `FineUI.render()` のスコープです。分割しても粒度は細かくなりません。ノード単位に閉じたいなら、値を `@autoclosure` で受け取る組み込み（`FineLabel(text:)` など）か builder クロージャの内側で読んでください。
+
+このとき**ルート直下だけが穴でした**。`FineUI.render()` は `content.body()` だけを `withObservationTracking` で包み、解決は `FineRenderer.render(...)` の中＝tracking の外でやっていたため、ルートに置いた composite が `body` で分岐に使った observable はどのスコープにも属さず、**初回以降まったく更新されませんでした**。解決を tracking の内側へ移して塞いでいます（`FineUI.render()`）。木の奥はノードの `_update` の中で解決されるので、もともと追跡されていました。`FineCompositeObservationTests` が両方を固定しています。
+
+この非対称は[入れ子にした content オブジェクト](#9-入れ子と-identity)とは別の話です — あちらはオブジェクトの寿命、こちらは読み取り位置の話です。
+
+**`FineContent` との使い分け**: 状態とメソッドを持つなら `FineContent`（class、マウント点になれる、寿命はマウント期間）。引数を受け取って記述を返すだけなら `Renderable`（struct、寿命はレンダリング 1 回分）。
+
+---
+
+## 5. 画面遷移はライブラリの対象外
 
 **決定**: push / present をライブラリが扱わない。content は「何が起きたか」を外へ伝えるだけにする。
 
@@ -117,7 +187,7 @@ final class ToDoList: FineContent {
 
 ---
 
-## 4. `navigation()` を `FineNavigating` に分離
+## 6. `navigation()` を `FineNavigating` に分離
 
 **決定**: `navigation()` は `FineContent` ではなく、それを継承した `FineNavigating` に置く。
 
@@ -131,7 +201,7 @@ final class ToDoList: FineContent {
 
 ---
 
-## 5. `FineUI` は internal
+## 7. `FineUI` は internal
 
 **決定**: ランタイムを公開しない。マウントは `FineContentController` だけ。
 
@@ -143,7 +213,7 @@ final class ToDoList: FineContent {
 
 ---
 
-## 6. 命名
+## 8. 命名
 
 | 変更 | 理由 |
 |---|---|
@@ -155,9 +225,9 @@ final class ToDoList: FineContent {
 
 ---
 
-## 7. 入れ子と identity
+## 9. 入れ子と identity
 
-**ランタイムが管理するもの**: ビューとノードの identity。型 + モディファイア署名 + `key` が一致したときだけ in-place 更新し、それ以外は作り直す。`FineState` はノードに紐づくので、identity が変われば捨てられます。
+**ランタイムが管理するもの**: ビューとノードの identity。型 + モディファイア署名 + `key` が一致したときだけ in-place 更新し、それ以外は作り直す。`FineState` はノードに紐づくので、identity が変われば捨てられます。モディファイア署名には、そこへ解決するまでに通った `Renderable` 型も含まれます（[§4](#4-記述の分割単位は-renderable-型)）。
 
 **ランタイムが管理しないもの**: 入れ子にした content オブジェクトの identity。親が stored property として所有し、`child.body()` を自分の記述に差し込むだけです。
 
@@ -177,7 +247,7 @@ showsChild=true  → "child 7 local 0"   ← 子オブジェクトの状態は�
 
 ---
 
-## 8. 状態の置き場所
+## 10. 状態の置き場所
 
 | | 寿命 | 用途 |
 |---|---|---|
@@ -191,7 +261,7 @@ content が store を持つかどうかは、ただのプロパティの持ち�
 
 ---
 
-## 9. 残る限界
+## 11. 残る限界
 
 **第三者オブジェクト経由の循環**: コントローラを所有する coordinator や router をクロージャがキャプチャすれば、同じ循環は作れます。Swift はクロージャのキャプチャを制限できないため、ここは原理的な限界です。デフォルトが安全になっただけで、絶対の封じ込めではありません。
 
@@ -204,3 +274,4 @@ content が store を持つかどうかは、ただのプロパティの持ち�
 - 使い方: [README](../README.md) / [ドキュメント索引](README.md)
 - 内部構造: [内部アーキテクチャ](architecture.md)
 - 検証: `Tests/FineUIKitTests/FineLeakTests.swift` — ランタイムが保持するすべての形（builder / button / tap / lifecycle / bar button / list と grid のセル content と行コールバック / environment reader / `FineState` サブツリー / representable adapter）を押さえています
+- 検証: `Tests/FineUIKitTests/FineCompositeTests.swift` — [§4](#4-記述の分割単位は-renderable-型) の identity。同じ型なら in-place、別の型なら作り直し、組み込みだけのツリーには composite 署名が付かないこと

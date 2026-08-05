@@ -35,7 +35,21 @@
 /// other content needs no controller and no conformance at all — see *Scope*
 /// below.
 ///
-/// ## Why a class, and why capturing `self` here is safe
+/// ## Why a class, and why `final`
+///
+/// A class because `@Observable` requires one, because a binding written as
+/// `.init(self, \.draft)` needs a `ReferenceWritableKeyPath`, and because a
+/// value type would hand out copies with no answer to which copy the screen is
+/// showing.
+///
+/// `final` because a non-final class is patched through its vtable during code
+/// injection, and **adding or removing a method of one crashes the app** — the
+/// class metadata changes size while instances of the old layout are still
+/// live. Pulling a helper out of `body()` is exactly the edit hot reload is
+/// for. A `final` class is replaced by rebinding symbols instead, which needs
+/// `-Xlinker -interposable` in the Debug configuration.
+///
+/// ## Why capturing `self` here is safe
 ///
 /// The runtime keeps every closure a description carries for as long as the
 /// view lives, and the views belong to whoever mounted them. A handler that
@@ -70,6 +84,9 @@
 /// is view and node identity, which is why a `FineState` inside a subtree that
 /// goes away is discarded while the child object's own state, held by its
 /// parent, is not.
+///
+/// A piece that only takes arguments and returns a description wants neither a
+/// class nor a conformance here: make it a `Renderable` struct.
 ///
 /// Navigation is not content's job. Content says what happened; something
 /// outside it decides where that leads.

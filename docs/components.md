@@ -45,6 +45,38 @@ FineStack.vertical(spacing: 12) {
 
 ---
 
+## Renderable で記述を分割する
+
+`body` が長くなったら、`Renderable` に適合した型へ切り出せます。引数を受け取って記述を返すだけの部品なので、struct が向いています。
+
+```swift
+struct ToDoRow: Renderable {
+    let item: ToDo
+    let onToggle: @MainActor () -> Void
+
+    var body: any Renderable {
+        FineStack.horizontal(spacing: 8) {
+            FineButton(title: self.item.isDone ? "☑" : "☐") { self.onToggle() }
+            FineLabel(text: self.item.title)
+                .font(.preferredFont(forTextStyle: .body))
+        }
+    }
+}
+
+// content の body から使う
+FineList(self.items) { item in
+    ToDoRow(item: item) { self.toggle(item) }
+}
+```
+
+**ホットリロードは効きます。** `body` は computed property ですが、注入の差し替え単位はシンボルであり、getter もその対象です([ホットリロード](hot-reload.md))。
+
+- **再利用の判定に型が効きます**。`Header` と `Footer` がどちらも `FineLabel` に解決される場合でも、入れ替えればビューは作り直されます(そのノードの `FineState` も破棄されます)。同じ型どうしなら in-place 更新です
+- **observation の粒度は切り出しても細かくなりません**。`body` は「解決される位置」で評価されるので、そこで読んだ observable の変化は**解決した側のスコープ**を再実行します — `FineStack` の子ならその stack ノードの `_update` と builder、ルート直下なら `FineUI` のルートスコープ、セルの中なら `FineNodeHost` のスコープです。ノード単位に閉じたいときは、`FineLabel(text:)` のように値を `@autoclosure` で受け取る組み込みか、builder クロージャの内側で読んでください。上の例のように**値を引数で渡す**形なら、読み取りは呼び出し元で起きるので迷う必要はありません
+- 状態やメソッドを持たせたくなったら、それは `Renderable` ではなく入れ子の content(`@Observable` なクラス)の役目です([状態とバインディング](state.md))
+
+---
+
 ## 任意の UIView のラップ(FineViewRepresentable)
 
 組み込みコンポーネントにないビュー(`WKWebView`、`MKMapView`、自作ビューなど)は `FineViewRepresentable` で宣言的ツリーに組み込めます。SwiftUI の `UIViewRepresentable` に相当します。

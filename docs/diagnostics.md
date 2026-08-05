@@ -12,7 +12,10 @@ FineDiagnostics.logsViewReuse = true
 FineUIKit rebuilt UILabel for FineLabel: modifier composition changed ("|backgroundColor" → "|backgroundColor|cornerRadius")
 FineUIKit rebuilt UITextField for FineTextField: key changed (a → b)
 FineUIKit rebuilt UILabel for FineImage: view type is incompatible
+FineUIKit rebuilt UILabel for FineLabel: modifier composition changed ("composite.ToDo.Header|" → "composite.ToDo.Footer|")
 ```
+
+最後の形は、自作の `Renderable` を別の型へ入れ替えたときに出ます。署名の `composite.` は「その primitive へ解決するまでに通った `Renderable` 型」で、型が変わればビューは作り直されます([コンポーネント](components.md#renderable-で記述を分割する))。
 
 既定では `OSLog` に出力します。`FineDiagnostics.handler` を差し替えれば、テストや自前のコンソールへ流せます。
 

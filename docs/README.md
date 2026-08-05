@@ -5,7 +5,7 @@
 | ドキュメント | 内容 |
 |---|---|
 | [はじめかた](getting-started.md) | `FineContent` の書き方、`FineContentController` でのマウント、ナビゲーション |
-| [コンポーネント](components.md) | 組み込みコンポーネント一覧、`FineViewRepresentable`、キーボード |
+| [コンポーネント](components.md) | 組み込みコンポーネント一覧、`Renderable` での記述の分割、`FineViewRepresentable`、キーボード |
 | [状態とバインディング](state.md) | `FineBinding`、フォーカス、`FineState`、Environment |
 | [モディファイアとレイアウト](layout.md) | 外観・レイアウト・インタラクションのモディファイア、Auto Layout ネイティブな制約 API |
 | [レンダリングの挙動](rendering.md) | keyed diff、Dynamic Type と trait、ライフサイクル、画面が隠れている間の停止、アニメーション |

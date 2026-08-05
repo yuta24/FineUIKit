@@ -42,10 +42,10 @@ import UIKit
 /// subclassable — a subclass here has no way to put itself into the view tree.
 /// The one rule is the content's: it must not hold this controller strongly.
 ///
-/// `body()` is dispatched through the content's class, so code injection can
-/// replace it and the injection-triggered re-render picks it up. That is why
-/// `FineContent` is a protocol with a method rather than a closure handed to
-/// this initialiser: a stored closure is fixed at the moment it is made, and no
+/// `body()` is a symbol code injection can rebind, so an injected replacement
+/// takes effect on the injection-triggered re-render. That is why `FineContent`
+/// is a protocol with a method rather than a closure handed to this
+/// initialiser: a stored closure is fixed at the moment it is made, and no
 /// injection can replace it.
 open class FineContentController: UIViewController {
     /// The content this controller renders.

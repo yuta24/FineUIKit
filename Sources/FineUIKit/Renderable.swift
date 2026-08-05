@@ -12,6 +12,46 @@ import UIKit
 /// A `Renderable` composes built-in components through `body`. `FineRenderer`
 /// resolves that composition into primitive descriptions and turns them into
 /// `UIView`s, reusing existing views when possible.
+///
+/// Conform to it to split a long description into named pieces. A struct suits
+/// it: the type takes what it needs as properties and returns a description,
+/// and lives for one render.
+///
+/// ```swift
+/// struct ToDoRow: Renderable {
+///     let item: ToDo
+///     let onToggle: @MainActor () -> Void
+///
+///     var body: any Renderable {
+///         FineStack.horizontal(spacing: 8) {
+///             FineButton(title: self.item.isDone ? "☑" : "☐") { self.onToggle() }
+///             FineLabel(text: self.item.title)
+///         }
+///     }
+/// }
+/// ```
+///
+/// Code injection replaces this `body` like any other symbol, so splitting a
+/// description up costs no hot reload.
+///
+/// Two things to know about what the runtime does with the split:
+///
+/// - **The type is part of the view's identity.** Resolution walks `body` to a
+///   primitive, and the types it passed through go into the modifier
+///   signature — so swapping one `Renderable` for another rebuilds the view,
+///   and the node's `FineState` with it, even when both resolve to the same
+///   primitive.
+/// - **Observation is not narrowed by the split.** This `body` runs where the
+///   description is resolved, so an observable read here belongs to whatever
+///   scope did the resolving — a container's node, or the root — and a change
+///   re-runs that scope, not this type alone. To scope a read to one node,
+///   read it inside a component that takes its value as an `@autoclosure`
+///   (`FineLabel(text:)`) or inside a container's builder. Taking values as
+///   properties, as above, sidesteps the question: the read then happens at
+///   the call site.
+///
+/// State and methods belong to nested content — an `@Observable` class the
+/// parent holds — not here.
 @MainActor
 public protocol Renderable {
     /// Returns the composed UI description.
