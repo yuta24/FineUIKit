@@ -11,7 +11,7 @@ FineUIKit の利用者は `Renderable` を合成し、状態と UIKit の更新�
 
 ## コンポーネントとモディファイア
 
-主な primitive は `FineLabel`、`FineButton`、`FineImage`、`FineStack`、`FineScrollView`、`FineTextField`、`FineTextView`、`FineToggle`、`FineSlider`、`FineStepper`、`FineSegmentedControl`、`FineDatePicker`、`FinePageControl`、`FineProgressView`、`FineActivityIndicator`、`FineDivider`、`FineSpacer`、`FineList`、`FineGrid` です（[Components](../../Sources/FineUIKit/Components/)）。各コンポーネントの API と対応 UIKit クラスの一覧は [`README.md`](../../README.md) が正本です。`FineStack` は key 付きの子を key、key なしの子を位置で再利用します。繰り返し・並べ替えをまたいで identity を維持するには `FineForEach` または `.key(_:)` を使います（[FineKeyed.swift](../../Sources/FineUIKit/FineKeyed.swift)）。
+主な primitive は `FineLabel`、`FineButton`、`FineImage`、`FineStack`、`FineScrollView`、`FineTextField`、`FineTextView`、`FineToggle`、`FineSlider`、`FineStepper`、`FineSegmentedControl`、`FineDatePicker`、`FinePageControl`、`FineProgressView`、`FineActivityIndicator`、`FineDivider`、`FineSpacer`、`FineList`、`FineGrid` です（[Components](../../Sources/FineUIKit/Components/)）。各コンポーネントの API と対応 UIKit クラスの一覧は [`docs/components.md`](../../docs/components.md) が正本です。`FineStack` は key 付きの子を key、key なしの子を位置で再利用します。繰り返し・並べ替えをまたいで identity を維持するには `FineForEach` または `.key(_:)` を使います（[FineKeyed.swift](../../Sources/FineUIKit/FineKeyed.swift)）。
 
 `FineLabel`、`FineProgressView`、`FineActivityIndicator` は表示値を `@autoclosure` で受け取ります。値の読み取りはノードの `_update` 内で起きるため、表示内容の変化はそのノードだけを更新し、`body` は再評価されません（[レンダリングワークフロー](../workflows/rendering.md)のノード局所更新と同じ経路）。
 
