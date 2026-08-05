@@ -79,7 +79,7 @@ FineStack → UIStackView  renders 2
 FineLabel → UILabel  renders 3  hidden
 ```
 
-FineUIKit が管理していないビューは `unmanaged` と表示されます。どちらも observable な状態を読まないため、ブレークポイントから呼んでもレンダリングループを乱しません。詳しい出力例は [`README.md`](../../README.md) の診断セクションが正本です。
+FineUIKit が管理していないビューは `unmanaged` と表示されます。どちらも observable な状態を読まないため、ブレークポイントから呼んでもレンダリングループを乱しません。詳しい出力例は [`docs/diagnostics.md`](../../docs/diagnostics.md) の診断セクションが正本です。
 
 ## コンポーネント名の解決とキャッシュ
 
