@@ -119,7 +119,9 @@ flowchart LR
 
 これにより「アプリの記述 → 組み込み primitive」の変換が行われ、以降は primitive の `_makeView` / `_update` 契約だけを相手にします。
 
-なお、公開プロトコル `FineViewRepresentable`(任意の `UIView` をラップする拡張ポイント)は、デフォルトの `body` が内部アダプタ `FineRepresentableAdapter` を返すことでこの解決ループに自然に合流します(`FineViewRepresentable.swift`)。レンダラー側に特別な分岐はなく、準拠型が `body` を独自実装すればそちらが優先されます。署名には representable の具象型名が入るため、同じ `ViewType` を持つ別の representable と実体を共有することはありません。
+**通り過ぎた composite 型は捨てられません。** 解決したままだと、別々の `Renderable` 型が同じ primitive に着いたときに区別がつかず、入れ替えても in-place 更新されてしまいます(そのノードの `FineState` ごと引き継がれる)。そこで `primitive(for:)` は通過した型名を集め、1 つ以上あれば結果を `FineComposite` で包んで署名へ前置します(`FineComposite.swift`)。composite を通らなかった記述 — 組み込みだけのツリー — は包まれず、署名も割り当ても増えません。
+
+なお、公開プロトコル `FineViewRepresentable`(任意の `UIView` をラップする拡張ポイント)は、デフォルトの `body` が内部アダプタ `FineRepresentableAdapter` を返すことでこの解決ループに自然に合流します(`FineViewRepresentable.swift`)。レンダラー側に特別な分岐はなく、準拠型が `body` を独自実装すればそちらが優先されます。representable の具象型も上の仕組みで署名に入るため、同じ `ViewType` を持つ別の representable と実体を共有することはありません。
 
 ---
 

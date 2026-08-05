@@ -182,10 +182,10 @@ final class FineUI {
     #if DEBUG
     /// Re-renders after a code injection (InjectionIII / InjectionNext /
     /// InjectionLite) so updated component implementations take effect.
-    /// The content's `body()` is a method, so an injected replacement takes
-    /// effect on the next render. The closure initialiser is the exception:
-    /// what it stores is fixed when it is made, so a tree written that way
-    /// has to be rebuilt to pick up a change.
+    /// Injection rebinds symbols, and the content's `body()` is one, so a
+    /// replacement takes effect on the next render. The closure initialiser is
+    /// the exception: what it stores is fixed when it is made, so a tree
+    /// written that way has to be rebuilt to pick up a change.
     private func observeInjection() {
         guard injectionObserver == nil else { return }
 
@@ -220,8 +220,15 @@ final class FineUI {
         defer { signposter.endInterval("render", interval) }
 
         let transaction = FineTransactionContext.current
+        // Resolving is inside the tracking, not only `body()`. A description
+        // the content returns can be a `Renderable` of the app's own, and
+        // walking its `body` down to a primitive is where the values it reads
+        // are read. Left outside, a root-level composite that branches on an
+        // observable would render once and never again — the read would belong
+        // to no scope at all. Deeper in the tree the same walk already happens
+        // inside a node's `_update`, so it is tracked there.
         let description = withObservationTracking {
-            self.content.body()
+            FineRenderer.primitive(for: self.content.body())
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self,
@@ -242,7 +249,7 @@ final class FineUI {
             environment: environment
         )
         let apply = { [self] in
-            let rendered = FineRenderer.render(description, reusing: self.rootView, context: context)
+            let rendered = FineRenderer.render(resolved: description, reusing: self.rootView, context: context)
             scheduler.drain()
             return rendered
         }
