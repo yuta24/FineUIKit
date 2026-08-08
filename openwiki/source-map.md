@@ -13,7 +13,7 @@ tags: [source-map, navigation, swift, uikit]
 
 | ファイル群 | 担当 | 詳細 |
 |---|---|---|
-| `Renderable.swift`, `FineRenderer.swift` | 記述契約、primitive 解決、再利用判定 | [レンダリングランタイムの構造](architecture/overview.md) |
+| `Renderable.swift`, `FineRenderer.swift`, `FineComposite.swift` | 記述契約、primitive 解決、composite 型の署名記録、再利用判定 | [レンダリングランタイムの構造](architecture/overview.md) |
 | `FineNode.swift`, `UIView+Fine.swift` | UIView に付随する identity・状態・世代 | [UI 合成と状態](domain/ui-composition.md) |
 | `FineNodeScheduler.swift`, `FineRenderContext.swift` | ノード局所観測と context 伝播 | [レンダリングワークフロー](workflows/rendering.md) |
 | `FineUI.swift`, `FineRenderGate.swift`, `FineObservedScope.swift` | root render、停止・復帰、navigation 用観測（`FineUI` は internal） | [レンダリングワークフロー](workflows/rendering.md) |
@@ -56,5 +56,7 @@ tags: [source-map, navigation, swift, uikit]
 - `FineSliderTests.swift`: slider のクランプ書き戻しと範囲移動。
 - `RenderingPerformanceTests.swift`: 性能の傾向確認。
 - `FineLeakTests.swift`: handler/builder のキャプチャ形状による保持サイクル(リーク)と解放の検証。
+- `FineCompositeTests.swift`: composite 型の identity。同じ型なら in-place、別の型なら作り直し、組み込みだけのツリーには composite 署名が付かないこと。
+- `FineCompositeObservationTests.swift`: root 直下の composite が読む observable が正しくトラッキングされること（解決を `withObservationTracking` の内側に保つ回帰）。
 
 テストの実行方法と変更別選択は[テストと運用](operations/testing.md)が正本です。内部設計のより詳細な一次資料は [`docs/architecture.md`](../docs/architecture.md)、公開 API の形状に至った判断と根拠は [`docs/api-design.md`](../docs/api-design.md)、公開 API の例は [`README.md`](../README.md) と [`docs/getting-started.md`](../docs/getting-started.md) にあります。
