@@ -19,6 +19,31 @@ FineUIKit の利用者は `Renderable` を合成し、状態と UIKit の更新�
 
 **実装時の契約:** `body` と `FineViewRepresentable.updateView` は、同じ入力から同じ UI を作り、管理するプロパティを毎回現在値へ戻してください。更新回数やメタデータ読み取り順序に依存する副作用は許容されません。UIKit が例外を投げるか Auto Layout を破壊する値は、`_update` 内で拒否して既定値へフォールバックし、debug ビルドで報告します（`FineStepper` の `step` は正の有限値、`FineDivider` の `thickness` は非負有限値、`FineDatePicker` の `minuteInterval` は 60 の約数）。`FineDatePicker` は `.countDownTimer` モードをサポートしません（`Date` binding では duration を表現できないため）。
 
+## 記述の分割（`Renderable` 型）
+
+`body` が長くなったら、`Renderable` に適合した型（典型的には struct）へ切り出せます。引数を受け取って記述を返すだけの部品で、状態やメソッドは持たないのが `FineContent`（class）との使い分けです。コード注入の差し替え単位はシンボルであり、computed property の getter も対象なので、struct へ切り出してもホットリロードは維持されます（[Renderable.swift](../../Sources/FineUIKit/Renderable.swift) のドキュメントコメント、[`docs/components.md`](../../docs/components.md) の分割節）。
+
+```swift
+struct ToDoRow: Renderable {
+    let item: ToDo
+    let onToggle: @MainActor () -> Void
+
+    var body: any Renderable {
+        FineStack.horizontal(spacing: 8) {
+            FineButton(title: self.item.isDone ? "☑" : "☐") { self.onToggle() }
+            FineLabel(text: self.item.title)
+        }
+    }
+}
+```
+
+分割に関する二つの実行時の振る舞いを知っておく必要があります。
+
+- **型はビューの identity に入ります。** 解決は `body` を辿って primitive に至り、通り過ぎた型を `FineComposite` がモディファイア署名へ記録します（[レンダリングランタイムの構造](../architecture/overview.md)の差分適用の契約）。したがって `Header` と `Footer` がどちらも `FineLabel` に解決される場合でも、入れ替えればビューは作り直され、ノードの `FineState` も破棄されます。同じ型どうしなら in-place 更新です。
+- **observation の粒度は切り出しても細かくなりません。** `body` は「解決される位置」で評価されるので、そこで読んだ observable の変化は解決した側のスコープを再実行します — コンテナの子なら親ノードの `_update` と builder、ルート直下なら `FineUI` のルートスコープ、セルの中なら `FineNodeHost` のスコープです。ノード単位に閉じたいときは、`FineLabel(text:)` のように値を `@autoclosure` で受け取る組み込みか、builder クロージャの内側で読んでください。上の例のように値を引数で渡す形なら、読み取りは呼び出し元で起きるのでこの問題を回避できます（[レンダリングワークフロー](../workflows/rendering.md)の root とノード局所のスコープ規則）。
+
+状態やメソッドを持たせたくなったら、それは `Renderable` ではなく入れ子の content（`@Observable` なクラス）の役目です（[保持とキャプチャ](#保持とキャプチャ)の入れ子 content）。
+
 ## `FineBinding` とローカル状態
 
 `FineBinding<Value>` は `get` / `set` のペアです。`FineTextField`、`FineTextView`、`FineToggle`、`FineSlider`、`FineStepper`、`FineSegmentedControl`、`FineDatePicker`、`FinePageControl` は UI イベントを binding へ書き戻し、レンダリング側は値が変わるときだけ UIKit に設定するため、入力カーソルの不要な破壊を避けます（[FineBinding.swift](../../Sources/FineUIKit/FineBinding.swift)、各コンポーネント実装）。
@@ -41,7 +66,7 @@ UIKit が値をクランプまたは丸めるコントロール（`FineSlider`�
 
 ## 任意の UIKit view を接続する
 
-組み込み外の UIView は `FineViewRepresentable` でラップします。`makeView()` は identity ごとの生成、`updateView(_:environment:)` は現在の記述を実体へ反映する場所です。representable の具象型・モディファイア署名・key が一致する場合だけ再利用されるため、別の wrapper 型で UIView を共有することはありません（[FineViewRepresentable.swift](../../Sources/FineUIKit/FineViewRepresentable.swift)）。
+組み込み外の UIView は `FineViewRepresentable` でラップします。`makeView()` は identity ごとの生成、`updateView(_:environment:)` は現在の記述を実体へ反映する場所です。representable の具象型・モディファイア署名・key が一致する場合だけ再利用されるため、別の wrapper 型で UIView を共有することはありません（[FineViewRepresentable.swift](../../Sources/FineUIKit/FineViewRepresentable.swift)）。具象型の identity は `FineRepresentableAdapter` が自前で署名に入れるのではなく、解決が `FineViewRepresentable.body` を経由する時点で `FineComposite` に記録される仕組みに一本化されています（[レンダリングランタイムの構造](../architecture/overview.md)の差分適用の契約）。
 
 ## 保持とキャプチャ
 
@@ -82,7 +107,7 @@ final class ToDoList: FineContent {
 
 ### 残る限界
 
-強参照キャプチャの安全性は content が controller へ戻らない限り成り立ちます。原理的な限界が二つあり、どちらも未修正です([`docs/api-design.md`](../../docs/api-design.md) §9)。
+強参照キャプチャの安全性は content が controller へ戻らない限り成り立ちます。原理的な限界が二つあり、どちらも未修正です([`docs/api-design.md`](../../docs/api-design.md) §11)。
 
 - **第三者オブジェクト経由の循環**: コントローラを所有する coordinator や router をクロージャがキャプチャすれば、同じ循環が作れます。Swift はクロージャのキャプチャを制限できないため、既定が安全になっただけで絶対の封じ込めではありません。
 - **`.task` による解放の遅延**: task は content をキャプチャしたまま実行されるため、キャンセルを尊重しない task は content の解放を遅らせます(循環ではありません)。

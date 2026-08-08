@@ -42,14 +42,16 @@ flowchart TD
 2. モディファイア署名が一致すること。
 3. key が一致すること。key なしの primitive では双方 `nil` として一致します。
 
+解決の途中で通り過ぎたアプリ側の `Renderable` 型は捨てられません。`primitive(for:)` は通過した型名を集め、1 つ以上あれば結果を `FineComposite` で包んでモディファイア署名へ前置します（[FineComposite.swift](../../Sources/FineUIKit/FineComposite.swift)）。これがないと、別々の `Renderable` 型が同じ primitive に解決されたときに区別がつかず、入れ替えても in-place 更新されてノードの `FineState` まで引き継がれてしまいます。composite を 1 つも通らなかった記述（組み込みコンポーネントだけのツリー）は包まれず、署名も割り当ても増えません。
+
 ただし「どの既存ビューを候補として渡すか」は親コンテナが決めます。`FineStack` は子を key の有無で分け、key 付きは `.key(_:)` の値で対応するビューを引き当て、key なしは並び順の位置で引き当てます（[FineStack.swift](../../Sources/FineUIKit/Components/FineStack.swift)）。したがって key を付けない限り identity は位置に依存し、要素の挿入・並べ替えでビューと `FineState` が別の子に付き替わります。安定させたい子には `.key(_:)` を付けてください。
 
 候補が三条件を満たせば `_update` を既存ビューへ適用し、満たさなければ新しいビューを生成します。モディファイアの構成や key を変更すると、古い装飾・状態を引きずらずに再構築できる一方、局所状態は失われます。詳細な更新経路と観測粒度は[レンダリングワークフロー](../workflows/rendering.md)を参照してください。
 
 ## 役割分担
 
-- `FineUI`(internal): root `body` を観測し、コンテナへの設置、trait 監視、可視性ゲートを管理します。公開 API からは直接露出せず、`FineContentController` 経由で利用します（[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)、[FineContentController.swift](../../Sources/FineUIKit/FineContentController.swift)）。ランタイムを非公開にした判断と根拠は [`docs/api-design.md`](../../docs/api-design.md) §5 にあります。
-- `FineRenderer`: 記述の primitive 解決と、同期的な再利用判定を行います。
+- `FineUI`(internal): root `body` を観測し、コンテナへの設置、trait 監視、可視性ゲートを管理します。公開 API からは直接露出せず、`FineContentController` 経由で利用します（[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)、[FineContentController.swift](../../Sources/FineUIKit/FineContentController.swift)）。ランタイムを非公開にした判断と根拠は [`docs/api-design.md`](../../docs/api-design.md) §7 にあります。
+- `FineRenderer`: 記述の primitive 解決と、同期的な再利用判定を行います。解決時に通り過ぎた composite 型は `FineComposite` で包んで署名へ前置します（[FineComposite.swift](../../Sources/FineUIKit/FineComposite.swift)）。
 - `FineNodeScheduler`: 通常のツリーでは子ノードの `_update` を個別に観測し、該当ノードだけを再キューします（[FineNodeScheduler.swift](../../Sources/FineUIKit/FineNodeScheduler.swift)）。
 - `FineRenderContext`: scheduler、render gate、environment を子孫へ渡します（[FineRenderContext.swift](../../Sources/FineUIKit/FineRenderContext.swift)）。
 - `FineNodeHost`: List/Grid のセルや supplementary view 用に、独立した局所レンダーループを持ちます。この特殊経路は[UIKit 統合とコレクション](../integrations/uikit-collections.md)で扱います。

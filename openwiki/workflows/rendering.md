@@ -25,7 +25,11 @@ flowchart TD
 
 ## 1. root の構造変更
 
-`FineUI.render()` は `content.body()` を `withObservationTracking` 内で評価します。`if`、配列の構造、モディファイア引数のように、記述を組み立てる最中に読まれた値が変わると root が再評価され、`FineRenderer` が前回の root view と差分適用します（[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)）。`body()` をクロージャではなくメソッドにしているのはコード注入で差し替えられるようにするためです(`9864cee` で `FineUI<State>` の stored closure から `any FineContent` の method へ移行した理由)。差し替えの経路は content の宣言に依存し、`final class`(推奨・Example もこちら)では symbol interposition なので `-Xlinker -interposable` が必須、非 `final` な class では vtable スロットの差し替えでフラグ不要です。経路の区別と実測の根拠は [`docs/api-design.md`](../../docs/api-design.md) と [`docs/hot-reload.md`](../../docs/hot-reload.md) のホットリロード節が正本です。
+`FineUI.render()` は `content.body()` の**解決まで**を `withObservationTracking` 内で行います。`if`、配列の構造、モディファイア引数のように、記述を組み立てる最中に読まれた値が変わると root が再評価され、`FineRenderer` が前回の root view と差分適用します（[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)）。
+
+解決（`FineRenderer.primitive(for:)`）も tracking の内側であることが重要です。content が返す記述がアプリ側の `Renderable` 型である場合、その `body` を辿って primitive に至るまでに読む値は解決の最中に読まれます。解決を tracking の外に置くと、root 直下に置いた composite が `body` で分岐に使った observable がどのスコープにも属さず、初回以降まったく更新されません。木の奥では同じ解決がノードの `_update` 内で起きるため、もともと scheduler に追跡されていました。`FineCompositeObservationTests` がこの root 経路を固定しています（[`Sources/FineUIKit/FineUI.swift`](../../Sources/FineUIKit/FineUI.swift) の `render()` コメント参照）。
+
+`body()` をクロージャではなくメソッドにしているのはコード注入で差し替えられるようにするためです(`9864cee` で `FineUI<State>` の stored closure から `any FineContent` の method へ移行した理由)。差し替えの単位はシンボル（symbol interposition）であって vtable ではなく、content を `final class` で書く限り `-Xlinker -interposable` が必須です。`final` は推奨ではなく要件です — 非 `final` な class は vtable パッチという別経路で差し替わりますが、メソッドの追加・削除でクラッシュします。経路の区別と実測の根拠は [`docs/api-design.md`](../../docs/api-design.md) §2–§3 と [`docs/hot-reload.md`](../../docs/hot-reload.md) のホットリロード節が正本です。
 
 ここでは `FineNodeScheduler` を新たに用意し、子ノードの更新をキューへ積んで `drain()` します。古い render や observation callback は generation で捨てるため、作り直されたビューに stale な更新が入らない設計です（[FineNodeScheduler.swift](../../Sources/FineUIKit/FineNodeScheduler.swift)）。
 
@@ -63,7 +67,8 @@ stateDiagram-v2
 ## 変更時の確認
 
 - root / node / navigation のスコープを変える場合: `FineRenderScopeTests.swift`。navigation-only の更新が body を再描画しないこと、非表示画面が一回だけ catch-up することを確認します。
+- root 直下の composite が読む observable のトラッキングを変える場合: `FineCompositeObservationTests.swift`。解決を tracking の内側に保つ回帰です。
 - generation、セル回復、可視性ゲートを変える場合: `FineRenderScopeTests.swift` と `FineListBehaviorTests.swift` を合わせて確認します。
-- `body` 解決や再利用を変える場合: `FineUIKitTests.swift` と性能テストも確認します。`044f24d` 以降、同一 description の余分な解決を増やさないことが重要です。
+- `body` 解決や再利用を変える場合: `FineUIKitTests.swift` と性能テストも確認します。`044f24d` 以降、同一 description の余分な解決を増やさないことが重要です。composite 型の identity（通り過ぎた型が署名に入ること）は `FineCompositeTests.swift` が固定します。
 
 具体的なコマンドとテストの選択は[テストと運用](../operations/testing.md)、ファイルの担当境界は[ソースマップ](../source-map.md)を参照してください。
