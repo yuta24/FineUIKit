@@ -101,23 +101,23 @@ struct FineResolutionTests {
         ui.build(to: container)
         container.layoutIfNeeded()
 
-        #expect(label(in: container)?.text == "A")
+        #expect(firstLabel(in: container)?.text == "A")
 
         state.title = "B"
-        for _ in 0..<200 where label(in: container)?.text != "B" {
+        for _ in 0..<200 where firstLabel(in: container)?.text != "B" {
             await Task.yield()
         }
 
-        #expect(label(in: container)?.text == "B")
+        #expect(firstLabel(in: container)?.text == "B")
     }
 
-    private func label(in view: UIView) -> UILabel? {
+    private func firstLabel(in view: UIView) -> UILabel? {
         if let label = view as? UILabel, !(view.superview is UIButton) {
             return label
         }
 
         for subview in view.subviews {
-            if let label = label(in: subview) {
+            if let label = firstLabel(in: subview) {
                 return label
             }
         }

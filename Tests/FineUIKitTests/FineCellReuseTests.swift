@@ -26,12 +26,12 @@ struct FineCellReuseTests {
         cell.render(identity: AnyHashable(1), environment: environment, renderGate: nil, row)
         try #require(binding.value).value = 7
         cell.render(identity: AnyHashable(1), environment: environment, renderGate: nil, row)
-        #expect(label(in: cell)?.text == "7")
+        #expect(firstLabel(in: cell)?.text == "7")
 
         cell.prepareForReuse()
         cell.render(identity: AnyHashable(2), environment: environment, renderGate: nil, row)
 
-        #expect(label(in: cell)?.text == "0")
+        #expect(firstLabel(in: cell)?.text == "0")
     }
 
     /// The same row rendering again is not a recycle, so its state stays.
@@ -53,16 +53,16 @@ struct FineCellReuseTests {
         cell.prepareForReuse()
         cell.render(identity: AnyHashable(1), environment: environment, renderGate: nil, row)
 
-        #expect(label(in: cell)?.text == "7")
+        #expect(firstLabel(in: cell)?.text == "7")
     }
 
-    private func label(in view: UIView) -> UILabel? {
+    private func firstLabel(in view: UIView) -> UILabel? {
         if let label = view as? UILabel, !(view.superview is UIButton) {
             return label
         }
 
         for subview in view.subviews {
-            if let label = label(in: subview) {
+            if let label = firstLabel(in: subview) {
                 return label
             }
         }

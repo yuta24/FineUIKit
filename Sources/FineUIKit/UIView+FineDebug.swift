@@ -37,6 +37,19 @@ extension UIView {
         if node.rebuildCount > 0 {
             parts.append("rebuilds \(node.rebuildCount)")
         }
+        // The two questions the counters raise and cannot answer: who asked for
+        // the last render, and what did it cost.
+        //
+        // The cost is this node's own. Under the runtime a container's update
+        // hands its children to the scheduler and returns, and they are timed
+        // when their turn comes — so the figures down a branch are independent
+        // rather than nested, and are not meant to add up.
+        if let reason = node.lastUpdateReason {
+            parts.append("because \(reason.message)")
+        }
+        if let duration = node.lastUpdateDuration {
+            parts.append(fineFormatted(duration))
+        }
         if let key = node.key {
             parts.append("key \(key.base)")
         }

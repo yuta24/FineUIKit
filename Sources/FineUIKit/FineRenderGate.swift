@@ -68,9 +68,21 @@ final class FineRenderGate {
         // would be visible: a list applies its snapshot with animation whenever
         // no transaction says otherwise, so rows added while hidden would slide
         // in on the way back.
+        // The catch-up render answers for a change observed while nobody was
+        // looking, and says so: left to the default it would report that its
+        // parent re-rendered, and there is nothing above the root.
+        //
+        // The recoveries handed in by scopes are not given one. Each already
+        // knows why it is running — a node's tells its own node directly, and a
+        // cell host's re-render declares itself — so a reason offered here
+        // would go unclaimed by the node it was meant for and be picked up by
+        // the first child it renders, which is there because its parent ran and
+        // for no other reason.
         FineTransactionContext.$current.withValue(.disabled) {
             if flushes {
-                onFlush?()
+                FineDiagnostics.rendering(because: .observation) {
+                    onFlush?()
+                }
             }
             for item in work {
                 item()

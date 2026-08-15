@@ -194,13 +194,22 @@ final class FineNodeHost {
                                   self.makeNode != nil
                             else { return }
 
-                            self.renderTracked()
+                            // Held over, but still this host's own observation:
+                            // declared here rather than by the gate, which
+                            // cannot tell one kind of recovery from another and
+                            // would offer a reason to a node that already has
+                            // one.
+                            FineDiagnostics.rendering(because: .observation) {
+                                self.renderTracked()
+                            }
                             self.onObservedRerender?()
                         }
                         return
                     }
 
-                    self.renderTracked()
+                    FineDiagnostics.rendering(because: .observation) {
+                        self.renderTracked()
+                    }
                     self.onObservedRerender?()
                 }
             }

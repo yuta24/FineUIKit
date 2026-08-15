@@ -84,6 +84,10 @@ final class FineNodeScheduler {
         // The update this enqueues does the counting, because a node-local
         // re-render reaches it without passing through here.
         state.pendingRenderKind = kind
+        // The scope that asked for this pass gets to name itself, once. Every
+        // node after the first is here because the one above it was.
+        state.pendingUpdateReason = FineDiagnostics.takePendingReason()
+            ?? (kind == .created ? .initial : .parent)
 
         enqueue(view: view, generation: state.generation, primitive: primitive, context: context)
         return view
@@ -142,27 +146,33 @@ final class FineNodeScheduler {
             id: signposter.makeSignpostID(),
             "\(view.fineNodeIfPresent?.primitiveName ?? "unknown", privacy: .public)"
         )
-        withObservationTracking {
-            job.primitive._update(view, context: job.context)
-        } onChange: { [weak self, weak view] in
-            Task { @MainActor in
-                guard let self,
-                      let view,
-                      !self.isInvalidated,
-                      view.fineNodeIfPresent?.generation == generation
-                else { return }
+        // What this node's own update costs. A container's update reconciles
+        // its children and hands them here, so creating their views is counted
+        // against the container — but their updates are separate jobs, run
+        // after this one returns, and are timed on their own.
+        let (_, duration) = FineDiagnostics.timing {
+            withObservationTracking {
+                job.primitive._update(view, context: job.context)
+            } onChange: { [weak self, weak view] in
+                Task { @MainActor in
+                    guard let self,
+                          let view,
+                          !self.isInvalidated,
+                          view.fineNodeIfPresent?.generation == generation
+                    else { return }
 
-                guard let renderGate, renderGate.isSuspended else {
-                    self.applyObservedUpdate(to: view)
-                    return
+                    guard let renderGate, renderGate.isSuspended else {
+                        self.applyObservedUpdate(to: view)
+                        return
+                    }
+
+                    self.deferObservedUpdate(to: view, generation: generation, gate: renderGate)
                 }
-
-                self.deferObservedUpdate(to: view, generation: generation, gate: renderGate)
             }
         }
         signposter.endInterval("node", interval)
 
-        FineDiagnostics.recordRender(of: view, as: kind)
+        FineDiagnostics.recordRender(of: view, as: kind, took: duration)
     }
 
     /// Holds a change that arrived while the tree is off screen.
@@ -190,6 +200,10 @@ final class FineNodeScheduler {
     }
 
     private func applyObservedUpdate(to view: UIView) {
+        // This path does not pass through `renderChild`, so the node is told
+        // directly why it is about to run.
+        view.fineNodeIfPresent?.pendingUpdateReason = .observation
+
         if case .animate(let animation) = FineTransactionContext.current {
             animation.animate {
                 self.enqueueExisting(view)

@@ -85,12 +85,12 @@ struct FineStructuralIdentityTests {
 
         try #require(binding.value).value = 5
         _ = FineRenderer.render(tree(true), reusing: stack)
-        #expect(label(in: reader)?.text == "count 5")
+        #expect(firstLabel(in: reader)?.text == "count 5")
 
         _ = FineRenderer.render(tree(false), reusing: stack)
 
         #expect(stackView.arrangedSubviews[0] === reader)
-        #expect(label(in: reader)?.text == "count 5")
+        #expect(firstLabel(in: reader)?.text == "count 5")
     }
 
     @Test func shrinkingLoopKeepsSiblingViewIdentity() throws {
@@ -216,12 +216,12 @@ struct FineStructuralIdentityTests {
 
         try #require(bindings.value?["b"]).value = 5
         _ = FineRenderer.render(tree(["a", "b"]), reusing: stack)
-        #expect(label(in: stackView.arrangedSubviews[1])?.text == "b=5")
+        #expect(firstLabel(in: stackView.arrangedSubviews[1])?.text == "b=5")
 
         _ = FineRenderer.render(tree(["b", "a"]), reusing: stack)
 
-        #expect(label(in: stackView.arrangedSubviews[0])?.text == "b=5")
-        #expect(label(in: stackView.arrangedSubviews[1])?.text == "a=0")
+        #expect(firstLabel(in: stackView.arrangedSubviews[0])?.text == "b=5")
+        #expect(firstLabel(in: stackView.arrangedSubviews[1])?.text == "a=0")
     }
 
     /// Every branch of one conditional shares a slot, however the compiler
@@ -332,13 +332,13 @@ struct FineStructuralIdentityTests {
         }
     }
 
-    private func label(in view: UIView) -> UILabel? {
+    private func firstLabel(in view: UIView) -> UILabel? {
         if let label = view as? UILabel, !(view.superview is UIButton) {
             return label
         }
 
         for subview in view.subviews {
-            if let label = label(in: subview) {
+            if let label = firstLabel(in: subview) {
                 return label
             }
         }
