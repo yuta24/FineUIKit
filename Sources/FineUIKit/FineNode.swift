@@ -63,6 +63,14 @@ final class FineNode {
     /// something above it was.
     var pendingUpdateReason: FineDiagnostics.UpdateReason?
 
+    /// Whether *this view* has been written to before.
+    ///
+    /// Not the same question as `renderCount`, which counts the position and is
+    /// carried onto a replacement view — a rebuilt view would inherit a count
+    /// and look like it had a previous value to animate from, when it has just
+    /// been made and holds nothing but defaults.
+    var hasBeenUpdated = false
+
     /// The component that last rendered this view, or `nil` for a view
     /// FineUIKit does not manage.
     var primitiveName: String {
