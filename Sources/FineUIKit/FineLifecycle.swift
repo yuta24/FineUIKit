@@ -168,13 +168,6 @@ struct FineLifecycleModified: FinePrimitiveRenderable {
     func _update(_ view: UIView, context: FineRenderContext) {
         guard let lifecycleView = view as? FineLifecycleView else { return }
 
-        lifecycleView.setLifecycle(
-            onAppear: onAppear,
-            onDisappear: onDisappear,
-            task: task,
-            taskID: taskID
-        )
-
         let hosted = context.render(resolved: content.primitive, reusing: lifecycleView.hosted)
 
         if hosted !== lifecycleView.hosted {
@@ -191,6 +184,16 @@ struct FineLifecycleModified: FinePrimitiveRenderable {
                 hosted.bottomAnchor.constraint(equalTo: lifecycleView.bottomAnchor),
             ])
         }
+
+        // After the content, not before it: this call is what reports an
+        // appearance, and being told that something appeared is only useful
+        // once it is there to look at.
+        lifecycleView.setLifecycle(
+            onAppear: onAppear,
+            onDisappear: onDisappear,
+            task: task,
+            taskID: taskID
+        )
     }
 
     var _modifierSignature: String {

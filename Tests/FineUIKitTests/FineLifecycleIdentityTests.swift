@@ -132,6 +132,49 @@ struct FineLifecycleIdentityTests {
         _ = window
     }
 
+    /// Recycling a cell ends the row's work even when no new row follows.
+    ///
+    /// A cell is recycled before anyone knows what it will show next, and the
+    /// data source's bail-out path can hand it back unconfigured. Waiting for
+    /// the next render to clean up leaves the previous row's task running
+    /// against the cell that replaced it.
+    @Test func recyclingACellEndsTheRowsWorkWithoutWaitingForTheNextRow() async throws {
+        let log = LifecycleLog()
+        let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 120))
+        window.isHidden = false
+        let cell = FineListHostCell(style: .default, reuseIdentifier: FineListHostCell.reuseIdentifier)
+        cell.frame = window.bounds
+        window.addSubview(cell)
+
+        let environment = FineEnvironmentStorage()
+        cell.render(identity: AnyHashable(1), environment: environment, renderGate: nil) {
+            FineLabel(text: "row 1")
+                .onAppear { log.record("appear 1") }
+                .task {
+                    log.record("start 1")
+                    try? await Task.sleep(for: .seconds(30))
+                    log.record("cancelled 1")
+                }
+        }
+        window.layoutIfNeeded()
+        await waitUntil { log.entries.contains("start 1") }
+
+        cell.prepareForReuse()
+        await waitUntil { log.entries.contains("cancelled 1") }
+        #expect(log.entries.contains("cancelled 1"))
+
+        // Put the cell back on screen without configuring it, the way the
+        // provider's bail-out path does. The row it used to show must not be
+        // reported as having appeared again.
+        cell.removeFromSuperview()
+        window.addSubview(cell)
+        window.layoutIfNeeded()
+        await waitTicks()
+
+        #expect(log.entries.filter { $0 == "appear 1" }.count == 1)
+        _ = window
+    }
+
     /// A child added to a container that is already on screen appears too.
     ///
     /// The scheduled path installs a node's description after the view has been
