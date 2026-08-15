@@ -81,6 +81,68 @@ struct FineCellReuseViewStateTests {
         _ = window
     }
 
+    /// Giving up the keyboard reaches the row's own `focused` binding, because
+    /// resigning ends editing and the field reports that back. The write lands
+    /// on the row that was showing: the handover happens before the new
+    /// description is applied, so the binding still installed is the old one.
+    @Test func givingUpTheKeyboardClearsThePreviousRowsFocusBinding() throws {
+        let window = makeWindow()
+        let cell = makeCell(in: window)
+        let environment = FineEnvironmentStorage()
+        let firstRowFocus = FineStateStorage(false)
+        let secondRowFocus = FineStateStorage(false)
+        let draft = FineStateStorage("")
+
+        func row(_ focus: FineStateStorage<Bool>) -> any Renderable {
+            FineTextField(text: .init(get: { draft.value }, set: { draft.value = $0 }))
+                .focused(.init(get: { focus.value }, set: { focus.value = $0 }))
+        }
+
+        cell.render(identity: AnyHashable(1), environment: environment, renderGate: nil) {
+            row(firstRowFocus)
+        }
+        window.layoutIfNeeded()
+
+        let field = try #require(find(FineTextFieldView.self, in: cell))
+        #expect(field.becomeFirstResponder())
+        #expect(firstRowFocus.value)
+
+        cell.render(identity: AnyHashable(2), environment: environment, renderGate: nil) {
+            row(secondRowFocus)
+        }
+        window.layoutIfNeeded()
+
+        #expect(!field.isFirstResponder)
+        #expect(!firstRowFocus.value)
+        #expect(!secondRowFocus.value)
+        _ = window
+    }
+
+    /// The same on the way out, where there is no next row to confuse it with.
+    @Test func recyclingACellClearsTheRowsFocusBinding() throws {
+        let window = makeWindow()
+        let cell = makeCell(in: window)
+        let environment = FineEnvironmentStorage()
+        let focus = FineStateStorage(false)
+        let draft = FineStateStorage("")
+
+        cell.render(identity: AnyHashable(1), environment: environment, renderGate: nil) {
+            FineTextField(text: .init(get: { draft.value }, set: { draft.value = $0 }))
+                .focused(.init(get: { focus.value }, set: { focus.value = $0 }))
+        }
+        window.layoutIfNeeded()
+
+        let field = try #require(find(FineTextFieldView.self, in: cell))
+        #expect(field.becomeFirstResponder())
+        #expect(focus.value)
+
+        cell.prepareForReuse()
+
+        #expect(!field.isFirstResponder)
+        #expect(!focus.value)
+        _ = window
+    }
+
     // MARK: - scroll position
 
     @Test func handingACellADifferentRowResetsTheScrollPosition() throws {
