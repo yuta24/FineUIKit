@@ -70,14 +70,14 @@ final class FineLifecycleView: UIView {
 
 @MainActor
 struct FineLifecycleModified: FinePrimitiveRenderable {
-    let content: any Renderable
+    let content: FineResolvedRenderable
     var onAppear: (@MainActor () -> Void)?
     var onDisappear: (@MainActor () -> Void)?
     var task: (@MainActor () async -> Void)?
     var taskID: AnyHashable?
 
     init(content: any Renderable) {
-        self.content = content
+        self.content = FineResolvedRenderable(content)
     }
 
     func _makeView() -> UIView {
@@ -95,7 +95,7 @@ struct FineLifecycleModified: FinePrimitiveRenderable {
         lifecycleView.onDisappear = onDisappear
         lifecycleView.setTask(task, id: taskID)
 
-        let hosted = context.render(content, reusing: lifecycleView.hosted)
+        let hosted = context.render(resolved: content.primitive, reusing: lifecycleView.hosted)
 
         if hosted !== lifecycleView.hosted {
             lifecycleView.hosted?.removeFromSuperview()
@@ -118,7 +118,7 @@ struct FineLifecycleModified: FinePrimitiveRenderable {
     }
 
     var _key: AnyHashable? {
-        FineRenderer.primitive(for: content)._key
+        content.primitive._key
     }
 }
 

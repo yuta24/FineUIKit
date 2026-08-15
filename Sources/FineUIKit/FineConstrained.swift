@@ -17,19 +17,31 @@ struct FineConstraintSpec {
 
 @MainActor
 struct FineConstrained: FinePrimitiveRenderable {
-    let content: any Renderable
+    let content: FineResolvedRenderable
     let specs: [FineConstraintSpec]
 
+    init(content: any Renderable, specs: [FineConstraintSpec]) {
+        self.content = FineResolvedRenderable(content)
+        self.specs = specs
+    }
+
+    /// Re-wraps content whose resolution another wrapper already paid for, so
+    /// a chain of constraint modifiers walks `body` once between them.
+    init(content: FineResolvedRenderable, specs: [FineConstraintSpec]) {
+        self.content = content
+        self.specs = specs
+    }
+
     func _makeView() -> UIView {
-        FineRenderer.primitive(for: content)._makeView()
+        content.primitive._makeView()
     }
 
     func _canUpdate(_ view: UIView) -> Bool {
-        FineRenderer.primitive(for: content)._canUpdate(view)
+        content.primitive._canUpdate(view)
     }
 
     func _update(_ view: UIView, context: FineRenderContext) {
-        FineRenderer.primitive(for: content)._update(view, context: context)
+        content.primitive._update(view, context: context)
 
         let activeKeys = Set(specs.map(\.key))
         var installed = view.fineInstalledConstraints
@@ -54,34 +66,40 @@ struct FineConstrained: FinePrimitiveRenderable {
     }
 
     var _modifierSignature: String {
-        FineRenderer.primitive(for: content)._modifierSignature + "|" + specs.map(\.key).joined(separator: "|")
+        content.primitive._modifierSignature + "|" + specs.map(\.key).joined(separator: "|")
     }
 
     var _key: AnyHashable? {
-        FineRenderer.primitive(for: content)._key
+        content.primitive._key
     }
 
     var _viewProvider: any FinePrimitiveRenderable {
-        FineRenderer.primitive(for: content)._viewProvider
+        content.primitive._viewProvider
     }
 }
 
 @MainActor
 struct FineCustomConstrained: FinePrimitiveRenderable {
-    let content: any Renderable
+    let content: FineResolvedRenderable
     let id: String
     let make: @MainActor (UIView) -> [NSLayoutConstraint]
 
+    init(content: any Renderable, id: String, make: @escaping @MainActor (UIView) -> [NSLayoutConstraint]) {
+        self.content = FineResolvedRenderable(content)
+        self.id = id
+        self.make = make
+    }
+
     func _makeView() -> UIView {
-        FineRenderer.primitive(for: content)._makeView()
+        content.primitive._makeView()
     }
 
     func _canUpdate(_ view: UIView) -> Bool {
-        FineRenderer.primitive(for: content)._canUpdate(view)
+        content.primitive._canUpdate(view)
     }
 
     func _update(_ view: UIView, context: FineRenderContext) {
-        FineRenderer.primitive(for: content)._update(view, context: context)
+        content.primitive._update(view, context: context)
 
         let key = "custom:\(id)"
         var constraints = view.fineCustomConstraints
@@ -94,15 +112,15 @@ struct FineCustomConstrained: FinePrimitiveRenderable {
     }
 
     var _modifierSignature: String {
-        FineRenderer.primitive(for: content)._modifierSignature + "|custom:\(id)"
+        content.primitive._modifierSignature + "|custom:\(id)"
     }
 
     var _key: AnyHashable? {
-        FineRenderer.primitive(for: content)._key
+        content.primitive._key
     }
 
     var _viewProvider: any FinePrimitiveRenderable {
-        FineRenderer.primitive(for: content)._viewProvider
+        content.primitive._viewProvider
     }
 }
 

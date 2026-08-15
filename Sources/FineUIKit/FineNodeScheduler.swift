@@ -19,6 +19,33 @@ final class FineNodeScheduler {
 
     private var queue: [Job] = []
     private var isDraining = false
+    private var isInvalidated = false
+
+    /// Runs after a change re-rendered one of this scheduler's nodes on its
+    /// own. A list or grid cell uses it to re-measure: a node-local update
+    /// never passes through the host, which is what normally notices that the
+    /// row no longer fits its height.
+    var onObservedUpdate: (@MainActor () -> Void)?
+
+    /// Whether a change that arrives while the tree is suspended must be
+    /// recovered by this scheduler rather than by the catch-up render.
+    ///
+    /// `false` for the scheduler that belongs to the view tree: `resume()`
+    /// renders it whole, and that walk re-registers every scope it passes.
+    /// `true` for a cell's, which that walk only reaches if the row happens to
+    /// be reconfigured — an unchanged element is not, and the row would stay
+    /// stale with its observation gone.
+    var recoversSuspendedWork = false
+
+    /// Stops this scheduler's nodes from acting on changes.
+    ///
+    /// A recycled cell keeps its views for the next row, and the scopes
+    /// registered for the previous one are still armed. Invalidating the
+    /// scheduler retires all of them at once, rather than walking the subtree
+    /// to bump every node's generation.
+    func invalidate() {
+        isInvalidated = true
+    }
 
     func renderChild(_ node: any Renderable, reusing existing: UIView?, context: FineRenderContext) -> UIView {
         renderChild(resolved: FineRenderer.primitive(for: node), reusing: existing, context: context)
@@ -121,25 +148,59 @@ final class FineNodeScheduler {
             Task { @MainActor in
                 guard let self,
                       let view,
-                      view.fineNodeIfPresent?.generation == generation,
-                      renderGate?.allowsObservedWork() != false
+                      !self.isInvalidated,
+                      view.fineNodeIfPresent?.generation == generation
                 else { return }
 
-                let transaction = FineTransactionContext.current
-                if case .animate(let animation) = transaction {
-                    animation.animate {
-                        self.enqueueExisting(view)
-                        self.drain()
-                        view.layoutIfNeeded()
-                    }
-                } else {
-                    self.enqueueExisting(view)
-                    self.drain()
+                guard let renderGate, renderGate.isSuspended else {
+                    self.applyObservedUpdate(to: view)
+                    return
                 }
+
+                self.deferObservedUpdate(to: view, generation: generation, gate: renderGate)
             }
         }
         signposter.endInterval("node", interval)
 
         FineDiagnostics.recordRender(of: view, as: kind)
+    }
+
+    /// Holds a change that arrived while the tree is off screen.
+    ///
+    /// A scheduler that belongs to the view tree only records that a flush is
+    /// owed: the catch-up render walks the tree and re-registers this scope
+    /// along with everything else. One that has to recover for itself hands in
+    /// its own work instead — and deliberately does not ask for the whole-tree
+    /// render, which a change confined to one cell has no use for.
+    private func deferObservedUpdate(to view: UIView, generation: Int, gate: FineRenderGate) {
+        guard recoversSuspendedWork else {
+            _ = gate.allowsObservedWork()
+            return
+        }
+
+        gate.deferObservedWork { [weak self, weak view] in
+            guard let self,
+                  let view,
+                  !self.isInvalidated,
+                  view.fineNodeIfPresent?.generation == generation
+            else { return }
+
+            self.applyObservedUpdate(to: view)
+        }
+    }
+
+    private func applyObservedUpdate(to view: UIView) {
+        if case .animate(let animation) = FineTransactionContext.current {
+            animation.animate {
+                self.enqueueExisting(view)
+                self.drain()
+                view.layoutIfNeeded()
+            }
+        } else {
+            enqueueExisting(view)
+            drain()
+        }
+
+        onObservedUpdate?()
     }
 }

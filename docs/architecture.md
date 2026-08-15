@@ -292,13 +292,14 @@ flowchart TD
     Where -->|"root body 内で直接<br/>(例: 構造分岐の条件)"| Root["FineUI.render()<br/>body 全体を再評価 → 構造差分"]
     Where -->|"navigation() 内<br/>(例: タイトル / ボタンの enabled)"| Nav["FineObservedScope<br/>navigationItem だけ再適用"]
     Where -->|"あるノードの _update 内<br/>(例: FineLabel.text の autoclosure)"| Node["FineNodeScheduler<br/>そのノードだけ _update 再実行"]
-    Where -->|"List/Grid のセル content 内"| Cell["セルのローカル観測<br/>そのセルだけ再描画"]
+    Where -->|"List/Grid の行の記述を組み立てる間"| Cell["セルのローカル観測<br/>そのセルだけ再描画"]
+    Where -->|"セル内のあるノードの _update 内"| CellNode["セルの FineNodeScheduler<br/>そのノードだけ _update 再実行"]
 ```
 
 - **root**: `body()` の中で `state.flag` を直接読み、`if state.flag { A } else { B }` のように**構造**が変われば、`render()` が丸ごと走り差分適用される。
 - **navigation**: `FineNavigating.navigation()` は `FineObservedScope`(`FineObservedScope.swift`)という独立した観測スコープで実行される。タイトルやボタンの `enabled` の変化は `navigationItem` の更新だけで済み、ツリーには触らない。ここを root の body スコープに同居させると、タイトル1文字の変化が全画面の再差分を引き起こす。
 - **ノード**: `FineLabel(text: state.title)` は `text` が `@autoclosure`(`FineLabel.swift`)なので、`state.title` の読み取りはラベルの `_update` 内で起きる。→ ラベルノードだけ再更新。
-- **セル**: `FineList` / `FineGrid` のセルは独自の観測スコープで content を描画するため、行の内容変更はそのセルだけを更新する(後述)。
+- **セル**: `FineList` / `FineGrid` のセルは独自の観測スコープで行の記述を組み立てるため、その組み立て中に読んだ値の変化はそのセルだけを更新する。さらにセル内の各ノードも独立した観測スコープを持つので、`FineLabel(text:)` の autoclosure が読んだ値の変化はそのラベルだけを更新する(後述)。
 
 > **注意**: 粒度が最小になるのは、値が primitive の `@autoclosure` 引数を通る場合です。`.backgroundColor(state.isOn ? .red : .blue)` のように**モディファイアの引数として先に評価される**読み取りは、記述を構築しているスコープ(=囲むコンテナのノード、または root)に登録されるため、そのコンテナの子が再差分されます。
 
@@ -441,30 +442,24 @@ func _update(_ view: UIView, context: FineRenderContext) {
 
 ---
 
-## 13. リスト / グリッド(セル単位の観測)
+## 13. リスト / グリッド(セル内の観測)
 
 `FineList`(`FineList.swift`)/ `FineGrid` は `UITableView` / `UICollectionView` の diffable data source を使い、`Identifiable` の ID で常に keyed です。
 
-2階層の効率化があります。
+3階層の効率化があります。
 
 1. **リスト全体の差分**: `NSDiffableDataSourceSnapshot` で行の挿入・削除・移動を最小適用。ウィンドウ上では自動アニメーション。
-2. **セル単位の観測**: 各ホストセルは `FineListHostCell.render` で content を**独自の `withObservationTracking` スコープ**で描画する(`FineList.swift`)。
+2. **セル単位の観測**: 各ホストセルは `FineNodeHost` が content を**独自の `withObservationTracking` スコープ**で組み立てる。行の記述を作るときに読まれた値(`content(element)` のクロージャや `Renderable.body` の中の読み取り)がここに属します。
+3. **セル内のノード単位の観測**: そのスコープの中で組み立てた記述は、**セル専用の `FineNodeScheduler`** を通して描画されます。root ツリーと同じく各 `_update` が独立した観測スコープを持つので、`FineLabel(text:)` の autoclosure が読んだ値の変化は**そのラベルだけ**を更新します。
 
-```swift
-private func renderTracked() {
-    generation += 1
-    withObservationTracking {
-        context.render(makeNode(), reusing: self.hostedView)
-    } onChange: { [weak self] in
-        Task { @MainActor in
-            guard self?.generation == expectedGeneration else { return }
-            self?.renderTracked()   // このセルだけ再描画
-        }
-    }
-}
-```
+3 が無かった頃は、リストに入れた瞬間だけ粒度が行全体に落ちていました。8 ノードのカード型の行で計測すると、1 プロパティの変更あたりのノード書き込みは **8 → 1** になります(`FineCellGranularityTests`)。代償はセル構成時の命令数 **+3.4%** で、`RenderingPerformanceTests` の `testHeavyCellReconfigurationFineUIKit` が固定しています(Instructions Retired、RSD 0.4%。同ベンチの Clock / CPU Cycles はシミュレータでは RSD が 10〜48% あり判断に使えません)。
 
-これにより、行 content が読んだ `@Observable` プロパティは、**リスト全体の再 render なしにそのセルだけ**更新されます。`FineUI` の root 観測と同じ仕組みを、セルというスコープに縮小したものです。
+セル内のノードには 2 つ、root ツリーには無い事情があります。
+
+- **高さの再計測**: ノード局所の更新はホストを通らないため、行が高さに収まらなくなったことに誰も気付きません。scheduler の `onObservedUpdate` が `FineNodeHost.onObservedRerender` を呼び、既存の再計測経路に合流させます。
+- **抑止中の復帰**: 画面外で失効したノードスコープを catch-up レンダーが張り直せるのは、そのノードが walk 上にある場合だけです。セルは行が reconfigure されない限り walk に乗らないため、セルの scheduler は `recoversSuspendedWork = true` を立て、`FineRenderGate.deferObservedWork` に自分の復帰処理を預けます(§8 で `FineNodeHost` が行っているのと同じ手当てを、ノード階層に降ろしたもの)。このとき `allowsObservedWork()` を呼ばないので、セル内だけの変更が全体レンダーを要求することはありません。
+
+セルがリサイクルされると `FineNodeHost.invalidate()` が scheduler ごと `invalidate()` します。サブツリーを歩いて各ノードの generation を上げる代わりの O(1) の手当てで、前の行のために張られたスコープが後からリサイクル先のセルへ書き込むのを防ぎます。同時に、行の identity が変わったときは**ビューを残したまま** `FineNode.localState` だけを捨てます — ビューの再利用こそがセルを安い物にしているので捨てられませんが、前の行に紐づいた `FineState` が次の行の下に現れてはいけないからです。
 
 ヘッダー / フッター(supplementary)は行とは別扱いです。data source は行しか reconfigure せず、既に持っている supplementary view をテーブルが再要求することもないため、記述だけ更新しても画面には反映されません。そこで (1) supplementary の host は渡された記述を保持せず coordinator から**その時点の記述を引き**、(2) リスト / グリッドの `_update` が可視 supplementary を明示的に再描画します。
 

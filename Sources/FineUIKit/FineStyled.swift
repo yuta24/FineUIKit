@@ -15,19 +15,31 @@ struct FineStyle {
 
 @MainActor
 struct FineStyled: FinePrimitiveRenderable {
-    let content: any Renderable
+    let content: FineResolvedRenderable
     let styles: [FineStyle]
 
+    init(content: any Renderable, styles: [FineStyle]) {
+        self.content = FineResolvedRenderable(content)
+        self.styles = styles
+    }
+
+    /// Re-wraps content whose resolution another wrapper already paid for, so
+    /// a chain of style modifiers walks `body` once between them.
+    init(content: FineResolvedRenderable, styles: [FineStyle]) {
+        self.content = content
+        self.styles = styles
+    }
+
     func _makeView() -> UIView {
-        FineRenderer.primitive(for: content)._makeView()
+        content.primitive._makeView()
     }
 
     func _canUpdate(_ view: UIView) -> Bool {
-        FineRenderer.primitive(for: content)._canUpdate(view)
+        content.primitive._canUpdate(view)
     }
 
     func _update(_ view: UIView, context: FineRenderContext) {
-        FineRenderer.primitive(for: content)._update(view, context: context)
+        content.primitive._update(view, context: context)
 
         for style in styles {
             style.apply(view)
@@ -35,15 +47,15 @@ struct FineStyled: FinePrimitiveRenderable {
     }
 
     var _modifierSignature: String {
-        FineRenderer.primitive(for: content)._modifierSignature + "|" + styles.map(\.key).joined(separator: "|")
+        content.primitive._modifierSignature + "|" + styles.map(\.key).joined(separator: "|")
     }
 
     var _key: AnyHashable? {
-        FineRenderer.primitive(for: content)._key
+        content.primitive._key
     }
 
     var _viewProvider: any FinePrimitiveRenderable {
-        FineRenderer.primitive(for: content)._viewProvider
+        content.primitive._viewProvider
     }
 }
 

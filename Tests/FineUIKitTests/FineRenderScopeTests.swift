@@ -465,14 +465,17 @@ struct FineRenderScopeTests {
         ui.suspend()
         row.title = "B"
         await waitTicks()
+        #expect(cellText(in: container) == "A")
         #expect(rewrites("suspended-cell", since: base) == 0)
 
         ui.resume()
-        await waitUntil {
-            window.layoutIfNeeded()
-            return self.rewrites("suspended-cell", since: base) >= 1
-        }
-        #expect(rewrites("suspended-cell", since: base) >= 1)
+        await waitUntil { self.cellText(in: container) == "B" }
+
+        // The catch-up reaches the node that read the change. The probe beside
+        // it read nothing, so it is not written again — the row is current
+        // without the whole cell being rebuilt.
+        #expect(cellText(in: container) == "B")
+        #expect(rewrites("suspended-cell", since: base) == 0)
         _ = window
     }
 
