@@ -27,13 +27,13 @@ struct FineUpdateReasonTests {
         }
     }
 
-    private func label(in view: UIView) -> UILabel? {
+    private func firstLabel(in view: UIView) -> UILabel? {
         if let label = view as? UILabel, !(view.superview is UIButton) {
             return label
         }
 
         for subview in view.subviews {
-            if let label = label(in: subview) {
+            if let label = firstLabel(in: subview) {
                 return label
             }
         }
@@ -68,13 +68,13 @@ struct FineUpdateReasonTests {
         container.layoutIfNeeded()
         await waitTicks()
 
-        let label = try #require(label(in: container))
-        #expect(label.fineNode.lastUpdateReason == .initial)
+        let labelView = try #require(firstLabel(in: container))
+        #expect(labelView.fineNode.lastUpdateReason == .initial)
 
         state.title = "B"
-        await waitUntil { label.text == "B" }
+        await waitUntil { labelView.text == "B" }
 
-        #expect(label.fineNode.lastUpdateReason == .observation)
+        #expect(labelView.fineNode.lastUpdateReason == .observation)
         // The stack above it did not re-run: nothing it read changed.
         #expect(container.subviews.first?.fineNode.lastUpdateReason == .initial)
     }
@@ -95,13 +95,13 @@ struct FineUpdateReasonTests {
         await waitTicks()
 
         let stack = try #require(container.subviews.first)
-        let label = try #require(label(in: container))
+        let labelView = try #require(firstLabel(in: container))
 
         state.bodyValue += 1
-        await waitUntil { label.text == "1" }
+        await waitUntil { labelView.text == "1" }
 
         #expect(stack.fineNode.lastUpdateReason == .observation)
-        #expect(label.fineNode.lastUpdateReason == .parent)
+        #expect(labelView.fineNode.lastUpdateReason == .parent)
     }
 
     /// A catch-up render answers for a change that happened while nobody was
@@ -127,7 +127,7 @@ struct FineUpdateReasonTests {
         await waitTicks()
 
         ui.resume()
-        await waitUntil { self.label(in: container)?.text == "1" }
+        await waitUntil { self.firstLabel(in: container)?.text == "1" }
 
         #expect(stack.fineNode.lastUpdateReason == .observation)
     }
