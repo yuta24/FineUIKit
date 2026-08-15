@@ -309,6 +309,29 @@ struct FineStructuralIdentityTests {
         #expect(stackView.arrangedSubviews[0] === button)
     }
 
+    /// Two independently built child arrays each number their slots from their
+    /// own start, so concatenating them in one builder statement can produce
+    /// the same generated slot twice. The builder cannot see that they were
+    /// joined and the caller has nothing to fix, so those children render
+    /// without identity-based reuse rather than tripping an assertion.
+    @Test func concatenatedBuilderResultsSurviveAGeneratedSlotCollision() throws {
+        let stack = FineRenderer.render(FineStack.vertical {
+            self.maybe(true, "A") + self.maybe(true, "B")
+        })
+        let stackView = try #require(stack as? UIStackView)
+
+        #expect(stackView.arrangedSubviews.count == 2)
+        #expect((stackView.arrangedSubviews[0] as? UILabel)?.text == "A")
+        #expect((stackView.arrangedSubviews[1] as? UILabel)?.text == "B")
+    }
+
+    @FineBuilder
+    private func maybe(_ flag: Bool, _ text: String) -> [any Renderable] {
+        if flag {
+            FineLabel(text: text)
+        }
+    }
+
     private func label(in view: UIView) -> UILabel? {
         if let label = view as? UILabel, !(view.superview is UIButton) {
             return label

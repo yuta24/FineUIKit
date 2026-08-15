@@ -35,6 +35,16 @@ struct FineStructuralKey: Hashable, CustomStringConvertible {
     }
 }
 
+/// Whether `key` is one the builder made up, rather than one the caller wrote.
+///
+/// A `.key(_:)` inside a conditional or a loop arrives wrapped in a structural
+/// key, so "is it structural" is not the question — "did anyone choose it" is.
+/// A duplicate the caller chose is still the caller's mistake, wherever it sits.
+func fineIsGeneratedSlot(_ key: AnyHashable) -> Bool {
+    guard let structural = key.base as? FineStructuralKey else { return false }
+    return structural.user == nil
+}
+
 /// Gives a builder child a slot in the builder's static structure, so its
 /// presence cannot decide where its siblings are matched.
 ///
