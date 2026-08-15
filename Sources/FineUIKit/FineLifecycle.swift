@@ -7,17 +7,6 @@
 
 import UIKit
 
-/// A view holding state that belongs to what it is showing rather than to
-/// itself, and has to let go of it when it is handed something else.
-///
-/// `FineNode.localState` covers the state the runtime owns. This covers the
-/// state a view owns on the description's behalf, which only the view can wind
-/// down — a running task, a lifecycle that has begun and must be allowed to end.
-@MainActor
-protocol FineIdentityScopedView: UIView {
-    func discardIdentityState()
-}
-
 /// Hosts the lifecycle modifiers, and keeps two facts apart that look like one.
 ///
 /// *On screen* is about the view, and UIKit reports it through the window.
@@ -87,13 +76,14 @@ final class FineLifecycleView: UIView, FineIdentityScopedView {
         notifyAppearIfNeeded()
     }
 
-    /// Gives up the state that belongs to what this view was showing, because
-    /// it is about to show something else.
+    /// Ends the lifecycle this view is in the middle of, because what it was
+    /// showing is over — whether the host is parked or already showing
+    /// something else.
     ///
     /// The view stays where it is — reusing it is the point — so the previous
     /// content is told it disappeared here rather than by a window transition
     /// that is never going to come.
-    func discardIdentityState() {
+    func fineStopIdentityWork() {
         notifyDisappearIfNeeded()
         hasDescription = false
         taskAction = nil

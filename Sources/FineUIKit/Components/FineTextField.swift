@@ -11,7 +11,7 @@ import UIKit
 /// a window; renders can run before the tree is attached, where
 /// `becomeFirstResponder` is a no-op.
 @MainActor
-final class FineTextFieldView: UITextField {
+final class FineTextFieldView: UITextField, FineIdentityScopedView {
     var pendingFocus: (@MainActor (UITextField) -> Void)?
 
     override func didMoveToWindow() {
@@ -20,6 +20,21 @@ final class FineTextFieldView: UITextField {
         guard window != nil, let pendingFocus else { return }
         self.pendingFocus = nil
         pendingFocus(self)
+    }
+
+    /// Gives up the keyboard, because it was being held on behalf of a row that
+    /// is over. A recycled cell keeps its views, so nothing else would take it:
+    /// the field would go on editing under whichever row arrived next, writing
+    /// what the user typed into that row's binding.
+    ///
+    /// The pending request goes too, or a field that never got the chance to
+    /// focus for the old row would take it once it reaches a window.
+    func fineStopIdentityWork() {
+        pendingFocus = nil
+
+        if isFirstResponder {
+            resignFirstResponder()
+        }
     }
 }
 
