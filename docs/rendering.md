@@ -85,7 +85,7 @@ FineEnvironmentReader { environment in
 
 ## ライフサイクルと非同期処理
 
-`.onAppear` / `.onDisappear` はビューが window に載った / 外れたタイミングで発火します。`.task` は表示時に async 処理を起動し、非表示になると自動でキャンセルします。
+`.onAppear` / `.onDisappear` は**その記述が画面に出入りしたとき**に発火します。`.task` は画面に出たら async 処理を起動し、画面から消えると自動でキャンセルします。
 
 ```swift
 FineLabel(text: viewModel.status)
@@ -95,7 +95,18 @@ FineLabel(text: detail.title)
     .task(id: viewModel.selectedID) { await viewModel.loadDetail() }  // id が変わると再起動
 ```
 
-再レンダリングで実行中の task が再起動されることはありません(再起動は `id` の変化時のみ)。`.onAppear` は window への着脱のたびに発火します。
+再レンダリングで実行中の task が再起動されることはありません(再起動は `id` の変化時のみ)。
+
+**「画面に出入りした」はビューの window 着脱と同じではありません。** リスト / グリッドの行では、**画面上のセルが別の行を渡された瞬間**も出入りに数えます。セルはビューを使い回すので window は何も変わりませんが、前の行は消えて次の行が現れているからです。
+
+これが効くのは主に `.task` です。行の task は**セルではなく行**に紐づくので、スクロールで消えた行のリクエストが、そのセルに入ってきた別の行の裏で走り続けることはありません。
+
+```swift
+FineList(movies) { movie in
+    FineImage(image: movie.poster)
+        .task { await movie.loadPoster() }   // 行が入れ替わればキャンセルされ、新しい行の分が始まる
+}
+```
 
 ---
 

@@ -54,6 +54,20 @@ final class FineNodeHost {
         // content into it after the fact.
         scheduler?.invalidate()
         scheduler = nil
+
+        // The host no longer points at a description, so nothing may still be
+        // running on its behalf. A cell is recycled before anyone knows what it
+        // will show next — and it may be shown nothing at all, when the
+        // provider's bail-out path returns it unconfigured. Left alone, the
+        // previous row's task would run on against the cell that replaced it,
+        // and putting the cell back in a window would report that row as
+        // having appeared a second time.
+        //
+        // The state itself is kept: the same row coming back is the ordinary
+        // case, and its `FineState` is expected to survive that.
+        if let hostedView {
+            Self.discardIdentityState(in: hostedView, keepingLocalState: true)
+        }
     }
 
     /// Stops pending re-renders and tears down the hosted view, so a recycled
@@ -69,7 +83,8 @@ final class FineNodeHost {
     ///   recycled host renders a different row into the views the previous one
     ///   left behind, which is the point of cell reuse — but identity-scoped
     ///   state must not come along for the ride, so a change here discards it.
-    ///   `nil` means "no identity to compare", and never discards.
+    ///   Passing `nil` says there is nothing to compare and discards nothing;
+    ///   a caller that has an identity should always pass it.
     func render(
         identity: AnyHashable?,
         environment: FineEnvironmentStorage,
@@ -77,7 +92,7 @@ final class FineNodeHost {
         _ makeNode: @escaping @MainActor () -> any Renderable
     ) {
         if let hostedView, let identity, self.identity != identity {
-            Self.discardLocalState(in: hostedView)
+            Self.discardIdentityState(in: hostedView, keepingLocalState: false)
         }
 
         self.identity = identity
@@ -87,19 +102,27 @@ final class FineNodeHost {
         renderTracked()
     }
 
-    /// Drops the state nodes own on behalf of an identity — `FineState` — from
-    /// a subtree that is about to show something else.
+    /// Drops the state a subtree holds on behalf of what it was showing,
+    /// because it is about to show something else.
     ///
     /// The views themselves stay: reusing them is what makes a cell cheap, and
     /// reconciliation writes the new description over them. What cannot stay is
-    /// state keyed to the thing the cell used to show, which would otherwise
-    /// reappear under the next row: a row expanded by the user staying expanded
-    /// on whichever row happens to land in that cell next.
-    private static func discardLocalState(in view: UIView) {
-        view.fineNodeIfPresent?.localState = nil
+    /// state keyed to the thing the cell used to show — `FineState`, which
+    /// would otherwise put a row the user expanded back on whichever row lands
+    /// in that cell next, and the lifecycle a view is in the middle of, whose
+    /// window never changes here and so would never end on its own.
+    /// - Parameter keepingLocalState: `true` while the host is only parked —
+    ///   recycled, but not yet told what it shows next. Work stops either way;
+    ///   the state is only given up once something else is actually taking the
+    ///   subtree over.
+    private static func discardIdentityState(in view: UIView, keepingLocalState: Bool) {
+        if !keepingLocalState {
+            view.fineNodeIfPresent?.localState = nil
+        }
+        (view as? any FineIdentityScopedView)?.discardIdentityState()
 
         for subview in view.subviews {
-            discardLocalState(in: subview)
+            discardIdentityState(in: subview, keepingLocalState: keepingLocalState)
         }
     }
 
