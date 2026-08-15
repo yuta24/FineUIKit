@@ -178,6 +178,49 @@ struct FineUpdateReasonTests {
         _ = window
     }
 
+    /// A node recovering for itself already knows why it is running, so the
+    /// reason handed to the recovery is spare — and a spare reason is taken by
+    /// the first child the node goes on to render, which is there because its
+    /// parent ran and nothing else.
+    @Test func aNodeRecoveringForItselfDoesNotPassItsReasonToItsChildren() async throws {
+        let model = ReasonState()
+        let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
+        let window = UIWindow(frame: container.frame)
+        window.addSubview(container)
+        window.isHidden = false
+
+        let ui = FineUI(state: model) { model in
+            FineList([ReasonRow(id: 1)]) { _ in
+                FineStack.vertical {
+                    // Read while the stack's builder runs, so the stack's own
+                    // node is the scope that goes stale — not the cell host's.
+                    let title = model.title
+                    FineLabel(text: title)
+                }
+            }
+        }
+        ui.build(to: container)
+        window.layoutIfNeeded()
+        await waitTicks()
+
+        ui.suspend()
+        model.title = "B"
+        await waitTicks()
+
+        ui.resume()
+        await waitUntil {
+            window.layoutIfNeeded()
+            return self.firstLabel(in: container)?.text == "B"
+        }
+
+        let labelView = try #require(firstLabel(in: container))
+        let stack = try #require(labelView.superview)
+
+        #expect(stack.fineNode.lastUpdateReason == .observation)
+        #expect(labelView.fineNode.lastUpdateReason == .parent)
+        _ = window
+    }
+
     /// A reason nobody claims must not be left lying around for the next render
     /// to pick up. A tree whose container has gone returns before it reaches a
     /// node, which is the case that leaves one behind.
@@ -207,11 +250,15 @@ struct FineUpdateReasonTests {
         #expect(fresh.fineNode.lastUpdateReason == .initial)
     }
 
+    /// That a cost was recorded at all, which is the claim. Asking for a
+    /// positive one would be asking the clock to tick during a `UILabel`
+    /// update, and a render fast enough to fit inside its resolution is a
+    /// render working correctly.
     @Test func everyRenderRecordsWhatItCost() throws {
         let view = FineRenderer.render(FineLabel(text: "A"))
 
         let duration = try #require(view.fineNode.lastUpdateDuration)
-        #expect(duration > .zero)
+        #expect(duration >= .zero)
     }
 
     @Test func theDebugDescriptionCarriesTheReason() throws {
