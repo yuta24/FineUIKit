@@ -195,6 +195,7 @@ final class FineUI {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
+                FineDiagnostics.setPendingReason(.injection)
                 self?.render()
                 self?.onInjectionReload?()
 
@@ -241,6 +242,7 @@ final class FineUI {
                       self.renderGate.allowsObservedWork()
                 else { return }
 
+                FineDiagnostics.setPendingReason(.observation)
                 self.render()
             }
         }

@@ -40,11 +40,14 @@ public enum FineRenderer {
         let key = node._key
 
         if let existing, reuses(existing, for: node, signature: signature, key: key) {
-            node._update(existing, context: context)
+            existing.fineNode.pendingUpdateReason = FineDiagnostics.takePendingReason() ?? .parent
+            let (_, duration) = FineDiagnostics.timing {
+                node._update(existing, context: context)
+            }
             existing.fineModifierSignature = signature
             existing.fineKey = key
             existing.fineNode.noteRender(of: node)
-            FineDiagnostics.recordRender(of: existing, as: .updated)
+            FineDiagnostics.recordRender(of: existing, as: .updated, took: duration)
             return existing
         }
 
@@ -52,11 +55,15 @@ public enum FineRenderer {
         // Before the update, so the counters the render is about to add to are
         // the ones the replaced view accumulated.
         FineDiagnostics.carryCounters(from: existing, to: view)
-        node._update(view, context: context)
+        view.fineNode.pendingUpdateReason = FineDiagnostics.takePendingReason()
+            ?? (existing == nil ? .initial : .parent)
+        let (_, duration) = FineDiagnostics.timing {
+            node._update(view, context: context)
+        }
         view.fineModifierSignature = signature
         view.fineKey = key
         view.fineNode.noteRender(of: node)
-        FineDiagnostics.recordRender(of: view, as: existing == nil ? .created : .rebuilt)
+        FineDiagnostics.recordRender(of: view, as: existing == nil ? .created : .rebuilt, took: duration)
         return view
     }
 

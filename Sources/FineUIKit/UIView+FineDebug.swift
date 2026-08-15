@@ -37,6 +37,19 @@ extension UIView {
         if node.rebuildCount > 0 {
             parts.append("rebuilds \(node.rebuildCount)")
         }
+        // The two questions the counters raise and cannot answer: who asked for
+        // the last render, and what did it cost.
+        //
+        // The cost is marked as inclusive because it is: a node's update runs
+        // its children's, so a container's figure covers its subtree. Without
+        // the word, the numbers down a branch look like they ought to add up to
+        // the one above them.
+        if let reason = node.lastUpdateReason {
+            parts.append("because \(reason.message)")
+        }
+        if let duration = node.lastUpdateDuration {
+            parts.append("\(fineFormatted(duration)) incl. subtree")
+        }
         if let key = node.key {
             parts.append("key \(key.base)")
         }

@@ -21,6 +21,33 @@ FineUIKit rebuilt UILabel for FineLabel: modifier composition changed ("composit
 
 ---
 
+## なぜこのビューが更新されたのか
+
+各ビューには**最後のレンダーの理由**と**所要時間**も記録されます。回数と同じく常時有効です。
+
+| 理由 | 意味 |
+|---|---|
+| `because it is new here` | その位置での最初のレンダー |
+| `because its parent re-rendered` | 上のスコープが再レンダーして、その通り道になった |
+| `because a value it read changed` | このノード(またはホストするセル)が読んだ値が変わった |
+| `because code was injected` | コード注入で実装が差し替わった |
+
+作り直しの理由(`rebuilds`)が「**ビューがどうなったか**」を答えるのに対し、こちらは「**誰が頼んだか**」を答えます。両方揃うと「ラベルがキーストロークのたびに作り直されている」が探索ではなく一文になります。
+
+```text
+FineStack → UIStackView  renders 1  because it is new here            330.17 µs incl. subtree
+  FineLabel → UILabel    renders 2  because a value it read changed    80.67 µs incl. subtree
+  FineLabel → UILabel    renders 1  because it is new here              6.46 µs incl. subtree
+```
+
+`renders 2` かつ `a value it read changed` なのが片方のラベルだけで、兄弟も親のスタックも `renders 1` のまま。**ノード単位で更新が閉じている**ことがそのまま読めます。
+
+**時間は子孫を含みます**(`incl. subtree`)。あるノードの更新は子の更新をその中で走らせるため、コンテナの数字はサブツリー全体の費用です。枝を下って足し合わせても上の数字にはなりません。
+
+> ⚠️ **どの値が変わったかは分かりません。** `withObservationTracking` は「読んだ何かが変わった」ことだけを報告し、変更されたプロパティを渡しません。`a value it read changed` がランタイムに言える限界で、`movie.title が変わった`のような特定はできません。どの値かを絞りたいときは、読み取りを別のノードへ切り分ける(`FineLabel(text:)` の autoclosure に通す)のが実用的な方法です。
+
+---
+
 ## レンダリング回数
 
 各ビューには「その位置で何回レンダリングされたか(`renders`)」「そのうち何回ビューを作り直したか(`rebuilds`)」が常に記録されます。フラグ不要・常時有効で、コストは整数のインクリメント2回です。作り直しの際はカウンタが新しいビューへ引き継がれるため、数字はビュー個体ではなく**ツリー上の位置**を表します。
@@ -32,8 +59,8 @@ FineDiagnostics.logsRenders = true  // または FINEUIKIT_LOG_RENDERS=1
 ```
 
 ```text
-FineUIKit created UILabel for FineLabel (render #1, 0 rebuilt)
-FineUIKit rebuilt UILabel for FineLabel (render #2, 1 rebuilt)
+FineUIKit created UILabel for FineLabel because it is new here (render #1, 0 rebuilt, 6.46 µs)
+FineUIKit updated UILabel for FineLabel because a value it read changed (render #2, 0 rebuilt, 80.67 µs)
 ```
 
 名乗るのは**ビューを作ったコンポーネント**です。`.backgroundColor()` や `.key()` は content のビューにそのまま描画する(自前のビューを作らない)ため、`FineStyled` / `FineKeyed` ではなく `FineLabel` と表示されます。適用されたモディファイア自体は署名の方に出ます。

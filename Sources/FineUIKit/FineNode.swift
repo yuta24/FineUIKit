@@ -48,6 +48,21 @@ final class FineNode {
     /// node-local re-render finds it empty and counts as an update.
     var pendingRenderKind: FineDiagnostics.RenderKind?
 
+    /// Why this node last rendered, and how long writing the description into
+    /// the view took.
+    ///
+    /// Kept for the question a diff-based runtime is worst at answering from
+    /// the code alone: *this view is being written to — who asked, and what is
+    /// it costing?* One enum and one duration per node, written once per
+    /// render.
+    var lastUpdateReason: FineDiagnostics.UpdateReason?
+    var lastUpdateDuration: Duration?
+
+    /// Set by the scope that asked for the render, and taken by the render
+    /// that answers it. Empty means the node is being rendered because
+    /// something above it was.
+    var pendingUpdateReason: FineDiagnostics.UpdateReason?
+
     /// The component that last rendered this view, or `nil` for a view
     /// FineUIKit does not manage.
     var primitiveName: String {
@@ -58,6 +73,12 @@ final class FineNode {
     func takePendingRenderKind() -> FineDiagnostics.RenderKind? {
         defer { pendingRenderKind = nil }
         return pendingRenderKind
+    }
+
+    /// Reads and clears the reason recorded for the render now finishing.
+    func takePendingUpdateReason() -> FineDiagnostics.UpdateReason? {
+        defer { pendingUpdateReason = nil }
+        return pendingUpdateReason
     }
 
     /// Records which component makes this view, looking through modifiers that

@@ -200,6 +200,7 @@ final class FineNodeHost {
                         return
                     }
 
+                    FineDiagnostics.setPendingReason(.observation)
                     self.renderTracked()
                     self.onObservedRerender?()
                 }
