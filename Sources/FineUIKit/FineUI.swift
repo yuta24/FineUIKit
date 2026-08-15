@@ -156,7 +156,12 @@ final class FineUI {
                   self.renderGate.allowsObservedWork()
             else { return }
 
-            self.render()
+            // A trait the description branches on changed, which the tree
+            // learns about the same way it learns about an observable: it read
+            // the trait, and the trait is different now.
+            FineDiagnostics.rendering(because: .observation) {
+                self.render()
+            }
         }
     }
 
@@ -195,8 +200,9 @@ final class FineUI {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                FineDiagnostics.setPendingReason(.injection)
-                self?.render()
+                FineDiagnostics.rendering(because: .injection) {
+                    self?.render()
+                }
                 self?.onInjectionReload?()
 
                 if FineDiagnostics.showsInjectionToast {
@@ -242,8 +248,9 @@ final class FineUI {
                       self.renderGate.allowsObservedWork()
                 else { return }
 
-                FineDiagnostics.setPendingReason(.observation)
-                self.render()
+                FineDiagnostics.rendering(because: .observation) {
+                    self.render()
+                }
             }
         }
 

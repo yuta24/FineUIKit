@@ -70,7 +70,13 @@ final class FineRenderGate {
         // in on the way back.
         FineTransactionContext.$current.withValue(.disabled) {
             if flushes {
-                onFlush?()
+                // What is being caught up on is a change that was observed
+                // while nobody was looking, so that is what it is reported as.
+                // Left to the default the tree would say its parent
+                // re-rendered, and there is no parent above the root.
+                FineDiagnostics.rendering(because: .observation) {
+                    onFlush?()
+                }
             }
             for item in work {
                 item()

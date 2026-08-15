@@ -136,8 +136,8 @@ public enum FineDiagnostics {
         }
     }
 
-    /// The reason the render about to start was asked for, set by whichever
-    /// scope did the asking and taken by the first node it reaches.
+    /// The reason the render in progress was asked for, taken by the first node
+    /// it reaches.
     ///
     /// A static rather than something carried through `FineRenderContext`,
     /// because it describes one pass rather than a position in the tree, and
@@ -145,10 +145,18 @@ public enum FineDiagnostics {
     /// descendant — where the truthful answer is `parent`.
     private static var pendingReason: UpdateReason?
 
-    /// Records why the next node to render is rendering. Only the first node
-    /// reached takes it; everything below is there because of its parent.
-    static func setPendingReason(_ reason: UpdateReason) {
+    /// Runs `render` with a reason for the first node it reaches to claim.
+    ///
+    /// Scoped rather than set-and-forget, because a render is allowed not to
+    /// reach a node at all — a tree whose container has gone returns before it
+    /// touches one. A reason left behind would be picked up by whatever
+    /// rendered next, labelling an unrelated node with the story of a render
+    /// that never happened.
+    static func rendering<Result>(because reason: UpdateReason, _ render: () -> Result) -> Result {
+        let previous = pendingReason
         pendingReason = reason
+        defer { pendingReason = previous }
+        return render()
     }
 
     static func takePendingReason() -> UpdateReason? {

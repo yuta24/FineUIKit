@@ -35,14 +35,14 @@ FineUIKit rebuilt UILabel for FineLabel: modifier composition changed ("composit
 作り直しの理由(`rebuilds`)が「**ビューがどうなったか**」を答えるのに対し、こちらは「**誰が頼んだか**」を答えます。両方揃うと「ラベルがキーストロークのたびに作り直されている」が探索ではなく一文になります。
 
 ```text
-FineStack → UIStackView  renders 1  because it is new here            330.17 µs incl. subtree
-  FineLabel → UILabel    renders 2  because a value it read changed    80.67 µs incl. subtree
-  FineLabel → UILabel    renders 1  because it is new here              6.46 µs incl. subtree
+FineStack → UIStackView  renders 1  because it is new here            330.17 µs
+  FineLabel → UILabel    renders 2  because a value it read changed    80.67 µs
+  FineLabel → UILabel    renders 1  because it is new here              6.46 µs
 ```
 
 `renders 2` かつ `a value it read changed` なのが片方のラベルだけで、兄弟も親のスタックも `renders 1` のまま。**ノード単位で更新が閉じている**ことがそのまま読めます。
 
-**時間は子孫を含みます**(`incl. subtree`)。あるノードの更新は子の更新をその中で走らせるため、コンテナの数字はサブツリー全体の費用です。枝を下って足し合わせても上の数字にはなりません。
+**時間はそのノード自身の更新のぶんで、子孫は含みません。** コンテナの更新は子をスケジューラへ渡して戻り、子はそれぞれの順番が来たときに計測されます。したがって枝を下った数字は入れ子ではなく**独立**していて、足し合わせて上の数字になるものではありません(コンテナの数字には、子の**ビュー生成**は含まれます — それは親の更新中に起きるので)。
 
 > ⚠️ **どの値が変わったかは分かりません。** `withObservationTracking` は「読んだ何かが変わった」ことだけを報告し、変更されたプロパティを渡しません。`a value it read changed` がランタイムに言える限界で、`movie.title が変わった`のような特定はできません。どの値かを絞りたいときは、読み取りを別のノードへ切り分ける(`FineLabel(text:)` の autoclosure に通す)のが実用的な方法です。
 

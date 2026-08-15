@@ -146,10 +146,10 @@ final class FineNodeScheduler {
             id: signposter.makeSignpostID(),
             "\(view.fineNodeIfPresent?.primitiveName ?? "unknown", privacy: .public)"
         )
-        // Measured around the update alone, not around registering the scope:
-        // the number is meant to answer "what does writing this node cost",
-        // and a descendant's update runs inside this one, so a container's
-        // figure includes its subtree.
+        // What this node's own update costs. A container's update reconciles
+        // its children and hands them here, so creating their views is counted
+        // against the container — but their updates are separate jobs, run
+        // after this one returns, and are timed on their own.
         let (_, duration) = FineDiagnostics.timing {
             withObservationTracking {
                 job.primitive._update(view, context: job.context)

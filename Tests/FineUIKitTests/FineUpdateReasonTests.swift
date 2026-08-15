@@ -104,6 +104,63 @@ struct FineUpdateReasonTests {
         #expect(label.fineNode.lastUpdateReason == .parent)
     }
 
+    /// A catch-up render answers for a change that happened while nobody was
+    /// looking, and says so. Left to the default the root would claim its parent
+    /// re-rendered, and there is nothing above the root.
+    @Test func aCatchUpRenderNamesTheObservationItIsCatchingUpOn() async throws {
+        let state = ReasonState()
+        let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
+        let ui = FineUI(state: state) { state in
+            let value = state.bodyValue
+            return FineStack.vertical {
+                FineLabel(text: "\(value)")
+            }
+        }
+        ui.build(to: container)
+        container.layoutIfNeeded()
+        await waitTicks()
+
+        let stack = try #require(container.subviews.first)
+
+        ui.suspend()
+        state.bodyValue += 1
+        await waitTicks()
+
+        ui.resume()
+        await waitUntil { self.label(in: container)?.text == "1" }
+
+        #expect(stack.fineNode.lastUpdateReason == .observation)
+    }
+
+    /// A reason nobody claims must not be left lying around for the next render
+    /// to pick up. A tree whose container has gone returns before it reaches a
+    /// node, which is the case that leaves one behind.
+    @Test func aReasonNoNodeClaimsDoesNotLeakIntoTheNextRender() async throws {
+        let state = ReasonState()
+        var container: UIView? = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
+        let ui = FineUI(state: state) { state in
+            // Read in the root body rather than through a component's
+            // autoclosure: this has to be the root scope that re-renders, since
+            // a node-local update never goes near the reason being tested.
+            let value = state.bodyValue
+            return FineLabel(text: "\(value)")
+        }
+        ui.build(to: container!)
+        container?.layoutIfNeeded()
+        await waitTicks()
+
+        // The container goes, so the next render returns without touching a
+        // node — and whatever reason it was given goes nowhere.
+        container = nil
+        state.bodyValue += 1
+        await waitTicks()
+
+        // An unrelated render must still describe itself truthfully.
+        let fresh = FineRenderer.render(FineLabel(text: "fresh"))
+
+        #expect(fresh.fineNode.lastUpdateReason == .initial)
+    }
+
     @Test func everyRenderRecordsWhatItCost() throws {
         let view = FineRenderer.render(FineLabel(text: "A"))
 
