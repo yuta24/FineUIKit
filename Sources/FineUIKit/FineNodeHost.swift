@@ -116,10 +116,12 @@ final class FineNodeHost {
     ///   the state is only given up once something else is actually taking the
     ///   subtree over.
     private static func discardIdentityState(in view: UIView, keepingLocalState: Bool) {
-        if !keepingLocalState {
+        if keepingLocalState {
+            (view as? any FineIdentityScopedView)?.fineStopIdentityWork()
+        } else {
             view.fineNodeIfPresent?.localState = nil
+            (view as? any FineIdentityScopedView)?.fineDiscardIdentityState()
         }
-        (view as? any FineIdentityScopedView)?.discardIdentityState()
 
         for subview in view.subviews {
             discardIdentityState(in: subview, keepingLocalState: keepingLocalState)

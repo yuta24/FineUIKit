@@ -11,7 +11,7 @@ import UIKit
 /// none), and applies a deferred focus request when it joins a window — renders
 /// can run before the tree is attached, where `becomeFirstResponder` is a no-op.
 @MainActor
-final class FineTextViewView: UITextView, UITextViewDelegate {
+final class FineTextViewView: UITextView, UITextViewDelegate, FineIdentityScopedView {
     var onTextChange: (@MainActor (String) -> Void)?
     var onFocusChange: (@MainActor (Bool) -> Void)?
     var pendingFocus: (@MainActor (UITextView) -> Void)?
@@ -138,6 +138,17 @@ final class FineTextViewView: UITextView, UITextViewDelegate {
         guard window != nil, let pendingFocus else { return }
         self.pendingFocus = nil
         pendingFocus(self)
+    }
+
+    /// Gives up the keyboard, for the same reason `FineTextFieldView` does: it
+    /// was being held for a row that is over, and a recycled cell keeps its
+    /// views, so nothing else would take it back.
+    func fineStopIdentityWork() {
+        pendingFocus = nil
+
+        if isFirstResponder {
+            resignFirstResponder()
+        }
     }
 
     func textViewDidChange(_ textView: UITextView) {

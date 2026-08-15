@@ -8,9 +8,22 @@
 import UIKit
 
 @MainActor
-final class FineScrollHostView: UIScrollView {
+final class FineScrollHostView: UIScrollView, FineIdentityScopedView {
     var hosted: UIView?
     var hostConstraints: [NSLayoutConstraint] = []
+
+    /// Goes back to the start, because how far this was scrolled described the
+    /// row that is gone. A shelf the user pushed halfway across would otherwise
+    /// come back halfway across under a different row.
+    ///
+    /// Only when the host is showing something else, not when it is merely
+    /// parked: a recycled cell usually gets its own row back, and losing the
+    /// place then would be the bug rather than the fix.
+    func fineDiscardIdentityState() {
+        guard contentOffset != .zero else { return }
+
+        setContentOffset(.zero, animated: false)
+    }
 }
 
 @MainActor
