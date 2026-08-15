@@ -10,6 +10,12 @@ private final class ReasonState {
     var bodyValue = 0
 }
 
+/// Equatable and unchanged, so a catch-up render does not reconfigure the row —
+/// which is the case that leaves the cell to recover for itself.
+private struct ReasonRow: Identifiable, Equatable {
+    let id: Int
+}
+
 /// Why a node rendered, which is the question a diff-based runtime is worst at
 /// answering from the code alone.
 @MainActor
@@ -130,6 +136,46 @@ struct FineUpdateReasonTests {
         await waitUntil { self.firstLabel(in: container)?.text == "1" }
 
         #expect(stack.fineNode.lastUpdateReason == .observation)
+    }
+
+    /// A cell that recovers for itself is answering for an observation too.
+    ///
+    /// Its scope is not on the catch-up render's walk — an unchanged row is not
+    /// reconfigured — so it hands in its own recovery, which `resume()` runs
+    /// after the catch-up. That is a second render, and it needs a reason of its
+    /// own: the one the catch-up was given has already been claimed.
+    @Test func aCellRecoveringForItselfNamesTheObservation() async throws {
+        let model = ReasonState()
+        let container = UIView(frame: .init(x: 0, y: 0, width: 320, height: 480))
+        let window = UIWindow(frame: container.frame)
+        window.addSubview(container)
+        window.isHidden = false
+
+        let ui = FineUI(state: model) { model in
+            FineList([ReasonRow(id: 1)]) { _ in
+                // Read while building the row, so the cell's own scope is what
+                // goes stale — the node-local path recovers separately.
+                let title = model.title
+                return FineLabel(text: title)
+            }
+        }
+        ui.build(to: container)
+        window.layoutIfNeeded()
+        await waitTicks()
+
+        ui.suspend()
+        model.title = "B"
+        await waitTicks()
+
+        ui.resume()
+        await waitUntil {
+            window.layoutIfNeeded()
+            return self.firstLabel(in: container)?.text == "B"
+        }
+
+        let labelView = try #require(firstLabel(in: container))
+        #expect(labelView.fineNode.lastUpdateReason == .observation)
+        _ = window
     }
 
     /// A reason nobody claims must not be left lying around for the next render

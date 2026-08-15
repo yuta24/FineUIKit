@@ -68,18 +68,25 @@ final class FineRenderGate {
         // would be visible: a list applies its snapshot with animation whenever
         // no transaction says otherwise, so rows added while hidden would slide
         // in on the way back.
+        // Everything resumed here answers for a change that was observed while
+        // nobody was looking — the catch-up render for the tree, and the
+        // recoveries scopes handed in for themselves. Left to the default they
+        // would each report that their parent re-rendered, which for the root
+        // and for a cell recovering on its own is not true of anything.
+        //
+        // Each separately, not all of them together: the reason is claimed by
+        // the first node a render reaches, so one scope around the lot would be
+        // spent on the catch-up and leave nothing for the recoveries after it.
         FineTransactionContext.$current.withValue(.disabled) {
             if flushes {
-                // What is being caught up on is a change that was observed
-                // while nobody was looking, so that is what it is reported as.
-                // Left to the default the tree would say its parent
-                // re-rendered, and there is no parent above the root.
                 FineDiagnostics.rendering(because: .observation) {
                     onFlush?()
                 }
             }
             for item in work {
-                item()
+                FineDiagnostics.rendering(because: .observation) {
+                    item()
+                }
             }
         }
     }
