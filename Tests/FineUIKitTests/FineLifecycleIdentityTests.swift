@@ -125,7 +125,12 @@ struct FineLifecycleIdentityTests {
 
         cell.render(identity: AnyHashable(2), environment: environment, renderGate: nil) { row(2) }
         window.layoutIfNeeded()
+        // Both are waited for, and the cancellation separately: it is recorded
+        // by the cancelled task's own continuation, which needs a turn of its
+        // own after `Task.sleep` throws. Asserting on the strength of "start 2"
+        // alone reads whichever order the two happened to land in.
         await waitUntil { log.entries.contains("start 2") }
+        await waitUntil { log.entries.contains("cancelled 1") }
 
         #expect(log.entries.contains("cancelled 1"))
         #expect(log.entries.contains("start 2"))
