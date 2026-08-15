@@ -96,7 +96,16 @@ public struct FineStack: FinePrimitiveRenderable {
             let primitive = FineRenderer.primitive(for: node)
             if let key = primitive._key {
                 guard seenKeys.insert(key).inserted else {
-                    assertionFailure("Duplicate FineUIKit key: \(key)")
+                    // A structural key can repeat when two independently built
+                    // child arrays are concatenated in one builder statement:
+                    // each numbered its slots from its own start, and the
+                    // builder cannot see that they were joined. Those children
+                    // still render, they just cannot be matched by identity —
+                    // not something the caller can act on, so it is not
+                    // asserted. A key the caller wrote twice is a mistake.
+                    if !(key.base is FineStructuralKey) {
+                        assertionFailure("Duplicate FineUIKit key: \(key)")
+                    }
                     return context.render(resolved: primitive, reusing: nil)
                 }
 

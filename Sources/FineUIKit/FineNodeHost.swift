@@ -23,6 +23,10 @@ final class FineNodeHost {
     private var environment: FineEnvironmentStorage?
     private var renderGate: FineRenderGate?
     private var generation = 0
+    /// What the hosted view is currently showing — a row's element, a section's
+    /// header. Compared on every render so a recycled host can tell "the same
+    /// thing again" from "something else in the same cell".
+    private var identity: AnyHashable?
 
     private weak var owner: UIView?
     private let attach: @MainActor (UIView) -> Void
@@ -48,19 +52,47 @@ final class FineNodeHost {
     /// host that is returned without a render shows no stale content.
     func reset() {
         invalidate()
+        identity = nil
         hostedView?.removeFromSuperview()
         hostedView = nil
     }
 
+    /// - Parameter identity: What the hosted subtree is about to show. A
+    ///   recycled host renders a different row into the views the previous one
+    ///   left behind, which is the point of cell reuse — but identity-scoped
+    ///   state must not come along for the ride, so a change here discards it.
+    ///   `nil` means "no identity to compare", and never discards.
     func render(
+        identity: AnyHashable?,
         environment: FineEnvironmentStorage,
         renderGate: FineRenderGate?,
         _ makeNode: @escaping @MainActor () -> any Renderable
     ) {
+        if let hostedView, let identity, self.identity != identity {
+            Self.discardLocalState(in: hostedView)
+        }
+
+        self.identity = identity
         self.makeNode = makeNode
         self.environment = environment
         self.renderGate = renderGate
         renderTracked()
+    }
+
+    /// Drops the state nodes own on behalf of an identity — `FineState` — from
+    /// a subtree that is about to show something else.
+    ///
+    /// The views themselves stay: reusing them is what makes a cell cheap, and
+    /// reconciliation writes the new description over them. What cannot stay is
+    /// state keyed to the thing the cell used to show, which would otherwise
+    /// reappear under the next row: a row expanded by the user staying expanded
+    /// on whichever row happens to land in that cell next.
+    private static func discardLocalState(in view: UIView) {
+        view.fineNodeIfPresent?.localState = nil
+
+        for subview in view.subviews {
+            discardLocalState(in: subview)
+        }
     }
 
     private func renderTracked() {

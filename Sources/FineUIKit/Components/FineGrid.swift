@@ -451,6 +451,7 @@ extension FineGrid {
                 else { return cell }
 
                 cell.render(
+                    identity: AnyHashable(id),
                     environment: coordinator.environmentStorage,
                     renderGate: coordinator.renderGate
                 ) { content(element) }
@@ -539,7 +540,12 @@ extension FineGrid {
         /// that misses leaves the last content in place instead of blanking it.
         func install(id: AnyHashable, kind: String, in view: FineGridHostSupplementaryView) {
             let installed = supplementaryNode(forSection: id, kind: kind)
-            view.render(environment: environmentStorage, renderGate: renderGate) { [weak self] in
+            let identity = FineSupplementaryIdentity(section: id, kind: kind)
+            view.render(
+                identity: AnyHashable(identity),
+                environment: environmentStorage,
+                renderGate: renderGate
+            ) { [weak self] in
                 self?.supplementaryNode(forSection: id, kind: kind) ?? installed ?? FineSpacer()
             }
         }
@@ -652,11 +658,12 @@ final class FineGridHostCell: UICollectionViewCell {
     /// observed update changes the item's fitting height, the enclosing
     /// collection view coalesces a layout invalidation.
     func render(
+        identity: AnyHashable?,
         environment: FineEnvironmentStorage,
         renderGate: FineRenderGate?,
         _ makeNode: @escaping @MainActor () -> any Renderable
     ) {
-        ensureHost().render(environment: environment, renderGate: renderGate, makeNode)
+        ensureHost().render(identity: identity, environment: environment, renderGate: renderGate, makeNode)
     }
 
     /// Re-measures the grid when this view's content no longer fits its
@@ -709,11 +716,12 @@ final class FineGridHostSupplementaryView: UICollectionReusableView {
     /// same way cells do: `@Observable` values read while rendering update
     /// this view in place, and height changes coalesce a layout invalidation.
     func render(
+        identity: AnyHashable?,
         environment: FineEnvironmentStorage,
         renderGate: FineRenderGate?,
         _ makeNode: @escaping @MainActor () -> any Renderable
     ) {
-        ensureHost().render(environment: environment, renderGate: renderGate, makeNode)
+        ensureHost().render(identity: identity, environment: environment, renderGate: renderGate, makeNode)
     }
 
     /// Re-measures the grid when this view's content no longer fits its
