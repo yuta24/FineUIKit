@@ -73,19 +73,24 @@ extension UIView {
 /// Chained `.onTap` calls merge into one wrapper and run in order.
 @MainActor
 struct FineTapModified: FinePrimitiveRenderable {
-    let content: any Renderable
+    let content: FineResolvedRenderable
     var actions: [@MainActor () -> Void]
 
+    init(content: any Renderable, actions: [@MainActor () -> Void]) {
+        self.content = FineResolvedRenderable(content)
+        self.actions = actions
+    }
+
     func _makeView() -> UIView {
-        FineRenderer.primitive(for: content)._makeView()
+        content.primitive._makeView()
     }
 
     func _canUpdate(_ view: UIView) -> Bool {
-        FineRenderer.primitive(for: content)._canUpdate(view)
+        content.primitive._canUpdate(view)
     }
 
     func _update(_ view: UIView, context: FineRenderContext) {
-        FineRenderer.primitive(for: content)._update(view, context: context)
+        content.primitive._update(view, context: context)
 
         if actions.isEmpty {
             view.fineSetTapHandler(nil)
@@ -100,15 +105,15 @@ struct FineTapModified: FinePrimitiveRenderable {
     }
 
     var _modifierSignature: String {
-        FineRenderer.primitive(for: content)._modifierSignature + "|onTap"
+        content.primitive._modifierSignature + "|onTap"
     }
 
     var _key: AnyHashable? {
-        FineRenderer.primitive(for: content)._key
+        content.primitive._key
     }
 
     var _viewProvider: any FinePrimitiveRenderable {
-        FineRenderer.primitive(for: content)._viewProvider
+        content.primitive._viewProvider
     }
 }
 

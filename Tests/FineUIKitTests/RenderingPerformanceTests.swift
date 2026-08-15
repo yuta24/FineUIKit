@@ -148,6 +148,52 @@ final class RenderingPerformanceTests: XCTestCase {
         }
     }
 
+    /// Scrolls a list of rows that each hold several nodes, so the measurement
+    /// is dominated by configuring cells rather than by applying a snapshot.
+    ///
+    /// This is the cost side of giving cells their own `FineNodeScheduler`:
+    /// per-node observation means one tracking scope and one queued job per
+    /// node in a row instead of one per row, and every dequeued cell pays it.
+    func testHeavyCellScrollingFineUIKit() throws {
+        let window = makeWindow()
+        let models = Self.rowModels(count: 300)
+        let view = FineRenderer.render(Self.heavyList(models: models))
+        install(view, in: window)
+        window.layoutIfNeeded()
+
+        let tableView = try XCTUnwrap(Self.firstTableView(in: view))
+        var offset: CGFloat = 0
+
+        measureRendering {
+            for _ in 0..<20 {
+                let limit = max(0, tableView.contentSize.height - tableView.bounds.height)
+                offset = offset + 600 > limit ? 0 : offset + 600
+                tableView.setContentOffset(.init(x: 0, y: offset), animated: false)
+                tableView.layoutIfNeeded()
+            }
+        }
+    }
+
+    /// The same rows, reconfigured in place rather than scrolled.
+    ///
+    /// The elements are a reference type, which the list conservatively treats
+    /// as always changed, so every render re-runs the row content for every
+    /// visible row — synchronously, through the cell provider. That is the
+    /// other path a cell's subtree is built on, and it pays the same per-node
+    /// cost.
+    func testHeavyCellReconfigurationFineUIKit() {
+        let window = makeWindow()
+        let models = Self.rowModels(count: 300)
+        let view = FineRenderer.render(Self.heavyList(models: models))
+        install(view, in: window)
+        window.layoutIfNeeded()
+
+        measureRendering {
+            _ = FineRenderer.render(Self.heavyList(models: models), reusing: view)
+            window.layoutIfNeeded()
+        }
+    }
+
     private func measureRendering(_ block: @escaping @MainActor () -> Void) {
         let options = XCTMeasureOptions()
         measure(metrics: [XCTClockMetric(), XCTCPUMetric(), XCTMemoryMetric()], options: options) {
@@ -207,6 +253,61 @@ final class RenderingPerformanceTests: XCTestCase {
         (0..<count).map { offset in
             let id = startID + offset
             return .init(id: id, title: "Row \(id)")
+        }
+    }
+
+    private static func rowModels(count: Int) -> [PerformanceRowModel] {
+        (0..<count).map { PerformanceRowModel(id: $0) }
+    }
+
+    private static func heavyList(models: [PerformanceRowModel]) -> some Renderable {
+        FineList(models) { model in
+            PerformanceHeavyRow(model: model)
+        }
+    }
+
+    private static func firstTableView(in view: UIView) -> UITableView? {
+        if let tableView = view as? UITableView {
+            return tableView
+        }
+
+        for subview in view.subviews {
+            if let tableView = firstTableView(in: subview) {
+                return tableView
+            }
+        }
+
+        return nil
+    }
+}
+
+@MainActor
+@Observable
+private final class PerformanceRowModel: Identifiable {
+    let id: Int
+    var title: String
+
+    init(id: Int) {
+        self.id = id
+        self.title = "Row \(id)"
+    }
+}
+
+/// A row shaped like a feed card: one node reads observable state, the rest do
+/// not. What a cell-local change costs depends on how much of this the runtime
+/// has to write again.
+@MainActor
+private struct PerformanceHeavyRow: Renderable {
+    static let coldNodeCount = 7
+
+    let model: PerformanceRowModel
+
+    var body: any Renderable {
+        FineStack.vertical {
+            FineLabel(text: self.model.title)
+            for index in 0..<Self.coldNodeCount {
+                FineLabel(text: "Detail \(index)")
+            }
         }
     }
 }

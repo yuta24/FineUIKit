@@ -71,6 +71,13 @@ struct FineSupplementarySignature: Equatable {
     let hasFooter: Bool
 }
 
+/// What a recycled supplementary host is showing, so it can tell that it has
+/// been handed a different section's header rather than the same one again.
+struct FineSupplementaryIdentity: Hashable {
+    let section: AnyHashable
+    let kind: String
+}
+
 @MainActor
 public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Element.ID: Sendable {
     private let sections: [FineListSection<Element>]
@@ -387,6 +394,7 @@ extension FineList {
 
                 cell.selectionStyle = coordinator.selectionStyle
                 cell.render(
+                    identity: AnyHashable(id),
                     environment: coordinator.environmentStorage,
                     renderGate: coordinator.renderGate
                 ) { content(element) }
@@ -479,7 +487,12 @@ extension FineList {
         /// that misses leaves the last content in place instead of blanking it.
         private func install(id: AnyHashable, isHeader: Bool, in view: FineListHostHeaderFooterView) {
             let installed = supplementaryNode(forSection: id, isHeader: isHeader)
-            view.render(environment: environmentStorage, renderGate: renderGate) { [weak self] in
+            let identity = FineSupplementaryIdentity(section: id, kind: isHeader ? "header" : "footer")
+            view.render(
+                identity: AnyHashable(identity),
+                environment: environmentStorage,
+                renderGate: renderGate
+            ) { [weak self] in
                 self?.supplementaryNode(forSection: id, isHeader: isHeader) ?? installed ?? FineSpacer()
             }
         }
@@ -602,11 +615,12 @@ final class FineListHostCell: UITableViewCell {
     /// observed update changes the row's fitting height, the enclosing table
     /// view coalesces a row-height recalculation.
     func render(
+        identity: AnyHashable?,
         environment: FineEnvironmentStorage,
         renderGate: FineRenderGate?,
         _ makeNode: @escaping @MainActor () -> any Renderable
     ) {
-        ensureHost().render(environment: environment, renderGate: renderGate, makeNode)
+        ensureHost().render(identity: identity, environment: environment, renderGate: renderGate, makeNode)
     }
 
     private func ensureHost() -> FineNodeHost {
@@ -650,11 +664,12 @@ final class FineListHostHeaderFooterView: UITableViewHeaderFooterView {
     /// same way cells do: `@Observable` values read while rendering update
     /// this view in place, and height changes coalesce a table re-measure.
     func render(
+        identity: AnyHashable?,
         environment: FineEnvironmentStorage,
         renderGate: FineRenderGate?,
         _ makeNode: @escaping @MainActor () -> any Renderable
     ) {
-        ensureHost().render(environment: environment, renderGate: renderGate, makeNode)
+        ensureHost().render(identity: identity, environment: environment, renderGate: renderGate, makeNode)
     }
 
     /// Re-measures the table when this view's content no longer fits its

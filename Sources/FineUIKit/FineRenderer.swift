@@ -101,6 +101,23 @@ public enum FineRenderer {
         return true
     }
 
+    /// Asks a resolved description for its reuse identity, inside whatever
+    /// observation scope the caller is in.
+    ///
+    /// A wrapper resolves the description it wraps once (`FineResolvedRenderable`)
+    /// and the walk through `body` lands in the scope that asks first. Below the
+    /// root that scope is always a container's `_update`, which is tracked.
+    /// The root is the one place where the first question — the modifier
+    /// signature, asked by the scheduler on its way to enqueueing the update —
+    /// is asked outside every scope, so the root render asks it here instead,
+    /// from inside its own tracking. Without this, a root-level modifier over a
+    /// composite would resolve unobserved, and a value that composite's `body`
+    /// reads would update nothing.
+    static func prime(_ primitive: any FinePrimitiveRenderable) {
+        _ = primitive._modifierSignature
+        _ = primitive._key
+    }
+
     /// Resolves a description to the primitive that builds its view.
     ///
     /// Composite types passed through on the way are recorded in the result's

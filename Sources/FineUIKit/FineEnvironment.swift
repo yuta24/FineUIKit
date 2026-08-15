@@ -70,36 +70,37 @@ final class FineEnvironmentStorage {
 
 @MainActor
 struct FineEnvironmentWriter: FinePrimitiveRenderable {
-    let content: any Renderable
+    let content: FineResolvedRenderable
     let mutate: @MainActor (inout FineEnvironmentValues) -> Void
 
-    private var contentPrimitive: any FinePrimitiveRenderable {
-        FineRenderer.primitive(for: content)
+    init(content: any Renderable, mutate: @escaping @MainActor (inout FineEnvironmentValues) -> Void) {
+        self.content = FineResolvedRenderable(content)
+        self.mutate = mutate
     }
 
     func _makeView() -> UIView {
-        contentPrimitive._makeView()
+        content.primitive._makeView()
     }
 
     func _canUpdate(_ view: UIView) -> Bool {
-        contentPrimitive._canUpdate(view)
+        content.primitive._canUpdate(view)
     }
 
     func _update(_ view: UIView, context: FineRenderContext) {
         let childContext = context.withEnvironment { mutate(&$0) }
-        contentPrimitive._update(view, context: childContext)
+        content.primitive._update(view, context: childContext)
     }
 
     var _modifierSignature: String {
-        contentPrimitive._modifierSignature
+        content.primitive._modifierSignature
     }
 
     var _key: AnyHashable? {
-        contentPrimitive._key
+        content.primitive._key
     }
 
     var _viewProvider: any FinePrimitiveRenderable {
-        contentPrimitive._viewProvider
+        content.primitive._viewProvider
     }
 }
 

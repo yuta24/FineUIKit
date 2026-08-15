@@ -764,7 +764,11 @@ struct FineGridBehaviorTests {
 
     @Test func supplementaryPrepareForReuseClearsHostedContent() {
         let view = FineGridHostSupplementaryView(frame: .init(x: 0, y: 0, width: 100, height: 40))
-        view.render(environment: FineEnvironmentStorage(), renderGate: nil) { FineLabel(text: "X") }
+        view.render(
+            identity: AnyHashable("section"),
+            environment: FineEnvironmentStorage(),
+            renderGate: nil
+        ) { FineLabel(text: "X") }
 
         #expect(!view.subviews.isEmpty)
 

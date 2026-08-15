@@ -228,7 +228,12 @@ final class FineUI {
         // to no scope at all. Deeper in the tree the same walk already happens
         // inside a node's `_update`, so it is tracked there.
         let description = withObservationTracking {
-            FineRenderer.primitive(for: self.content.body())
+            let primitive = FineRenderer.primitive(for: self.content.body())
+            // The root description's own reuse identity is asked for here
+            // rather than by the scheduler, which reads it outside every
+            // scope. See `FineRenderer.prime(_:)`.
+            FineRenderer.prime(primitive)
+            return primitive
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self,

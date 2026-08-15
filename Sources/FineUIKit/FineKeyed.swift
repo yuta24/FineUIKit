@@ -10,22 +10,27 @@ import UIKit
 @MainActor
 struct FineKeyed: FinePrimitiveRenderable {
     let key: AnyHashable
-    let content: any Renderable
+    let content: FineResolvedRenderable
+
+    init(key: AnyHashable, content: any Renderable) {
+        self.key = key
+        self.content = FineResolvedRenderable(content)
+    }
 
     func _makeView() -> UIView {
-        FineRenderer.primitive(for: content)._makeView()
+        content.primitive._makeView()
     }
 
     func _canUpdate(_ view: UIView) -> Bool {
-        FineRenderer.primitive(for: content)._canUpdate(view)
+        content.primitive._canUpdate(view)
     }
 
     func _update(_ view: UIView, context: FineRenderContext) {
-        FineRenderer.primitive(for: content)._update(view, context: context)
+        content.primitive._update(view, context: context)
     }
 
     var _modifierSignature: String {
-        FineRenderer.primitive(for: content)._modifierSignature
+        content.primitive._modifierSignature
     }
 
     var _key: AnyHashable? {
@@ -33,7 +38,7 @@ struct FineKeyed: FinePrimitiveRenderable {
     }
 
     var _viewProvider: any FinePrimitiveRenderable {
-        FineRenderer.primitive(for: content)._viewProvider
+        content.primitive._viewProvider
     }
 }
 

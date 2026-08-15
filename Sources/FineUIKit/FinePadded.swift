@@ -18,8 +18,13 @@ final class FinePaddingView: UIView {
 
 @MainActor
 struct FinePadded: FinePrimitiveRenderable {
-    let content: any Renderable
+    let content: FineResolvedRenderable
     let insets: NSDirectionalEdgeInsets
+
+    init(content: any Renderable, insets: NSDirectionalEdgeInsets) {
+        self.content = FineResolvedRenderable(content)
+        self.insets = insets
+    }
 
     func _makeView() -> UIView {
         FinePaddingView(frame: .zero)
@@ -32,7 +37,7 @@ struct FinePadded: FinePrimitiveRenderable {
     func _update(_ view: UIView, context: FineRenderContext) {
         guard let paddingView = view as? FinePaddingView else { return }
 
-        let hosted = context.render(content, reusing: paddingView.hosted)
+        let hosted = context.render(resolved: content.primitive, reusing: paddingView.hosted)
 
         if hosted !== paddingView.hosted {
             NSLayoutConstraint.deactivate([
@@ -71,6 +76,6 @@ struct FinePadded: FinePrimitiveRenderable {
     }
 
     var _key: AnyHashable? {
-        FineRenderer.primitive(for: content)._key
+        content.primitive._key
     }
 }

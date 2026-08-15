@@ -292,13 +292,14 @@ flowchart TD
     Where -->|"root body 内で直接<br/>(例: 構造分岐の条件)"| Root["FineUI.render()<br/>body 全体を再評価 → 構造差分"]
     Where -->|"navigation() 内<br/>(例: タイトル / ボタンの enabled)"| Nav["FineObservedScope<br/>navigationItem だけ再適用"]
     Where -->|"あるノードの _update 内<br/>(例: FineLabel.text の autoclosure)"| Node["FineNodeScheduler<br/>そのノードだけ _update 再実行"]
-    Where -->|"List/Grid のセル content 内"| Cell["セルのローカル観測<br/>そのセルだけ再描画"]
+    Where -->|"List/Grid の行の記述を組み立てる間"| Cell["セルのローカル観測<br/>そのセルだけ再描画"]
+    Where -->|"セル内のあるノードの _update 内"| CellNode["セルの FineNodeScheduler<br/>そのノードだけ _update 再実行"]
 ```
 
 - **root**: `body()` の中で `state.flag` を直接読み、`if state.flag { A } else { B }` のように**構造**が変われば、`render()` が丸ごと走り差分適用される。
 - **navigation**: `FineNavigating.navigation()` は `FineObservedScope`(`FineObservedScope.swift`)という独立した観測スコープで実行される。タイトルやボタンの `enabled` の変化は `navigationItem` の更新だけで済み、ツリーには触らない。ここを root の body スコープに同居させると、タイトル1文字の変化が全画面の再差分を引き起こす。
 - **ノード**: `FineLabel(text: state.title)` は `text` が `@autoclosure`(`FineLabel.swift`)なので、`state.title` の読み取りはラベルの `_update` 内で起きる。→ ラベルノードだけ再更新。
-- **セル**: `FineList` / `FineGrid` のセルは独自の観測スコープで content を描画するため、行の内容変更はそのセルだけを更新する(後述)。
+- **セル**: `FineList` / `FineGrid` のセルは独自の観測スコープで行の記述を組み立てるため、その組み立て中に読んだ値の変化はそのセルだけを更新する。さらにセル内の各ノードも独立した観測スコープを持つので、`FineLabel(text:)` の autoclosure が読んだ値の変化はそのラベルだけを更新する(後述)。
 
 > **注意**: 粒度が最小になるのは、値が primitive の `@autoclosure` 引数を通る場合です。`.backgroundColor(state.isOn ? .red : .blue)` のように**モディファイアの引数として先に評価される**読み取りは、記述を構築しているスコープ(=囲むコンテナのノード、または root)に登録されるため、そのコンテナの子が再差分されます。
 
@@ -346,7 +347,20 @@ let newViews = content().map { node in
 
 `.key(_:)` / `FineForEach` は `FineKeyed`(`FineKeyed.swift`)という透過ラッパーを生成し、`_key` を返します。key を与えると、挿入・並び替え・削除で**同じ論理項目のビューが同一インスタンスのまま移動**するため、フォーカスやスクロール位置、そして `FineState` のローカル状態が保持されます。
 
-`if/else` と `for-in`(`FineBuilder`)は位置ベースで照合されます。安定 identity が要る子には key を付けます。
+### 構造スロット(`FineStructural`)
+
+位置ベースの照合には落とし穴があります。`if` が子を生まなくなると、**後ろの兄弟が 1 つ繰り上がる**のです。繰り上がった兄弟は条件分岐が残した旧ビューを再利用候補として渡され、互換でなければ作り直されます — first responder も `FineState` も、その兄弟とは無関係な変更で失われます。型が一致してしまう場合はもっと悪く、**別の子のビューと状態をそのまま乗っ取ります**。
+
+そこで `FineBuilder` は、`buildOptional` / `buildEither` / `buildArray` が生む子に**構造スロット**を与えます(`FineStructural.swift`)。スロットは記述の静的構造上の位置(どのブロックの何番目の文か、どの `if` か)を表す文字列で、レンダーをまたいで一定です。
+
+スロットは**既存の `_key` に相乗り**します。`FineStack` も `FineNode` も `FineRenderer` も変更されていません — スロット付きの子は key ベースで照合され、その結果として**位置ベースのリストから外れる**。兄弟の位置が動かなくなるのはこれが理由です。
+
+4 つの設計判断があります。
+
+- **1 つの条件式の全分岐は同一スロット**。互換なビューへ解決される限り in-place 更新が続く、という従来の挙動を保つためです。`switch` と `else if` チェーンはコンパイラが `buildEither` の**入れ子**で表現するので、階層ごとにスロットを重ねると最初の case だけ浅くなり、「ある遷移は作り直し、別の遷移は in-place 更新」という不揃いが起きます。そのため `buildOptional` / `buildEither` は**まだスロットを持たない子に割り当てるだけ**で、既にある子には前置しません。一意性は `buildBlock` の文位置が担保します。
+- **記述が持つ key はスロットの中で勝つ**。`FineStructuralKey` は `path`(静的構造)と、`position`(実行時位置)または `user`(`.key(_:)`)のどちらかから成ります。key があるときは `position` を**丸ごと捨てます** — ループの反復 index を key の内側に畳み込むと、項目が動いただけで key が変わり、まさに key が追従するはずだったものを壊すからです。
+- **素の並びの子にはスロットを付けない**。静的位置が固定なので不要であり、子ごとのラッパー割り当てを避けられます。分岐の中でスロットを持たない子は「スロット無しの子どうしの中での番号」を貰います — 平坦化後の位置で番号を振ると、同じ分岐内のネストした条件が消えたときに番号がずれ、同じ問題が 1 段下で再発するからです。
+- **ビルダーが作ったスロットの重複では assert しない**。独立にビルドされた子配列を 1 つの文で連結すると、双方が自分基準でスロットを番号付けするため衝突し得ます。呼び出し側に打つ手が無いので、`FineStack` は再利用を諦めて描画するだけにとどめます。ただし判定は「構造キーかどうか」ではなく**「誰が選んだ key か」**です — 条件分岐やループの中の `.key(_:)` も構造キーに包まれて届くので、それを重複させたのは従来どおり呼び出し側のミスとして報告します。
 
 ---
 
@@ -428,30 +442,24 @@ func _update(_ view: UIView, context: FineRenderContext) {
 
 ---
 
-## 13. リスト / グリッド(セル単位の観測)
+## 13. リスト / グリッド(セル内の観測)
 
 `FineList`(`FineList.swift`)/ `FineGrid` は `UITableView` / `UICollectionView` の diffable data source を使い、`Identifiable` の ID で常に keyed です。
 
-2階層の効率化があります。
+3階層の効率化があります。
 
 1. **リスト全体の差分**: `NSDiffableDataSourceSnapshot` で行の挿入・削除・移動を最小適用。ウィンドウ上では自動アニメーション。
-2. **セル単位の観測**: 各ホストセルは `FineListHostCell.render` で content を**独自の `withObservationTracking` スコープ**で描画する(`FineList.swift`)。
+2. **セル単位の観測**: 各ホストセルは `FineNodeHost` が content を**独自の `withObservationTracking` スコープ**で組み立てる。行の記述を作るときに読まれた値(`content(element)` のクロージャや `Renderable.body` の中の読み取り)がここに属します。
+3. **セル内のノード単位の観測**: そのスコープの中で組み立てた記述は、**セル専用の `FineNodeScheduler`** を通して描画されます。root ツリーと同じく各 `_update` が独立した観測スコープを持つので、`FineLabel(text:)` の autoclosure が読んだ値の変化は**そのラベルだけ**を更新します。
 
-```swift
-private func renderTracked() {
-    generation += 1
-    withObservationTracking {
-        context.render(makeNode(), reusing: self.hostedView)
-    } onChange: { [weak self] in
-        Task { @MainActor in
-            guard self?.generation == expectedGeneration else { return }
-            self?.renderTracked()   // このセルだけ再描画
-        }
-    }
-}
-```
+3 が無かった頃は、リストに入れた瞬間だけ粒度が行全体に落ちていました。8 ノードのカード型の行で計測すると、1 プロパティの変更あたりのノード書き込みは **8 → 1** になります(`FineCellGranularityTests`)。代償はセル構成時の命令数 **+3.4%** で、`RenderingPerformanceTests` の `testHeavyCellReconfigurationFineUIKit` が固定しています(Instructions Retired、RSD 0.4%。同ベンチの Clock / CPU Cycles はシミュレータでは RSD が 10〜48% あり判断に使えません)。
 
-これにより、行 content が読んだ `@Observable` プロパティは、**リスト全体の再 render なしにそのセルだけ**更新されます。`FineUI` の root 観測と同じ仕組みを、セルというスコープに縮小したものです。
+セル内のノードには 2 つ、root ツリーには無い事情があります。
+
+- **高さの再計測**: ノード局所の更新はホストを通らないため、行が高さに収まらなくなったことに誰も気付きません。scheduler の `onObservedUpdate` が `FineNodeHost.onObservedRerender` を呼び、既存の再計測経路に合流させます。
+- **抑止中の復帰**: 画面外で失効したノードスコープを catch-up レンダーが張り直せるのは、そのノードが walk 上にある場合だけです。セルは行が reconfigure されない限り walk に乗らないため、セルの scheduler は `recoversSuspendedWork = true` を立て、`FineRenderGate.deferObservedWork` に自分の復帰処理を預けます(§8 で `FineNodeHost` が行っているのと同じ手当てを、ノード階層に降ろしたもの)。このとき `allowsObservedWork()` を呼ばないので、セル内だけの変更が全体レンダーを要求することはありません。
+
+セルがリサイクルされると `FineNodeHost.invalidate()` が scheduler ごと `invalidate()` します。サブツリーを歩いて各ノードの generation を上げる代わりの O(1) の手当てで、前の行のために張られたスコープが後からリサイクル先のセルへ書き込むのを防ぎます。同時に、行の identity が変わったときは**ビューを残したまま** `FineNode.localState` だけを捨てます — ビューの再利用こそがセルを安い物にしているので捨てられませんが、前の行に紐づいた `FineState` が次の行の下に現れてはいけないからです。
 
 ヘッダー / フッター(supplementary)は行とは別扱いです。data source は行しか reconfigure せず、既に持っている supplementary view をテーブルが再要求することもないため、記述だけ更新しても画面には反映されません。そこで (1) supplementary の host は渡された記述を保持せず coordinator から**その時点の記述を引き**、(2) リスト / グリッドの `_update` が可視 supplementary を明示的に再描画します。
 
