@@ -33,6 +33,8 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
     private let content: @MainActor (Element) -> any Renderable
     private var onSelect: (@MainActor (Element) -> Void)?
     private var onRefresh: (@MainActor () async -> Void)?
+    private var onPrefetch: (@MainActor ([Element]) -> Void)?
+    private var onCancelPrefetch: (@MainActor ([Element]) -> Void)?
     private var areElementsEqual: ((Element, Element) -> Bool)?
     private var reconfiguresAllItems = false
     private var keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
@@ -83,6 +85,42 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
         return copy
     }
 
+    /// Reports items that are about to be needed, before they are asked for.
+    ///
+    /// Item content is built when the cell is configured, which is the moment
+    /// it becomes visible — so anything slow inside it (a remote image, a
+    /// decoded asset) starts too late and the item pops in. This is where that
+    /// work starts instead. The runtime does none of it: it only forwards
+    /// UIKit's warning, as elements rather than index paths.
+    ///
+    /// A grid is where this matters most: a row of a list is one cell, a row of
+    /// a grid is as many as there are columns.
+    ///
+    /// Called on the main actor while scrolling, so hand the work off rather
+    /// than doing it here. UIKit decides how far ahead to ask, and may ask for
+    /// the same item more than once.
+    public func onPrefetch(_ handler: @escaping @MainActor ([Element]) -> Void) -> FineGrid {
+        var copy = self
+        copy.onPrefetch = handler
+        return copy
+    }
+
+    /// An opportunity to stop work started in `onPrefetch(_:)`, for items that
+    /// turned out not to be needed.
+    ///
+    /// **Not a balancing count, and not a guarantee.** An item that scrolls
+    /// into view is simply used and never reported here; an item whose element
+    /// leaves the collection is not reported either, because the code that
+    /// removed it is the code that knows its work is moot. Only items this grid
+    /// really reported as coming are reported here, so a handler will not be
+    /// asked to stop work it never started — but it should be safe to call
+    /// about work that has already finished.
+    public func onCancelPrefetch(_ handler: @escaping @MainActor ([Element]) -> Void) -> FineGrid {
+        var copy = self
+        copy.onCancelPrefetch = handler
+        return copy
+    }
+
     /// Re-runs item content for every surviving item on each grid render,
     /// instead of only for items whose element changed.
     ///
@@ -127,7 +165,19 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
         coordinator.onRefresh = onRefresh
         coordinator.environmentStorage.update(context.environment)
         coordinator.renderGate = context.renderGate
+        coordinator.onPrefetch = onPrefetch
+        coordinator.onCancelPrefetch = onCancelPrefetch
         coordinator.updateRefreshControl(on: gridView)
+
+        // Gated on change: assigning this is a statement to UIKit about its own
+        // prefetch bookkeeping, and a root render caused by an unrelated part
+        // of the tree has nothing to say about it. Held weakly by the
+        // collection view, and the coordinator outlives it through
+        // `gridView.coordinator`.
+        let wantsPrefetching = coordinator.wantsPrefetching
+        if (gridView.prefetchDataSource != nil) != wantsPrefetching {
+            gridView.prefetchDataSource = wantsPrefetching ? coordinator : nil
+        }
 
         if gridView.keyboardDismissMode != keyboardDismissMode {
             gridView.keyboardDismissMode = keyboardDismissMode
@@ -257,7 +307,7 @@ extension FineGrid {
     }
 
     @MainActor
-    final class Coordinator: FineCollectionCoordinator<Element>, UICollectionViewDelegate {
+    final class Coordinator: FineCollectionCoordinator<Element>, UICollectionViewDelegate, UICollectionViewDataSourcePrefetching {
         let dataSource: UICollectionViewDiffableDataSource<FineSectionIdentifier, Element.ID>
 
         var columns: FineGridColumns
@@ -364,6 +414,14 @@ extension FineGrid {
                 hasHeader: section.header != nil,
                 hasFooter: section.footer != nil
             )
+        }
+
+        func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
+            prefetchElements(withIDs: indexPaths.compactMap { dataSource.itemIdentifier(for: $0) })
+        }
+
+        func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
+            cancelPrefetchingElements(withIDs: indexPaths.compactMap { dataSource.itemIdentifier(for: $0) })
         }
 
         func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {

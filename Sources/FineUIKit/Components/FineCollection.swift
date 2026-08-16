@@ -201,6 +201,12 @@ class FineCollectionCoordinator<Element: Identifiable>: NSObject where Element.I
     var content: (@MainActor (Element) -> any Renderable)?
     var onSelect: (@MainActor (Element) -> Void)?
     var onRefresh: (@MainActor () async -> Void)?
+    var onPrefetch: (@MainActor ([Element]) -> Void)?
+    var onCancelPrefetch: (@MainActor ([Element]) -> Void)?
+    /// What has been reported as coming and not yet reported as cancelled, so
+    /// a cancellation can be about what was really started. Pruned to what the
+    /// collection still holds on every render.
+    private var outstandingPrefetchIDs: Set<Element.ID> = []
     // Environment resolved at the collection's last render. Cells observe it,
     // so `.environment(_:_:)` changes reach visible cells even when no snapshot
     // difference reconfigures them.
@@ -255,6 +261,53 @@ class FineCollectionCoordinator<Element: Identifiable>: NSObject where Element.I
     func selectElement(withID id: Element.ID) {
         guard let element = elementsByID[id] else { return }
         onSelect?(element)
+    }
+
+    /// Whether UIKit should be asked to report cells before they are needed.
+    ///
+    /// A prefetch data source costs the frameworks below bookkeeping on every
+    /// scroll, so one that would drop every call is not claimed.
+    var wantsPrefetching: Bool {
+        onPrefetch != nil || onCancelPrefetch != nil
+    }
+
+    /// Reports elements whose cells are about to be needed.
+    ///
+    /// Elements, not index paths: an index means nothing once a diffable apply
+    /// has moved things, and by the time an app acts on this it is working with
+    /// its own data anyway.
+    ///
+    /// Repeats are passed on rather than folded together, because UIKit asks
+    /// more than once for a row it keeps expecting and an app watching this is
+    /// entitled to see what UIKit actually did.
+    func prefetchElements(withIDs ids: [Element.ID]) {
+        // UIKit can name a row from a snapshot the data source has already
+        // moved past. Dropping what no longer resolves is the only honest
+        // answer — reporting it as whatever now sits at that index would hand
+        // the app the wrong element.
+        let elements = ids.compactMap { elementsByID[$0] }
+        guard !elements.isEmpty else { return }
+
+        outstandingPrefetchIDs.formUnion(elements.map(\.id))
+        onPrefetch?(elements)
+    }
+
+    /// Reports elements whose cells turned out not to be needed after all.
+    ///
+    /// Only elements this coordinator actually reported as coming. A
+    /// cancellation names an index, and an index means something different once
+    /// the rows have moved — resolving one against the current snapshot can
+    /// land on a row that was never prefetched, and telling an app to stop work
+    /// it never started is worse than saying nothing, because it will stop some
+    /// other request instead.
+    func cancelPrefetchingElements(withIDs ids: [Element.ID]) {
+        let elements = ids.compactMap { id in
+            outstandingPrefetchIDs.contains(id) ? elementsByID[id] : nil
+        }
+        guard !elements.isEmpty else { return }
+
+        outstandingPrefetchIDs.subtract(elements.map(\.id))
+        onCancelPrefetch?(elements)
     }
 
     /// Installs or removes the pull-to-refresh control to match `onRefresh`.
@@ -374,6 +427,13 @@ class FineCollectionCoordinator<Element: Identifiable>: NSObject where Element.I
         }
 
         self.elementsByID = elementsByID
+        // An element that left the collection will never be cancelled, because
+        // an index UIKit still holds for it now names something else. Dropping
+        // it here keeps the set from growing for the life of the screen. The
+        // app is not told: with plain UIKit, removing a row does not report a
+        // cancellation either, and the code that removed the element is the
+        // code that knows its work is moot.
+        outstandingPrefetchIDs.formIntersection(elementsByID.keys)
 
         // Headers and footers are compared too, because they are not part of
         // the snapshot: a section that gains or loses one looks identical to
