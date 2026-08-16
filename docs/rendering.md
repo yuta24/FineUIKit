@@ -34,7 +34,18 @@ FineStack.vertical(spacing: 8) {
 
 スロットが表すのは「記述上のどこか」だけで、「どの項目か」は表しません。並び替えを追従させたい子には `FineForEach` か `.key(_:)` を使ってください。両方あるときはスロットの**中で** key が identity を決めるので、`if` の中の `FineForEach` も並び替えを追従します。
 
-条件にも `for-in` にも属さない子(素の並び)は従来どおり位置で照合されます。従来の配列リテラル構文(`{ [a, b] }` や配列連結)もそのまま動きます。
+条件にも `for-in` にも属さない子(素の並び)は従来どおり位置で照合されます。
+
+**配列式(`items.map { ... }` や `[a, b] + [c]`)も `for-in` と同じ扱いです。** 各要素は配列内の位置でスロットを得るので、配列が縮んでも**後ろの兄弟は繰り上がりません**。
+
+```swift
+FineStack.vertical {
+    self.items.map { FineLabel(text: $0.title) }
+    FineButton(title: "Footer") {}   // items が減ってもこの UIButton は同じ
+}
+```
+
+スロットが表すのは「配列の何番目か」であって「どの項目か」ではありません。並び替えを追従させたい場合は `for-in` と同じく `.key(_:)` か `FineForEach` を使ってください(key はスロットの中で優先されます)。
 
 `FineList` / `FineGrid` は `Identifiable` の ID で常に keyed です。
 

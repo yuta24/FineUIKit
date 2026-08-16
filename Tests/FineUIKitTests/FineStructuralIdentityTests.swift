@@ -113,6 +113,78 @@ struct FineStructuralIdentityTests {
         #expect(stackView.arrangedSubviews[1] === footer)
     }
 
+    /// An array expression is a loop written another way, and gets the same
+    /// slot. `map` is how most people write a run of children, and before this
+    /// it was the one spelling that let a shrinking run drag its siblings up.
+    @Test func shrinkingArrayExpressionKeepsSiblingViewIdentity() throws {
+        func tree(_ items: [String]) -> any Renderable {
+            FineStack.vertical {
+                items.map { FineLabel(text: $0) }
+                FineButton(title: "Footer") {}
+            }
+        }
+
+        let stack = FineRenderer.render(tree(["A", "B", "C"]))
+        let stackView = try #require(stack as? UIStackView)
+        let footer = try #require(stackView.arrangedSubviews[3] as? UIButton)
+
+        _ = FineRenderer.render(tree(["A"]), reusing: stack)
+
+        #expect(stackView.arrangedSubviews.count == 2)
+        #expect(stackView.arrangedSubviews[1] === footer)
+    }
+
+    /// Concatenation is still one expression, so it is one run of children and
+    /// the sibling after it stays where it is.
+    @Test func shrinkingConcatenatedArraysKeepSiblingViewIdentity() throws {
+        func tree(_ head: [String], _ tail: [String]) -> any Renderable {
+            FineStack.vertical {
+                head.map { FineLabel(text: $0) } + tail.map { FineLabel(text: $0) }
+                FineButton(title: "Footer") {}
+            }
+        }
+
+        let stack = FineRenderer.render(tree(["A", "B"], ["C"]))
+        let stackView = try #require(stack as? UIStackView)
+        let footer = try #require(stackView.arrangedSubviews[3] as? UIButton)
+
+        _ = FineRenderer.render(tree(["A"], []), reusing: stack)
+
+        #expect(stackView.arrangedSubviews.count == 2)
+        #expect(stackView.arrangedSubviews[1] === footer)
+    }
+
+    /// The state a sibling owns survives the run above it shrinking — the same
+    /// promise `disappearingConditionalKeepsSiblingLocalState` makes, for the
+    /// spelling that did not keep it.
+    @Test func shrinkingArrayExpressionKeepsSiblingLocalState() throws {
+        let binding = Box<FineBinding<Int>>()
+
+        func tree(_ items: [String]) -> any Renderable {
+            FineStack.vertical {
+                items.map { FineLabel(text: $0) }
+                FineState(0) { value in
+                    binding.value = value
+                    return FineLabel(text: "count \(value.value)")
+                }
+            }
+        }
+
+        let stack = FineRenderer.render(tree(["A", "B", "C"]))
+        let stackView = try #require(stack as? UIStackView)
+        let reader = stackView.arrangedSubviews[3]
+
+        try #require(binding.value).value = 5
+        _ = FineRenderer.render(tree(["A", "B", "C"]), reusing: stack)
+        #expect(firstLabel(in: reader)?.text == "count 5")
+
+        _ = FineRenderer.render(tree(["A"]), reusing: stack)
+
+        #expect(stackView.arrangedSubviews.count == 2)
+        #expect(stackView.arrangedSubviews[1] === reader)
+        #expect(firstLabel(in: reader)?.text == "count 5")
+    }
+
     /// Two conditionals in one builder occupy different slots, so the second one
     /// appearing must not adopt the view the first one left behind.
     @Test func separateConditionalsDoNotShareOneView() throws {

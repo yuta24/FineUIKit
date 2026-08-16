@@ -30,9 +30,34 @@ public enum FineBuilder {
         [expression]
     }
 
-    /// Passes through an expression that already produces children.
+    /// Gives each child of an array expression a slot, the way a `for` loop's
+    /// children get one.
+    ///
+    /// `items.map { … }` is how most runs of children are written, and it used
+    /// to be the one spelling that skipped this: the children arrived unslotted,
+    /// so a run that shrank moved every later straight-line sibling up a place
+    /// and handed it the wrong view — the exact problem slots exist to stop,
+    /// reached by the most ordinary route to it.
+    ///
+    /// The array is opaque, so its length is a runtime fact. That is fine: an
+    /// element's *place in the array* is what identifies it here, the same as a
+    /// loop iteration, and a `.key(_:)` still wins over the place. What the
+    /// array cannot offer is identity across a reorder without one — but that
+    /// was already true of `for`, and it is what `.key(_:)` is for.
     public static func buildExpression(_ expression: [any Renderable]) -> [any Renderable] {
-        expression
+        var children: [any Renderable] = []
+        children.reserveCapacity(expression.count)
+
+        for (index, child) in expression.enumerated() {
+            guard let structural = child as? FineStructural else {
+                children.append(FineStructural(path: "[]", position: [index], content: child))
+                continue
+            }
+
+            children.append(structural.positioned(at: index))
+        }
+
+        return children
     }
 
     /// Flattens child groups in source order, naming each group's position so
