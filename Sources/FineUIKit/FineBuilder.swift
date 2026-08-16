@@ -30,34 +30,9 @@ public enum FineBuilder {
         [expression]
     }
 
-    /// Gives each child of an array expression a slot, the way a `for` loop's
-    /// children get one.
-    ///
-    /// `items.map { … }` is how most runs of children are written, and it used
-    /// to be the one spelling that skipped this: the children arrived unslotted,
-    /// so a run that shrank moved every later straight-line sibling up a place
-    /// and handed it the wrong view — the exact problem slots exist to stop,
-    /// reached by the most ordinary route to it.
-    ///
-    /// The array is opaque, so its length is a runtime fact. That is fine: an
-    /// element's *place in the array* is what identifies it here, the same as a
-    /// loop iteration, and a `.key(_:)` still wins over the place. What the
-    /// array cannot offer is identity across a reorder without one — but that
-    /// was already true of `for`, and it is what `.key(_:)` is for.
+    /// Passes through an expression that already produces children.
     public static func buildExpression(_ expression: [any Renderable]) -> [any Renderable] {
-        var children: [any Renderable] = []
-        children.reserveCapacity(expression.count)
-
-        for (index, child) in expression.enumerated() {
-            guard let structural = child as? FineStructural else {
-                children.append(FineStructural(kind: .run, path: "[]", position: [index], content: child))
-                continue
-            }
-
-            children.append(structural.positioned(at: index))
-        }
-
-        return children
+        expression
     }
 
     /// Flattens child groups in source order, naming each group's position so
@@ -122,7 +97,7 @@ public enum FineBuilder {
             for child in component {
                 guard let structural = child as? FineStructural else {
                     children.append(
-                        FineStructural(kind: .run, path: "*", position: [iteration, unslottedPosition], content: child)
+                        FineStructural(path: "*", position: [iteration, unslottedPosition], content: child)
                     )
                     unslottedPosition += 1
                     continue
@@ -160,15 +135,9 @@ public enum FineBuilder {
         var unslottedPosition = 0
 
         return children.map { child in
-            // A branch slot is passed through — see `FineStructural.Kind`. A run
-            // is not: an array expression in one branch and a single child in
-            // the other have to end up in the same slot, or swapping between
-            // them rebuilds a view that could have been updated in place.
-            if let structural = child as? FineStructural, structural.kind == .branch {
-                return child
-            }
+            guard !(child is FineStructural) else { return child }
 
-            let slotted = FineStructural(kind: .branch, path: component, position: [unslottedPosition], content: child)
+            let slotted = FineStructural(path: component, position: [unslottedPosition], content: child)
             unslottedPosition += 1
             return slotted
         }

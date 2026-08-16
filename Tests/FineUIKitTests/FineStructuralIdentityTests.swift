@@ -113,104 +113,9 @@ struct FineStructuralIdentityTests {
         #expect(stackView.arrangedSubviews[1] === footer)
     }
 
-    /// An array expression is a loop written another way, and gets the same
-    /// slot. `map` is how most people write a run of children, and before this
-    /// it was the one spelling that let a shrinking run drag its siblings up.
-    @Test func shrinkingArrayExpressionKeepsSiblingViewIdentity() throws {
-        func tree(_ items: [String]) -> any Renderable {
-            FineStack.vertical {
-                items.map { FineLabel(text: $0) }
-                FineButton(title: "Footer") {}
-            }
-        }
 
-        let stack = FineRenderer.render(tree(["A", "B", "C"]))
-        let stackView = try #require(stack as? UIStackView)
-        let footer = try #require(stackView.arrangedSubviews[3] as? UIButton)
 
-        _ = FineRenderer.render(tree(["A"]), reusing: stack)
 
-        #expect(stackView.arrangedSubviews.count == 2)
-        #expect(stackView.arrangedSubviews[1] === footer)
-    }
-
-    /// Concatenation is still one expression, so it is one run of children and
-    /// the sibling after it stays where it is.
-    @Test func shrinkingConcatenatedArraysKeepSiblingViewIdentity() throws {
-        func tree(_ head: [String], _ tail: [String]) -> any Renderable {
-            FineStack.vertical {
-                head.map { FineLabel(text: $0) } + tail.map { FineLabel(text: $0) }
-                FineButton(title: "Footer") {}
-            }
-        }
-
-        let stack = FineRenderer.render(tree(["A", "B"], ["C"]))
-        let stackView = try #require(stack as? UIStackView)
-        let footer = try #require(stackView.arrangedSubviews[3] as? UIButton)
-
-        _ = FineRenderer.render(tree(["A"], []), reusing: stack)
-
-        #expect(stackView.arrangedSubviews.count == 2)
-        #expect(stackView.arrangedSubviews[1] === footer)
-    }
-
-    /// The state a sibling owns survives the run above it shrinking — the same
-    /// promise `disappearingConditionalKeepsSiblingLocalState` makes, for the
-    /// spelling that did not keep it.
-    @Test func shrinkingArrayExpressionKeepsSiblingLocalState() throws {
-        let binding = Box<FineBinding<Int>>()
-
-        func tree(_ items: [String]) -> any Renderable {
-            FineStack.vertical {
-                items.map { FineLabel(text: $0) }
-                FineState(0) { value in
-                    binding.value = value
-                    return FineLabel(text: "count \(value.value)")
-                }
-            }
-        }
-
-        let stack = FineRenderer.render(tree(["A", "B", "C"]))
-        let stackView = try #require(stack as? UIStackView)
-        let reader = stackView.arrangedSubviews[3]
-
-        try #require(binding.value).value = 5
-        _ = FineRenderer.render(tree(["A", "B", "C"]), reusing: stack)
-        #expect(firstLabel(in: reader)?.text == "count 5")
-
-        _ = FineRenderer.render(tree(["A"]), reusing: stack)
-
-        #expect(stackView.arrangedSubviews.count == 2)
-        #expect(stackView.arrangedSubviews[1] === reader)
-        #expect(firstLabel(in: reader)?.text == "count 5")
-    }
-
-    /// A conditional whose branches are shaped differently — an array on one
-    /// side, a single child on the other — still shares one slot.
-    ///
-    /// Slots exist to stop a branch moving its *siblings*, not to separate the
-    /// branches from each other, and the shape a branch happens to be written
-    /// in is not a reason to rebuild its view.
-    @Test func branchesOfDifferentShapesStillShareOneSlot() throws {
-        func tree(_ flag: Bool) -> any Renderable {
-            FineStack.vertical {
-                if flag {
-                    [FineLabel(text: "A") as any Renderable]
-                } else {
-                    FineLabel(text: "B")
-                }
-            }
-        }
-
-        let stack = FineRenderer.render(tree(true))
-        let stackView = try #require(stack as? UIStackView)
-        let label = try #require(stackView.arrangedSubviews.first)
-
-        _ = FineRenderer.render(tree(false), reusing: stack)
-
-        #expect(stackView.arrangedSubviews.first === label)
-        #expect(firstLabel(in: label)?.text == "B")
-    }
 
     /// A transparent modifier hides a helper's slot from the builder, so the
     /// slot the array puts around it reads that inner key through the modifier.
@@ -219,8 +124,9 @@ struct FineStructuralIdentityTests {
     /// the caller for a duplicate they did not write.
     @Test func modifiedHelperChildrenAreStillToldApart() throws {
         let stack = FineRenderer.render(FineStack.vertical {
-            self.maybe(true, "A").map { $0.backgroundColor(.red) }
-                + self.maybe(true, "B").map { $0.backgroundColor(.blue) }
+            for text in ["A", "B"] {
+                self.maybe(true, text).map { $0.backgroundColor(.red) }
+            }
         })
         let stackView = try #require(stack as? UIStackView)
 
@@ -229,46 +135,6 @@ struct FineStructuralIdentityTests {
         #expect(firstLabel(in: stackView.arrangedSubviews[1])?.text == "B")
     }
 
-    /// A key identifies a child *within the statement that produced it*, and
-    /// that is true of both spellings of a run.
-    ///
-    /// Moving an item from one run to another is not a reorder — it is a
-    /// removal and an insertion — so the view is rebuilt. `for` has always done
-    /// this; the test is here to pin that an array expression does the same,
-    /// because the two used to disagree.
-    @Test(arguments: [true, false])
-    func aKeyIdentifiesAChildWithinItsOwnRun(usesArrayExpression: Bool) throws {
-        func tree(_ left: [Item], _ right: [Item]) -> any Renderable {
-            FineStack.vertical {
-                if usesArrayExpression {
-                    FineForEach(left) { FineLabel(text: $0.title) }
-                    FineForEach(right) { FineLabel(text: $0.title) }
-                } else {
-                    for item in left {
-                        FineLabel(text: item.title).key(item.id)
-                    }
-                    for item in right {
-                        FineLabel(text: item.title).key(item.id)
-                    }
-                }
-            }
-        }
-
-        let a = Item(id: "a", title: "A")
-        let b = Item(id: "b", title: "B")
-
-        let stack = FineRenderer.render(tree([b], [a]))
-        let stackView = try #require(stack as? UIStackView)
-        #expect(stackView.arrangedSubviews.count == 2)
-        let movedView = stackView.arrangedSubviews[1]
-
-        _ = FineRenderer.render(tree([b, a], []), reusing: stack)
-
-        #expect(stackView.arrangedSubviews.count == 2)
-        // Rebuilt, not carried over — the item left the run that identified it.
-        #expect(stackView.arrangedSubviews[1] !== movedView)
-        #expect(firstLabel(in: stackView.arrangedSubviews[1])?.text == "A")
-    }
 
     /// Two conditionals in one builder occupy different slots, so the second one
     /// appearing must not adopt the view the first one left behind.

@@ -96,15 +96,12 @@ public struct FineStack: FinePrimitiveRenderable {
             let primitive = FineRenderer.primitive(for: node)
             if let key = primitive._key {
                 guard seenKeys.insert(key).inserted else {
-                    // A slot the builder made up is not something the caller
-                    // can act on, so a repeat of one is rendered quietly rather
-                    // than reported. The usual cause — two independently built
-                    // child arrays concatenated in one statement, each
-                    // numbering its slots from its own start — is handled where
-                    // it happens: an array expression's children are placed by
-                    // their index in the array. It can still arrive from a
-                    // closure that `return`s its children, which bypasses the
-                    // builder entirely and so gets no slots at all.
+                    // A slot the builder made up can repeat when two
+                    // independently built child arrays are concatenated in one
+                    // builder statement: each numbered its slots from its own
+                    // start, and the builder cannot see that they were joined.
+                    // Those children still render, they just cannot be matched
+                    // by identity — nothing the caller can act on.
                     //
                     // A key the caller wrote is a different matter, and being
                     // inside a conditional or a loop does not change that: it
