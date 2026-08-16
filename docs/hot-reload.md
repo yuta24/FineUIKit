@@ -73,9 +73,34 @@ Scripts/injectionlite-xcode27-fix.sh ToDo   # ビルドのたびに実行(スキ
 
 ---
 
+## ランタイムは「誰が知らせたか」を知らない
+
+`FineUI` は「リロードが起きた」ことだけを知り、**どのツールがそう言ったのかは知りません**。両者の間には `FineHotReloadBackend`(`Sources/FineUIKit/FineHotReload.swift`、DEBUG 限定)があります。
+
+```swift
+protocol FineHotReloadBackend: AnyObject {
+    func start()
+    func events() -> AsyncStream<FineReloadEvent>
+}
+```
+
+既定の実装は `FineNotificationHotReloadBackend` で、やることは以前と同じ — `INJECTION_BUNDLE_NOTIFICATION` を `NotificationCenter` から購読し、届いたら `.codeInjected` を流すだけです。**上の「既知の問題」はこの分離では解決しません**(あれはツールチェーン側の問題です)。分離が効くのは別のところです:
+
+- 通知名は InjectionIII / InjectionNext / InjectionLite の**慣習**であって、このライブラリの契約ではありません。ツール側が変えたときに直すのは backend 1 つで、レンダーループには触りません
+- 別の仕組み(ファイル監視、ソケット、独自ツール)を使いたければ、`FineUI.hotReloadBackend` に別の適合型を差すだけで済みます
+- テストが `NotificationCenter` を経由しなくなりました。以前はプロセス全体に届く通知を post していたため、テストごとに一意な通知名を作って他のツリーを巻き込まないようにする必要がありました
+
+`events` が property ではなく**メソッド**なのは、**呼ぶたびに専用のストリームを返し、1 回のリロードが全ストリームに届く**契約だからです。`AsyncStream` は各要素を単一のイテレータにしか渡しません。1 本を共有すると、2 つのツリーが 1 つの backend を共有した場合に**リロードが二分され**(両方に届くのではなく)、外れた方は差し替えられたはずの古いコードを黙って動かし続けます — ホットリロードで最も避けたい失敗の仕方です。既定では backend はツリーごとに 1 つですが、共有しても正しく動きます。
+
+ツリーが解放されたら購読も止まります。`FineUI.deinit` が消費側の `Task` を cancel し、backend 側はその終了を `onTermination` で受けて登録を捨てます。backend がツリーより長生きする場合(共有した場合)でも、リロードを待ち続けるタスクも、表示し終えた画面ぶんの登録も残りません。
+
+---
+
 ## テストが検証している範囲
 
-`FineUITests.injectionRerenderDoesNotLeaveStaleObservationActive` は「注入完了通知を受け取ったら再レンダリングする」という `FineUI` 側の配線だけを検証しています(`NotificationCenter` で通知を手動 post するテストで、実際の dylib 差し替えは行いません)。InjectionLite/InjectionIII/InjectionNext が実際にコードを注入できるかどうかはビルド環境・ツールのバージョンに依存し、自動テストではカバーされていません(上記「既知の問題」参照)。ホットリロードが実際に機能するかどうかは、都度手元の環境で確認してください。
+`FineHotReloadTests` が検証しているのは配線だけです — backend がリロードを報告したら再レンダリングすること、2 回目の `build(to:)` が二重購読しないこと、1 つの backend を共有した全ツリーがリロードされること、既定の backend が `INJECTION_BUNDLE_NOTIFICATION` を購読すること、解放されたツリーが購読と登録を手放すこと。実際の dylib 差し替えは行いません。
+
+InjectionLite/InjectionIII/InjectionNext が実際にコードを注入できるかどうかはビルド環境・ツールのバージョンに依存し、自動テストではカバーされていません(上記「既知の問題」参照)。ホットリロードが実際に機能するかどうかは、都度手元の環境で確認してください。
 
 ---
 
