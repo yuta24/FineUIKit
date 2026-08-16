@@ -155,6 +155,49 @@ withFineAnimation(nil) {
 
 `FineList` / `FineGrid` の diff は従来どおり window 上では自動アニメーションします。`withFineAnimation(nil)` の中で行った変更では、diff 適用のアニメーションも抑止されます。
 
+### 記述側で宣言する — `.animation(_:)`
+
+`withFineAnimation` は**変更する側**で言いますが、`.animation(_:)` は**記述側**で言います。
+
+```swift
+FineCard(movie)
+    .opacity(self.isVisible ? 1 : 0)
+    .scale(self.isFocused ? 1.08 : 1.0)
+    .animation(.spring())
+```
+
+こう書くと、`isFocused` を誰が変えても — ボタンからでも、ジェスチャからでも、ネットワーク応答からでも — 同じようにアニメーションします。**変更する側は何も知らなくて済みます。**
+
+実際に何が動くかは UIKit の判断です。更新が `UIView.animate` の中で行われるので、UIKit がアニメーションするプロパティは動き、テキストや画像の差し替えは即座に反映されます。
+
+**初回レンダリングはアニメーションしません。** 来る元が無いので、既定値から目標値へ動かすと誰も記述していないフェードやスライドが見えてしまいます。画面(window)に載っていないビューも同様に動かしません。
+
+`nil` を渡すと、周囲がアニメーションしていてもそのサブツリーだけ止められます。
+
+```swift
+withFineAnimation {
+    self.model.reload()          // 画面全体は動く
+}
+
+FineLabel(text: self.model.count)
+    .animation(nil)              // ここだけ即座に切り替わる
+```
+
+### transform 系モディファイア
+
+`.scale(_:)` / `.offset(x:y:)` / `.rotation(_:)` はレイアウトを動かさずに見た目だけを変えます。compositor 側で処理されるため、アニメーション中に毎フレームのレイアウトが走りません。
+
+```swift
+FineImage(image: poster)
+    .scale(self.isFocused ? 1.08 : 1.0)
+    .offset(y: self.isFocused ? -8 : 0)
+    .animation(.spring())
+```
+
+3 つは同じ `UIView.transform` に書くので、**1 つの変換にまとめてから適用されます**。合成順は **offset → rotation → scale** で、これは各モディファイアが単独で読んだとおりの意味になる順序です(scale を先にすると offset が scale 倍され、「10 ポイント動かす」が拡大時に 12 ポイントになります)。
+
+`.offset()` はレイアウトを動かさないので、**隣の要素は詰めてきません**。要素の位置そのものを変えたい場合は `padding` や `frame` を使ってください。
+
 ---
 
 ## 参考

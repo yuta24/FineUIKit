@@ -51,6 +51,17 @@ public struct FineAnimation: Sendable {
         return copy
     }
 
+    /// UIKit hands an animation started inside another one the outer duration
+    /// and curve unless told not to. That is the right default for a nested
+    /// block written by hand, and the wrong one here: a description asking for
+    /// a two-second spring means it whether or not the mutation that triggered
+    /// it happened to be wrapped in something faster.
+    private static let overridesInherited: UIView.AnimationOptions = [
+        .overrideInheritedDuration,
+        .overrideInheritedCurve,
+        .overrideInheritedOptions,
+    ]
+
     @MainActor
     func animate(_ changes: @MainActor @escaping () -> Void) {
         switch timing {
@@ -58,7 +69,7 @@ public struct FineAnimation: Sendable {
             UIView.animate(
                 withDuration: duration,
                 delay: delay,
-                options: curve.animationOptions,
+                options: curve.animationOptions.union(Self.overridesInherited),
                 animations: changes
             )
         case .spring(let duration, let bounce):
@@ -67,7 +78,7 @@ public struct FineAnimation: Sendable {
                 bounce: bounce,
                 initialSpringVelocity: 0,
                 delay: delay,
-                options: [],
+                options: Self.overridesInherited,
                 animations: changes
             )
         }

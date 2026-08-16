@@ -57,6 +57,10 @@ struct FineStyled: FinePrimitiveRenderable {
     var _viewProvider: any FinePrimitiveRenderable {
         content.primitive._viewProvider
     }
+
+    var _transformSpec: FineTransformSpec? {
+        content.primitive._transformSpec
+    }
 }
 
 extension Renderable {

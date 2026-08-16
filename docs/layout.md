@@ -19,6 +19,8 @@ FineButton(title: "Add") { viewModel.add() }
 
 - 外観系: `.backgroundColor` / `.cornerRadius` / `.border` / `.opacity` / `.tintColor`
 - レイアウト系: `.padding` / `.frame(width:height:alignment:)`
+- 変形系: `.scale` / `.offset(x:y:)` / `.rotation`(レイアウトを動かさず見た目だけを変える。3 つは 1 つの `UIView.transform` にまとめて適用される)
+- アニメーション: `.animation(_:)`(そのサブツリーへの変更をアニメーションする。`nil` で周囲のアニメーションから外れる — [レンダリングの挙動](rendering.md#記述側で宣言する---animation_))
 - インタラクション系: `.onTap`(任意のビューにタップハンドラを付ける。ラベルや画像でも `isUserInteractionEnabled` を自動で有効化。タッチはビューにも届くため、コントロール自身のアクションと共存する。チェーンした `.onTap` は全て順に実行。`nil` を渡すとビューの identity を保ったままハンドラだけ外せる — 条件付きタップは `.onTap(cond ? handler : nil)` と書く)
 - アクセシビリティ系: `.accessibilityLabel` / `.accessibilityValue` / `.accessibilityHint` / `.accessibilityTraits` / `.accessibilityIdentifier` / `.accessibilityHidden`
 - ライフサイクル系: `.onAppear` / `.onDisappear` / `.task` / `.task(id:)`([レンダリングの挙動](rendering.md#ライフサイクルと非同期処理))
