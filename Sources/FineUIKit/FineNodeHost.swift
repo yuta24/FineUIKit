@@ -119,7 +119,13 @@ final class FineNodeHost {
         if keepingLocalState {
             (view as? any FineIdentityScopedView)?.fineStopIdentityWork()
         } else {
-            view.fineNodeIfPresent?.localState = nil
+            let node = view.fineNodeIfPresent
+            node?.localState = nil
+            // The view has been written to, but not for what it is about to
+            // show — so as far as the next row is concerned this is a first
+            // render, and `.animation(_:)` must not grow it out of the previous
+            // row's size.
+            node?.hasBeenUpdated = false
             (view as? any FineIdentityScopedView)?.fineDiscardIdentityState()
         }
 

@@ -80,6 +80,7 @@ protocol FinePrimitiveRenderable: Renderable {
     var _modifierSignature: String { get }
     var _key: AnyHashable? { get }
     var _viewProvider: any FinePrimitiveRenderable { get }
+    var _transformSpec: FineTransformSpec? { get }
 }
 
 extension FinePrimitiveRenderable {
@@ -106,5 +107,21 @@ extension FinePrimitiveRenderable {
     /// reported modifier signature describes.
     var _viewProvider: any FinePrimitiveRenderable {
         self
+    }
+
+    /// The transform this description asks of the view it renders into, if any.
+    ///
+    /// Read rather than applied by whoever finally writes it, because `.scale`
+    /// and `.offset` are two asks about one `UIView.transform` and can be
+    /// written far apart — with a `.backgroundColor` between them, or a
+    /// `.key(_:)`. Each would otherwise assign the property and the last one
+    /// would win, quietly dropping the others.
+    ///
+    /// Transparent wrappers pass their content's answer through, the same way
+    /// they do for `_viewProvider`. A wrapper that makes a view of its own does
+    /// not: the transform belongs to the view the description names, not to a
+    /// container put around it.
+    var _transformSpec: FineTransformSpec? {
+        nil
     }
 }

@@ -49,6 +49,10 @@ struct FineComposite: FinePrimitiveRenderable {
     var _viewProvider: any FinePrimitiveRenderable {
         primitive._viewProvider
     }
+
+    var _transformSpec: FineTransformSpec? {
+        primitive._transformSpec
+    }
 }
 
 /// The name recorded for a composite type.

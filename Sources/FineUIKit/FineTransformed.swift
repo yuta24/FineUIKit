@@ -37,6 +37,17 @@ struct FineTransformSpec: Equatable {
         return transform
     }
 
+    /// This spec over one from further in, so the modifier written later wins
+    /// the properties it names and leaves the rest alone.
+    func merged(onto inner: FineTransformSpec?) -> FineTransformSpec {
+        guard var merged = inner else { return self }
+
+        if let scale { merged.scale = scale }
+        if let offset { merged.offset = offset }
+        if let rotation { merged.rotation = rotation }
+        return merged
+    }
+
     /// The key the modifier signature carries: which of the three were asked
     /// for, not what they were set to. Values change without changing the
     /// composition, and a signature that moved with them would rebuild the view
@@ -115,7 +126,11 @@ struct FineTransformed: FinePrimitiveRenderable {
     func _update(_ view: UIView, context: FineRenderContext) {
         content.primitive._update(view, context: context)
 
-        let transform = spec.transform
+        // Everything asked of this view, not only what this wrapper carries.
+        // Another modifier can sit between two transform modifiers, leaving two
+        // of these to write one property — and the one that writes last has to
+        // write the whole answer or it erases the other.
+        let transform = (_transformSpec ?? spec).transform
         if view.transform != transform {
             view.transform = transform
         }
@@ -123,6 +138,10 @@ struct FineTransformed: FinePrimitiveRenderable {
 
     var _modifierSignature: String {
         content.primitive._modifierSignature + "|" + spec.signatureKey
+    }
+
+    var _transformSpec: FineTransformSpec? {
+        spec.merged(onto: content.primitive._transformSpec)
     }
 
     var _key: AnyHashable? {

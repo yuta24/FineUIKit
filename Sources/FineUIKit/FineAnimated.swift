@@ -49,38 +49,64 @@ struct FineAnimated: FinePrimitiveRenderable {
     }
 
     func _update(_ view: UIView, context: FineRenderContext) {
+        let declared = Self.resolved(animation, at: view)
+        // Handed down so descendants animate too. Their updates are separate
+        // jobs the scheduler runs after this one returns, which is why a block
+        // opened here could never have reached them.
+        let childContext = context.withAnimation(declared)
+
+        Self.performing(declared, on: view) {
+            // Also set for the synchronous extent, so a list applying its diff
+            // inside this update follows the same curve rather than whatever
+            // the mutation site happened to say.
+            FineTransactionContext.$current.withValue(declared ?? FineTransactionContext.current) {
+                content.primitive._update(view, context: childContext)
+            }
+        }
+    }
+
+    /// What this node should actually do, given what it asked for and what is
+    /// already in force.
+    ///
+    /// An enclosing `withFineAnimation(nil)` and the catch-up render after
+    /// `resume()` both mean *not now* — the first because the caller said so,
+    /// the second because animating changes that happened off screen would
+    /// slide in things the viewer never saw leave. A description asking to
+    /// animate does not get to overrule either.
+    static func resolved(_ animation: FineAnimation?, at view: UIView) -> FineTransactionValue {
+        if case .disabled = FineTransactionContext.current {
+            return .disabled
+        }
+
         let node = view.fineNode
+        // Nothing to animate from, and nowhere to show it: a view still being
+        // built holds only defaults, and one outside a window has no viewer.
         let hasSomethingToAnimateFrom = node.hasBeenUpdated && view.window != nil
         node.hasBeenUpdated = true
 
-        guard let animation else {
-            // Not "say nothing and pass it on": an enclosing
-            // `withFineAnimation` has already opened a block, and a write made
-            // inside it animates whether or not this subtree wanted it to.
-            // Opting out means saying so to UIKit.
-            UIView.performWithoutAnimation {
-                FineTransactionContext.$current.withValue(.disabled) {
-                    content.primitive._update(view, context: context)
-                }
-            }
-            return
-        }
+        guard let animation, hasSomethingToAnimateFrom else { return .disabled }
+        return .animate(animation)
+    }
 
-        // Nothing to animate from, and nowhere to show it: a view still being
-        // built holds only defaults, and one outside a window has no viewer.
-        guard hasSomethingToAnimateFrom else {
-            content.primitive._update(view, context: context)
-            return
-        }
-
-        animation.animate {
-            // Set for the subtree as well as applied here, so a list inside it
-            // animates its own diff to the same curve rather than to whatever
-            // the mutation site happened to say.
-            FineTransactionContext.$current.withValue(.animate(animation)) {
-                content.primitive._update(view, context: context)
+    /// Runs `update` under `animation`, which for `.disabled` means telling
+    /// UIKit so rather than saying nothing: an enclosing block is already open,
+    /// and a write made inside it animates whether this subtree wanted it or
+    /// not.
+    static func performing(
+        _ animation: FineTransactionValue?,
+        on view: UIView,
+        _ update: @MainActor @escaping () -> Void
+    ) {
+        switch animation {
+        case .animate(let animation):
+            animation.animate {
+                update()
+                view.layoutIfNeeded()
             }
-            view.layoutIfNeeded()
+        case .disabled:
+            UIView.performWithoutAnimation(update)
+        case nil:
+            update()
         }
     }
 
@@ -94,6 +120,10 @@ struct FineAnimated: FinePrimitiveRenderable {
 
     var _viewProvider: any FinePrimitiveRenderable {
         content.primitive._viewProvider
+    }
+
+    var _transformSpec: FineTransformSpec? {
+        content.primitive._transformSpec
     }
 }
 

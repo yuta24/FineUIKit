@@ -151,6 +151,11 @@ final class FineNodeScheduler {
         // against the container — but their updates are separate jobs, run
         // after this one returns, and are timed on their own.
         let (_, duration) = FineDiagnostics.timing {
+            // A `.animation(_:)` above this node asked for its changes to be
+            // animated, and this is where the change is finally written — the
+            // container that carried the ask handed this job over and returned
+            // long ago.
+            FineAnimated.performing(job.context.animation, on: view) {
             withObservationTracking {
                 job.primitive._update(view, context: job.context)
             } onChange: { [weak self, weak view] in
@@ -168,6 +173,7 @@ final class FineNodeScheduler {
 
                     self.deferObservedUpdate(to: view, generation: generation, gate: renderGate)
                 }
+            }
             }
         }
         signposter.endInterval("node", interval)
