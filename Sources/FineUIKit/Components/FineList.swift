@@ -15,6 +15,8 @@ public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Ele
     private var onSelect: (@MainActor (Element) -> Void)?
     private var onDelete: (@MainActor (Element) -> Void)?
     private var onRefresh: (@MainActor () async -> Void)?
+    private var onPrefetch: (@MainActor ([Element]) -> Void)?
+    private var onCancelPrefetch: (@MainActor ([Element]) -> Void)?
     private var areElementsEqual: ((Element, Element) -> Bool)?
     private var reconfiguresAllRows = false
     private var deleteActionTitle: String = "Delete"
@@ -58,6 +60,42 @@ public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Ele
     public func keyboardDismissMode(_ mode: UIScrollView.KeyboardDismissMode) -> FineList {
         var copy = self
         copy.keyboardDismissMode = mode
+        return copy
+    }
+
+    /// Reports rows that are about to be needed, before they are asked for.
+    ///
+    /// Row content is built when the cell is configured, which is the moment it
+    /// becomes visible — so anything slow inside it (a remote image, a decoded
+    /// asset) starts too late and the row pops in. This is where that work
+    /// starts instead. The runtime does none of it: it only forwards UIKit's
+    /// warning, as elements rather than index paths.
+    ///
+    /// Called on the main actor while scrolling, so hand the work off rather
+    /// than doing it here. UIKit decides how far ahead to ask, and may ask for
+    /// the same row more than once.
+    public func onPrefetch(_ handler: @escaping @MainActor ([Element]) -> Void) -> FineList {
+        var copy = self
+        copy.onPrefetch = handler
+        return copy
+    }
+
+    /// An opportunity to stop work started in `onPrefetch(_:)`, for rows that
+    /// turned out not to be needed.
+    ///
+    /// Has no effect on its own: cancelling is about work that started, so
+    /// without `onPrefetch(_:)` nothing is predicted and nothing is cancelled.
+    ///
+    /// **Not a balancing count, and not a guarantee.** A row that scrolls into
+    /// view is simply used and never reported here; a row whose element leaves
+    /// the collection is not reported either, because the code that removed it
+    /// is the code that knows its work is moot. Only rows this list really
+    /// reported as coming are reported here, so a handler will not be asked to
+    /// stop work it never started — but it should be safe to call about work
+    /// that has already finished.
+    public func onCancelPrefetch(_ handler: @escaping @MainActor ([Element]) -> Void) -> FineList {
+        var copy = self
+        copy.onCancelPrefetch = handler
         return copy
     }
 
@@ -109,8 +147,19 @@ public struct FineList<Element: Identifiable>: FinePrimitiveRenderable where Ele
         coordinator.deleteActionTitle = deleteActionTitle
         coordinator.environmentStorage.update(context.environment)
         coordinator.renderGate = context.renderGate
+        coordinator.onPrefetch = onPrefetch
+        coordinator.onCancelPrefetch = onCancelPrefetch
         coordinator.dataSource.canEditRows = onDelete != nil
         coordinator.updateRefreshControl(on: listView)
+
+        // Gated on change: assigning this is a statement to UIKit about its own
+        // prefetch bookkeeping, and a root render caused by an unrelated part
+        // of the tree has nothing to say about it. Held weakly by the table,
+        // and the coordinator outlives it through `listView.coordinator`.
+        let wantsPrefetching = coordinator.wantsPrefetching
+        if (listView.prefetchDataSource != nil) != wantsPrefetching {
+            listView.prefetchDataSource = wantsPrefetching ? coordinator : nil
+        }
 
         if listView.keyboardDismissMode != keyboardDismissMode {
             listView.keyboardDismissMode = keyboardDismissMode
@@ -176,7 +225,7 @@ extension FineList {
     }
 
     @MainActor
-    final class Coordinator: FineCollectionCoordinator<Element>, UITableViewDelegate {
+    final class Coordinator: FineCollectionCoordinator<Element>, UITableViewDelegate, UITableViewDataSourcePrefetching {
         let dataSource: DataSource
 
         var onDelete: (@MainActor (Element) -> Void)?
@@ -282,6 +331,14 @@ extension FineList {
 
         func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
             self.section(at: section)?.footer == nil ? .leastNonzeroMagnitude : UITableView.automaticDimension
+        }
+
+        func tableView(_ tableView: UITableView, prefetchRowsAt indexPaths: [IndexPath]) {
+            prefetchElements(withIDs: indexPaths.compactMap { dataSource.itemIdentifier(for: $0) })
+        }
+
+        func tableView(_ tableView: UITableView, cancelPrefetchingForRowsAt indexPaths: [IndexPath]) {
+            cancelPrefetchingElements(withIDs: indexPaths.compactMap { dataSource.itemIdentifier(for: $0) })
         }
 
         func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {

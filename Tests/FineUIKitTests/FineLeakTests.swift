@@ -77,11 +77,15 @@ private final class CapturingContent: FineNavigating {
             .onSelect { _ in self.taps += 1 }
             .onDelete { _ in self.taps += 1 }
             .onRefresh { self.taps += 1 }
+            .onPrefetch { _ in self.taps += 1 }
+            .onCancelPrefetch { _ in self.taps += 1 }
             FineGrid(self.store.rows, columns: .count(2), spacing: 4) { row in
                 FineLabel(text: "\(row.title) \(self.taps)")
             }
             .onSelect { _ in self.taps += 1 }
             .onRefresh { self.taps += 1 }
+            .onPrefetch { _ in self.taps += 1 }
+            .onCancelPrefetch { _ in self.taps += 1 }
         }
         .onAppear { self.appearances += 1 }
         .onDisappear { self.appearances -= 1 }
