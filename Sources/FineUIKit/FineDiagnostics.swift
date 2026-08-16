@@ -108,8 +108,9 @@ public enum FineDiagnostics {
                     """
                     FineUIKit \(name): a value read while creating its view has changed. \
                     makeView() runs once per view identity and outside observation tracking, \
-                    so this change will not be applied — read the value in \
-                    updateView(_:environment:) instead, which runs on every render.
+                    so that read did not register and cannot apply the change — \
+                    unless updateView(_:environment:) writes the same value, the view is \
+                    now stale. Reading state in updateView is what makes it follow.
                     """
                 )
             }

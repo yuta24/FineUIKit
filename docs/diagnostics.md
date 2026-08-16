@@ -128,14 +128,16 @@ DEBUG ビルドでは、**その値が実際に変化した時点で**次のよ�
 
 ```text
 FineUIKit FineRepresentableAdapter<Badge>: a value read while creating its view has changed.
-makeView() runs once per view identity and outside observation tracking, so this change
-will not be applied — read the value in updateView(_:environment:) instead, which runs on
-every render.
+makeView() runs once per view identity and outside observation tracking, so that read did
+not register and cannot apply the change — unless updateView(_:environment:) writes the
+same value, the view is now stale. Reading state in updateView is what makes it follow.
 ```
 
 出力先は `FineDiagnostics.handler` です(既定は `OSLog`)。
 
 **読み取りは `updateView(_:environment:)` に移してください。** こちらは毎レンダリング呼ばれ、観測スコープの内側です。
+
+> **`makeView` と `updateView` の両方で同じ値を読んでいる場合も報告されます。** この形はビューとしては正しく更新されますが、`makeView` 側の読み取りは何もしていません。ランタイムには「別の場所での読み取りが面倒を見ている」ことが見えないため、区別できません。assert ではなくメッセージなのはこのためです。
 
 ---
 

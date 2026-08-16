@@ -24,6 +24,24 @@ private struct ReadsWhileCreating: FineViewRepresentable {
     func updateView(_ view: UILabel, environment: FineEnvironmentValues) {}
 }
 
+/// Reads its state in both places. The `makeView()` read is redundant rather
+/// than broken — `updateView` keeps the label current — but it is still a read
+/// that does nothing, and the runtime cannot tell the two cases apart.
+@MainActor
+private struct ReadsWhileCreatingAndUpdating: FineViewRepresentable {
+    let caption: Caption
+
+    func makeView() -> UILabel {
+        let label = UILabel()
+        label.text = caption.text
+        return label
+    }
+
+    func updateView(_ view: UILabel, environment: FineEnvironmentValues) {
+        view.text = caption.text
+    }
+}
+
 /// Reads its state where it belongs.
 @MainActor
 private struct ReadsWhileUpdating: FineViewRepresentable {
@@ -88,6 +106,34 @@ struct FineMakeViewObservationTests {
         #expect(report != nil)
         #expect(report?.contains("makeView") == true)
         #expect(report?.contains("updateView") == true)
+    }
+
+    /// Reading in both places is reported too, and the view is fine.
+    ///
+    /// The runtime sees a read it knows will not apply the change; it cannot
+    /// see that another read elsewhere will. So this is a hint about a pointless
+    /// read rather than a report of a broken view — which is why it is a
+    /// message and not an assertion, and why the wording says what the read did
+    /// rather than what the view will do.
+    @Test func readingInBothPlacesIsStillReportedButStillWorks() async {
+        let caption = Caption()
+        let container = UIView()
+
+        let messages = await captureMessages {
+            let ui = FineUI(state: caption) { caption in
+                ReadsWhileCreatingAndUpdating(caption: caption)
+            }
+            ui.build(to: container)
+            await waitTicks()
+
+            caption.text = "B"
+            await waitTicks()
+
+            #expect((container.subviews.first as? UILabel)?.text == "B")
+            _ = ui
+        }
+
+        #expect(messages.contains { $0.contains("ReadsWhileCreatingAndUpdating") })
     }
 
     @Test func aValueReadWhileUpdatingIsNotReported() async {
