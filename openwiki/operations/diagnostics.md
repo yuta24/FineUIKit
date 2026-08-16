@@ -1,13 +1,13 @@
 ---
 type: "Diagnostics Guide"
 title: "レンダリング計測とデバッグ診断"
-description: "FineUIKit がビューのレンダリング回数、再構築、コンポーネント名、signpost を計測・報告する仕組みと、デバッガからの内省方法。"
+description: "FineUIKit がビューのレンダリング回数、再構築理由、更新理由、所要時間、コンポーネント名、signpost を計測・報告する仕組みと、デバッガからの内省方法。"
 tags: [diagnostics, debugging, performance, signpost, rendering]
 ---
 
 # レンダリング計測とデバッグ診断
 
-差分ベースのランタイムでは「再構築された理由」は分かっても、「そもそも再レンダリングされたか、何回か」が読めないことが多いです。FineUIKit は `bd4d3a1` 以降、ランタイムが既に通る計測ポイントを利用する4つの計測器と2つのデバッガ内省 API を備えています。いずれも観測経路や再利用判定を変えず、[レンダリングワークフロー](../workflows/rendering.md)の既存経路の上に乗っています。
+差分ベースのランタイムでは「再構築された理由」は分かっても、「そもそも再レンダリングされたか、何回か」が読めないことが多いです。FineUIKit は `bd4d3a1` 以降、ランタイムが既に通る計測ポイントを利用する4つの計測器と2つのデバッガ内省 API を備えています。いずれも観測経路や再利用判定を変えず、[レンダリングワークフロー](../workflows/rendering.md)の既存経路の上に乗っています。`55d03e6` 以降は各ノードに「誰が再描画を頼んだか（`UpdateReason`）」と「その `_update` が何を要したか（`Duration`）」が常時記録され、カウンタの「ビューに何が起きたか」を補完します。
 
 ## レンダリング回数
 
@@ -45,12 +45,41 @@ flowchart TD
 | `highlightsRenders` | オフ | `FINEUIKIT_HIGHLIGHT_RENDERS=1` | 再レンダリングされたビューの輪郭を一瞬光らせる。DEBUG ビルド限定 |
 | `showsInjectionToast` | オン | `FINEUIKIT_INJECTION_TOAST=0` で無効化 | コード注入が届いて再レンダリングされたとき画面上部にトースト表示。DEBUG ビルド限定 |
 
-`logsRenders` は `logsViewReuse` より遥かにノイズが多い（ツリー全体の描画でビューごとに1行）ですが、再構築ログでは答えられない「再レンダリングされたか、何回か」に答えます。出力例:
+`logsRenders` は `logsViewReuse` より遥かにノイズが多い（ツリー全体の描画でビューごとに1行）ですが、再構築ログでは答えられない「再レンダリングされたか、何回か」に答えます。出力例（`55d03e6` 以降、理由と所要時間を含みます）:
 
 ```
-FineUIKit updated UILabel for FineLabel (render #3, 0 rebuilt)
-FineUIKit rebuilt UITextField for FineKeyed (render #5, 1 rebuilt)
+FineUIKit created UILabel for FineLabel because it is new here (render #1, 0 rebuilt, 6.46 µs)
+FineUIKit updated UILabel for FineLabel because a value it read changed (render #3, 0 rebuilt, 80.67 µs)
+FineUIKit rebuilt UITextField for FineKeyed because its parent re-rendered (render #5, 1 rebuilt, 330.17 µs)
 ```
+
+## なぜこのビューが更新されたのか
+
+`55d03e6` 以降、各ノードは表示回数・作り直し回数に加え、**最終再描画の理由（`UpdateReason`）と所要時間（`Duration`）**を常時記録します（[FineNode.swift](../../Sources/FineUIKit/FineNode.swift) の `lastUpdateReason` / `lastUpdateDuration`）。計測器を事前に有効にしていなくても、後からデバッガやログで確認できるよう、フラグ非依存で保持します。カウンタは「ビューに何が起きたか」、`UpdateReason` は「誰が再描画を頼んだか」に答える、二つの異なる質問の組です。
+
+| 理由 | `message`（`rendered because …`） | 意味 |
+|---|---|---|
+| `.initial` | it is new here | その位置での初回描画 |
+| `.parent` | its parent re-rendered | 外側のスコープが再描画し、通り抜けた |
+| `.observation` | a value it read changed | そのノード（またはホストするセル）が読んだ値が変わった |
+| `.injection` | code was injected | コード注入が実装を差し替えた |
+
+理由は「1 回の描画パスを記述する値」として振る舞います（`FineDiagnostics.pendingReason`）。スコープが宣言し（`FineDiagnostics.rendering(because:_:)`、`8ca4ec6` で set-and-forget から restore を伴うスコープへ）、最初に到達したノードが消費します。`FineRenderContext` で運ばないのは、context が子孫全員に同じ答えを渡してしまうためです — 子にとって真実は `parent` だからです（[`docs/diagnostics.md`](../../docs/diagnostics.md) §なぜこのビューが更新されたのか）。前段に `.observation`（root/trait）、`.injection`（`reloadInjectedCode`）、catch-up render（`FineRenderGate.resume()`）がそれぞれ宣言します。ノード局所復帰とセルホスト復帰は、ゲートが総括できないため、それぞれが自身の `.observation` を直接ノードへ設定します（commit `5d46acc`、`3d209b4`；経緯は[レンダリングワークフロー](../workflows/rendering.md)の停止・復帰節）。
+
+「どのプロパティが変わったか」は分かりません — `withObservationTracking` は何かが変わったことしか報告せず、`.observation` が限界です（[`docs/diagnostics.md`](../../docs/diagnostics.md)）。特定の値で独立させたい場合は `FineLabel(text:)` の `@autoclosure` など、別ノードへ読み取りを逃す経路を使います。
+
+`fineDebugDescription` / `fineDumpTree()`（[UIView+FineDebug.swift](../../Sources/FineUIKit/UIView+FineDebug.swift)）は、`because <message>` に続けて `fineFormatted(_:)` の所要時間列を出力します（ns / µs / ms から数を小さく保つ単位を選択）。例:
+
+```
+(lldb) po view.fineDumpTree()
+FineStack → UIStackView  renders 1  because it is new here            330.17 µs
+  FineLabel → UILabel    renders 2  because a value it read changed    80.67 µs
+  FineLabel → UILabel    renders 1  because it is new here              6.46 µs
+```
+
+### 所要時間が意味する範囲
+
+`8ca4ec6` と `3d209b4` が「実は覆っている範囲だけを主張する」形に直しました。`FineContentController`/scheduler 配下では各ノードの所要時間は**自身の `_update` だけ**です — コンテナの `_update` は子を scheduler へ渡して返り、子は別 job として計測されるため、枝を下った数値は**入れ子ではなく独立**で足し合わせることを意図しません。コンテナの値には子の**ビュー生成**（親の `_update` 中に起きる）は含まれますが、子の `_update` は含まれません。一方 `FineRenderer.render(_:reusing:)` を直接呼ぶ経路は scheduler を介さず `_update` が inline 再帰するため、**その経路の所要時間は子孫を含みます** — runtime と直接 render で意味が変わります（[`docs/diagnostics.md`](../../docs/diagnostics.md)）。かつての `incl. subtree` 表記は削除されました。
 
 ## 再レンダリングのハイライト
 
@@ -70,9 +99,9 @@ FineUIKit rebuilt UITextField for FineKeyed (render #5, 1 rebuilt)
 
 ```
 (lldb) po view.fineDumpTree()
-FineStack → UIStackView  renders 2
-  FineLabel → UILabel  renders 2  modifiers "|padding"
-  FineKeyed → UITextField  renders 5  rebuilds 1  key draft  state
+FineStack → UIStackView  renders 2  because its parent re-rendered       330.17 µs
+  FineLabel → UILabel  renders 2  because a value it read changed  modifiers "|padding"  80.67 µs
+  FineKeyed → UITextField  renders 5  rebuilds 1  because code was injected  key draft  state
   UIView (unmanaged)
 
 (lldb) po someLabel.fineDebugDescription
@@ -102,6 +131,7 @@ FineUIKit が管理していないビューは `unmanaged` と表示されます
 ## 変更時の確認
 
 - カウンタや計測器を変更する: `FineDebugTests.swift` と `FineDiagnosticsTests.swift` を確認します。ハイライト・トーストはプロセス単位のフラグを使うため `@Suite(.serialized)` で直列化されています。
+- 更新理由・所要時間を変更する: `FineUpdateReasonTests.swift`（初回 `.initial`、親起因 `.parent`、観測 `.observation`、catch-up、セルの自己復帰、子へ漏れないこと、理由が漏れないこと、所要時間の記録、`fineDebugDescription` の `because` 含有）と `FineDurationFormattingTests` を確認します。理由の宣言は「ゲートは catch-up だけ、ノード局所とホストはそれぞれ自身」の分離を壊さないでください（commit `3d209b4`）。
 - `_viewProvider` を持つモディファイアを追加する: コンテンツのビューへ描画するなら `_viewProvider` で内側を返し、自身のビューを持つならデフォルト（自身）のままにします。`looksThroughEveryModifierThatSharesAView` が全 transparent モディファイアを検査します。
 - 計測ポイントを移動する: 計測は `_update` の実行点にあることでノード局所再レンダリングを取りこぼさない点に注意してください。再利用判定の場所へ移動すると、ノード局所再レンダリングがカウントされなくなります。
 

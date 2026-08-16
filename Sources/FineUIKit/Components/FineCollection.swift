@@ -268,9 +268,12 @@ class FineCollectionCoordinator<Element: Identifiable>: NSObject, FineCollection
     /// Whether UIKit should be asked to report cells before they are needed.
     ///
     /// A prefetch data source costs the frameworks below bookkeeping on every
-    /// scroll, so one that would drop every call is not claimed.
+    /// scroll, so one that would drop every call is not claimed — and a tree
+    /// with only a cancel handler is exactly that. Cancelling is about work
+    /// that started, so with nothing reporting a start there is nothing that
+    /// could honestly be cancelled.
     var wantsPrefetching: Bool {
-        onPrefetch != nil || onCancelPrefetch != nil
+        onPrefetch != nil
     }
 
     /// Reports elements whose cells are about to be needed.
@@ -283,6 +286,12 @@ class FineCollectionCoordinator<Element: Identifiable>: NSObject, FineCollection
     /// more than once for a row it keeps expecting and an app watching this is
     /// entitled to see what UIKit actually did.
     func prefetchElements(withIDs ids: [Element.ID]) {
+        // Nothing is outstanding if nobody was told it started. Recording it
+        // anyway would let a later cancellation report work the app never
+        // heard about, which is the one thing `onCancelPrefetch` promises not
+        // to do.
+        guard let onPrefetch else { return }
+
         // UIKit can name a row from a snapshot the data source has already
         // moved past. Dropping what no longer resolves is the only honest
         // answer — reporting it as whatever now sits at that index would hand
@@ -291,7 +300,7 @@ class FineCollectionCoordinator<Element: Identifiable>: NSObject, FineCollection
         guard !elements.isEmpty else { return }
 
         outstandingPrefetchIDs.formUnion(elements.map(\.id))
-        onPrefetch?(elements)
+        onPrefetch(elements)
     }
 
     /// Reports elements whose cells turned out not to be needed after all.

@@ -108,6 +108,9 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
     /// An opportunity to stop work started in `onPrefetch(_:)`, for items that
     /// turned out not to be needed.
     ///
+    /// Has no effect on its own: cancelling is about work that started, so
+    /// without `onPrefetch(_:)` nothing is predicted and nothing is cancelled.
+    ///
     /// **Not a balancing count, and not a guarantee.** An item that scrolls
     /// into view is simply used and never reported here; an item whose element
     /// leaves the collection is not reported either, because the code that

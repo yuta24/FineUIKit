@@ -55,12 +55,18 @@ Swift Testing の振る舞いテストが大半を占めます。`RenderingPerfo
 | `FineUI.build(to:)`、制約、container 移動 | `FineUIHostingTests.swift` | root の再親子付け、制約、trait registration |
 | handler や builder の capture、保持サイクル | `FineLeakTests.swift` | content が `self` を強キャプチャした全形状の解放、controller 強参照のリーク、weak delegate の解放検証 |
 | 性能回帰 | `RenderingPerformanceTests.swift` | 大量 list と changed-row-only の比較傾向 |
+| 更新理由・所要時間診断 | `FineUpdateReasonTests.swift` | 初回 `.initial`、親起因 `.parent`、観測 `.observation`、catch-up、セルの自己復帰、子へ理由が漏れないこと、理由が次回 render に漏れないこと、所要時間記録、`fineDebugDescription` の `because` 含有 |
+| 条件分岐/ループの構造 identity | `FineStructuralIdentityTests.swift`、`FineResolutionTests.swift`、`FineCellGranularityTests.swift` | 分岐消滅でも兄弟 view と `FineState` 保持、resolve-once と root prime、セル内ノード局所観測 |
+| セル再利用と行バウンド lifecycle | `FineCellReuseTests.swift`、`FineLifecycleIdentityTests.swift`、`FineCellReuseViewStateTests.swift` | `FineState` が行をまたがない、行切替で lifecycle/.task が切替、キーボード/scroll/focus 書き戻し |
+| 宣言的アニメーションと transform | `FineDeclarativeAnimationTests.swift` | `.animation(_:)` の観測起因 animate、disabled 優先、catch-up 非アニメ、再利用セル非 animate、`hasBeenUpdated` 順序、transform 合成と署名非依存値 |
+| List/Grid のセクション型共有 | `FineCollectionSharingTests.swift` | 1 つの `FineSection` 値が両方に描画、`FineSupplementaryKind` 往復、header/footer の identity 区別 |
 
 ## 実装変更のチェックリスト
 
 - `Renderable.body` を変更する: 副作用を入れず、再評価回数・メタデータ参照順序に依存しないことを確認します。`044f24d` が示すように、description 解決の余分な繰り返しは性能退化につながります。
-- List/Grid を変更する: 無変更 snapshot apply を復活させないこと、header/footer を snapshot 外の補助要素として更新すること、section index ではなく identity を使うことを確認します。`8a2f4e9` と `3cb909e` がこの経緯です。
-| ホストを変更する: 別コンテナへの再 build で旧制約と trait registration を残さないことを確認します。根拠は `e56854e` と `FineUIHostingTests.swift` です。
+- List/Grid を変更する: 無変更 snapshot apply を復活させないこと、header/footer を snapshot 外の補助要素として更新すること、section index ではなく identity を使うことを確認します。`8a2f4e9` と `3cb909e` がこの経緯です。section/A要素の再利用ロジックを追加・変更した場合は `FineList.Coordinator` / `FineGrid.Coordinator` が継承する `FineCollectionCoordinator.plan(...)` / `commit(_:)` を起点にし、`FineCollectionSharingTests` で両者の共有を検証します。
+- ホストを変更する: 別コンテナへの再 build で旧制約と trait registration を残さないことを確認します。根拠は `e56854e` と `FineUIHostingTests.swift` です。
+- 宣言的アニメーションを変更する: `.animation(_:)` は `FineRenderContext.animation` 経由で子孫とノード局所再描画に届く設計です。disabled トランザクション（`withFineAnimation(nil)` と `resume()` 後 catch-up）を `.animation(_:)` が覆せないこと、初回描画と reuse セルの新行が非 animate であることを `FineDeclarativeAnimationTests.swift` で確認します（commit `c634ea3`、`21d5fa0`、`1dca181`）。
 - handler や builder の capture を変更する: `body()` 内の `self` は content であり、強参照キャプチャしてもリークしません(DAG)。リークするのは content が controller を強参照で保持したときだけです。`FineLeakTests.swift` が content の全キャプチャ形状の解放(`aContentCapturingItselfEverywhereIsReleased`)、controller 強参照のリーク(`aContentHoldingItsControllerLeaks`)、weak delegate の解放(`aWeakDelegatePointingAtTheControllerIsReleased`)を検証します。詳しくは[UI 合成と状態の保持とキャプチャ](../domain/ui-composition.md#保持とキャプチャ)を参照してください。
 - handler を変更する: UIKit の再利用時に action や gesture を二重登録せず、最新 closure に置換することを確認します。
 - 可視性ゲートを変更する: root とセルで異なる復帰経路が必要です。`FineRenderScopeTests` と List の振る舞いテストをセットで実行します。

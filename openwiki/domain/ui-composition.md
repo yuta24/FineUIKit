@@ -60,9 +60,35 @@ UIKit が値をクランプまたは丸めるコントロール（`FineSlider`�
 
 ## ライフサイクル、task、アニメーション
 
-`.onAppear` / `.onDisappear` は window への着脱に対応し、`.task` は表示中に非同期処理を開始し、非表示時にキャンセルします。`.task(id:)` は id の変化で再起動します（[FineLifecycle.swift](../../Sources/FineUIKit/FineLifecycle.swift)）。画面単位での非表示時停止は lifecycle modifier ではなく runtime の render gate が担うため、[レンダリングワークフロー](../workflows/rendering.md)の規則に従います。
+`.onAppear` / `.onDisappear` は**表示している対象**のライフサイクルに対応します（`693bb45` 以降、window の着脱ではなく記述の適用に結びます）。`.task` は表示中に対象の非同期処理を開始し、対象が終わるとキャンセルします。`.task(id:)` は id の変化で再起動します（[FineLifecycle.swift](../../Sources/FineUIKit/FineLifecycle.swift)）。セル再利用経路との関係は[UIKit 統合とコレクション](../integrations/uikit-collections.md)の行バウンド lifecycle 節が、画面単位での非表示時停止は runtime の render gate が[レンダリングワークフロー](../workflows/rendering.md)で扱います。
 
 `withFineAnimation` は Task-local transaction を設定し、root、ノード、セルの更新がその transaction を参照します（[FineAnimation.swift](../../Sources/FineUIKit/FineAnimation.swift)）。停止からの catch-up は明示的に animation 無効です。
+
+### 宣言的アニメーション（`.animation(_:)`）
+
+`c634ea3` 以降、記述側で「ある状態への遷移は見る価値がある」を宣言できます（[FineAnimated.swift](../../Sources/FineUIKit/FineAnimated.swift)）。
+
+```swift
+FineImage(image: poster)
+    .scale(self.isFocused ? 1.08 : 1.0)
+    .animation(.spring())   // isFocused を変える経路（tap/gesture/network）すべてで animate
+```
+
+`withFineAnimation` は「mutation する側」で、`.animation(_:)` は「記述する側」で宣言します。カードが focus で膨らむなどの state-driven 動画は、変更起因を問わないため `.animation(_:)` が自然です。実アニメーションは UIKit に委ね、`_update` を `UIView.animate` 内で実行します（animatable なプロパティは動き、text/image などは即時切り替わります）。アニメーション要求は `FineRenderContext.animation` 経由で子孫へ伝播し、scheduler の別 job になる子にも届きます（`21d5fa0`）。ノード局所再描画は `FineNode.context` を再利用するため、独立した観測変更でも宣言通り animate します（[レンダリングワークフロー](../workflows/rendering.md)のノード局所更新節）。
+
+**記述は呼び出し側の「今はやるな」に逆らえません**（`21d5fa0`）。`withFineAnimation(nil)` と `resume()` 後の catch-up render は `.disabled` となり、`.animation(_:)` を無効にします — 前者は呼び出し側の意図、後者は「画面外で起きた変化を.slide-in させない」ためです。`.animation(nil)` は包囲中のアニメーションからサブツリーを外す明示的手段で、`UIView.performWithoutAnimation` で実現します（nil でも放っておけばアニメーションしないとは限らないため）。初回描画は前の値がないため animate しません（`hasBeenUpdated` で初回かを区別、`1dca181` はアニメーションしなかった書き込みも書き込みとして数える修正です）。アニメ化されたセルの reuse は、行 identity が変わった clamp で `hasBeenUpdated` を `false` に戻し、前の行のサイズから.animate しない設計です（[UIKit 統合とコレクション](../integrations/uikit-collections.md)のセルと identity 節）。
+
+### transform 系モディファイア（`.scale` / `.offset` / `.rotation`）
+
+`FineTransformed`（[FineTransformed.swift](../../Sources/FineUIKit/FineTransformed.swift)）はレイヤ上で animate する composers-friendly な変形を提供します。`.scale(_:)`（中心周り）、`.scale(width:height:)`、`.offset(x:y:)`（レイアウトを崩さず移動）、`.rotation(_:)`（ラジアン）です。3 つの変形は `FineTransformSpec` に集約され、**offset → rotation → scale** の順で合成します（先に scale すると offset が scale 倍されてしまうため）。
+
+透過ラッパを挟んで書いても互いに上書きしないよう、`_transformSpec` は `_viewProvider` と同様に全 transparent wrapper を伝播し最後に書いたものが全体を書きます（`21d5fa0`）。**値はモディファイア署名に入りません** — 署名は `transform.s/o/r`（どの変形を要求したか）だけで、値を変えても再構築しません。さもなければ animate の各フレームでビューが再構築されるためです（`aChangedTransformIsWrittenWithoutRebuildingTheView`）。変形を外すと署名が変わるため再構築され、残留しません（`addingATransformRebuildsSoTheOldOneCannotLinger`）。位置を変えてレイアウトを流したいときは `.scale`/`.offset` ではなく `padding` / `frame` を使います。
+
+| いつ使うか | `withFineAnimation` | `.animation(_:)` |
+|---|---|---|
+| 宣言位置 | mutation する側 | 記述する側 |
+| 起因 | 呼び出し側が制御する1回の mutation | サブツリーに触れる任意の変更（tap / gesture / network / 観測） |
+| 範囲 | 1つの mutation block | 対するサブツリーの存続期間 |
 
 ## 任意の UIKit view を接続する
 
