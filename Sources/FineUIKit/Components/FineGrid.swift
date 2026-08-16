@@ -26,49 +26,6 @@ enum FineGridLayoutMath {
 }
 
 @MainActor
-public struct FineGridSection<Element: Identifiable> {
-    public let id: AnyHashable
-    public let header: (any Renderable)?
-    public let footer: (any Renderable)?
-    public let items: [Element]
-
-    public init(id: some Hashable, items: [Element]) {
-        self.id = AnyHashable(id)
-        self.header = nil
-        self.footer = nil
-        self.items = items
-    }
-
-    public init(
-        id: some Hashable,
-        header: (any Renderable)? = nil,
-        footer: (any Renderable)? = nil,
-        items: [Element]
-    ) {
-        self.id = AnyHashable(id)
-        self.header = header
-        self.footer = footer
-        self.items = items
-    }
-
-    public init(id: some Hashable, header: String? = nil, footer: String? = nil, items: [Element]) {
-        self.init(
-            id: id,
-            header: header.map(Self.textSupplementaryView),
-            footer: footer.map(Self.textSupplementaryView),
-            items: items
-        )
-    }
-
-    private static func textSupplementaryView(_ text: String) -> any Renderable {
-        FineLabel(text: text)
-            .font(.preferredFont(forTextStyle: .subheadline))
-            .textColor(.secondaryLabel)
-            .padding(.init(top: 8, leading: 16, bottom: 4, trailing: 16))
-    }
-}
-
-@MainActor
 public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Element.ID: Sendable {
     private let sections: [FineGridSection<Element>]
     private let columns: FineGridColumns
@@ -176,112 +133,33 @@ public struct FineGrid<Element: Identifiable>: FinePrimitiveRenderable where Ele
             gridView.keyboardDismissMode = keyboardDismissMode
         }
 
-        var snapshotSections: [FineGridSection<Element>] = []
-        var seenSectionIDs = Set<AnyHashable>()
-        var seenIDs = Set<Element.ID>()
-        var elementsByID: [Element.ID: Element] = [:]
-        var itemIDsBySectionID: [FineSectionIdentifier: [Element.ID]] = [:]
+        let plan = coordinator.plan(
+            sections: sections,
+            reconfiguresAll: reconfiguresAllItems,
+            areElementsEqual: areElementsEqual,
+            name: "FineGrid"
+        )
 
-        for section in sections {
-            guard seenSectionIDs.insert(section.id).inserted else {
-                assertionFailure("Duplicate FineGrid section id: \(section.id)")
-                continue
-            }
-
-            snapshotSections.append(section)
-            let sectionIdentifier = FineSectionIdentifier(section.id)
-
-            var sectionItemIDs: [Element.ID] = []
-            for element in section.items {
-                guard seenIDs.insert(element.id).inserted else {
-                    assertionFailure("Duplicate FineGrid item id: \(element.id)")
-                    continue
-                }
-
-                elementsByID[element.id] = element
-                sectionItemIDs.append(element.id)
-            }
-            itemIDsBySectionID[sectionIdentifier] = sectionItemIDs
-        }
-
-        let supplementarySignature = snapshotSections.map {
-            FineSupplementarySignature(
-                id: FineSectionIdentifier($0.id),
-                hasHeader: $0.header != nil,
-                hasFooter: $0.footer != nil
-            )
-        }
-        coordinator.sections = snapshotSections
-
-        // Held for the apply decision below: headers and footers are not part
-        // of the snapshot, so a section that gains or loses one produces no
-        // snapshot difference and would otherwise never be asked for.
-        let supplementaryDidChange = coordinator.supplementarySignature != supplementarySignature
-
+        // The layout reads the column count and whether a section has a header
+        // from the coordinator, so any of those changing has to invalidate it —
+        // including when nothing about the snapshot changed and the apply below
+        // is skipped.
         if coordinator.columns != columns
             || coordinator.spacing != spacing
-            || supplementaryDidChange
+            || plan.supplementaryDidChange
         {
             coordinator.columns = columns
             coordinator.spacing = spacing
-            coordinator.supplementarySignature = supplementarySignature
             gridView.collectionViewLayout.invalidateLayout()
         }
 
-        let previousElementsByID = coordinator.elementsByID
-        // The identifiers the data source holds, tracked alongside every apply
-        // instead of read back through `snapshot()`, which copies them all.
-        let previousIDs = coordinator.appliedItemIDs
-        let sectionIDs = snapshotSections.map { FineSectionIdentifier($0.id) }
-
-        // Items whose identity survived may still have changed content;
-        // reconfigure re-runs the cell provider, which updates hosted views in
-        // place. Items whose element is unchanged are skipped: `@Observable`
-        // reads inside item content update their own cell through per-cell
-        // observation, so re-running every surviving item is wasted work.
-        let reconfiguredIDs = elementsByID.keys.filter { id in
-            guard previousIDs.contains(id) else { return false }
-            guard !reconfiguresAllItems,
-                  let previousElement = previousElementsByID[id],
-                  let currentElement = elementsByID[id]
-            else { return true }
-
-            if let areElementsEqual {
-                return !areElementsEqual(previousElement, currentElement)
-            }
-            // Reference elements mutated in place are the same instance on both
-            // sides, so no `==` can see the change: only an explicit comparator
-            // opts them into skipping.
-            guard !fineIsReference(currentElement) else { return true }
-            // Elements that cannot be compared are conservatively reconfigured.
-            return fineDynamicEquals(previousElement, currentElement) != true
-        }
-
-        coordinator.elementsByID = elementsByID
         coordinator.refreshVisibleSupplementaryViews(in: gridView)
 
-        // A render that neither moves an item nor changes one has nothing for
-        // the data source to do, and applying anyway makes it diff the whole
-        // grid. Root renders are triggered by any observed read in `body`, so
-        // an unrelated field elsewhere on the screen would otherwise pay for
-        // this.
-        let structureIsUnchanged = coordinator.appliedSectionIDs == sectionIDs
-            && coordinator.appliedItemIDsBySectionID == itemIDsBySectionID
-            && !supplementaryDidChange
-        guard !structureIsUnchanged || !reconfiguredIDs.isEmpty else { return }
+        guard plan.needsApply else { return }
 
-        var snapshot = NSDiffableDataSourceSnapshot<FineSectionIdentifier, Element.ID>()
-        snapshot.appendSections(sectionIDs)
-        for sectionID in sectionIDs {
-            snapshot.appendItems(itemIDsBySectionID[sectionID] ?? [], toSection: sectionID)
-        }
-        snapshot.reconfigureItems(reconfiguredIDs)
-
-        coordinator.appliedSectionIDs = sectionIDs
-        coordinator.appliedItemIDsBySectionID = itemIDsBySectionID
-        coordinator.appliedItemIDs = Set(elementsByID.keys)
+        coordinator.commit(plan)
         coordinator.dataSource.apply(
-            snapshot,
+            plan.makeSnapshot(),
             animatingDifferences: FineTransactionContext.allowsDiffAnimation(inWindow: gridView.window != nil)
         )
     }
@@ -371,10 +249,6 @@ public extension FineGrid where Element: Equatable {
 }
 
 extension FineGrid {
-    private static var refreshActionKey: String {
-        "FineUIKit.FineGrid.refresh"
-    }
-
     struct LayoutConfiguration {
         var columns: FineGridColumns = .count(2)
         var spacing: CGFloat = 8
@@ -383,42 +257,11 @@ extension FineGrid {
     }
 
     @MainActor
-    final class Coordinator: NSObject, UICollectionViewDelegate {
+    final class Coordinator: FineCollectionCoordinator<Element>, UICollectionViewDelegate {
         let dataSource: UICollectionViewDiffableDataSource<FineSectionIdentifier, Element.ID>
 
-        var sections: [FineGridSection<Element>] = [] {
-            didSet {
-                sectionsByID = Dictionary(
-                    sections.map { ($0.id, $0) },
-                    uniquingKeysWith: { first, _ in first }
-                )
-            }
-        }
-        /// `sections` by identity. Supplementary lookups run per section on
-        /// every layout pass, and a linear scan there is work proportional to
-        /// the section count for each one of them.
-        private(set) var sectionsByID: [AnyHashable: FineGridSection<Element>] = [:]
-        var elementsByID: [Element.ID: Element] = [:]
-        /// The structure last handed to the data source. A render that changes
-        /// neither the structure nor any item's content skips `apply`, which
-        /// otherwise diffs the whole grid — a root render triggered by an
-        /// unrelated part of the tree would pay for it on every keystroke.
-        var appliedSectionIDs: [FineSectionIdentifier] = []
-        var appliedItemIDsBySectionID: [FineSectionIdentifier: [Element.ID]] = [:]
-        var appliedItemIDs: Set<Element.ID> = []
-        var content: (@MainActor (Element) -> any Renderable)?
-        var onSelect: (@MainActor (Element) -> Void)?
-        var onRefresh: (@MainActor () async -> Void)?
         var columns: FineGridColumns
         var spacing: CGFloat
-        var supplementarySignature: [FineSupplementarySignature] = []
-        // Environment resolved at the grid's last render. Cells observe it,
-        // so `.environment(_:_:)` changes reach visible items even when no
-        // snapshot difference reconfigures them.
-        let environmentStorage = FineEnvironmentStorage()
-        // Gate of the tree this grid belongs to, so cell-local re-renders stop
-        // while the screen is off screen.
-        var renderGate: FineRenderGate?
 
         init(gridView: FineGridView, columns: FineGridColumns, spacing: CGFloat) {
             self.columns = columns
@@ -470,6 +313,7 @@ extension FineGrid {
 
                 guard let view = view as? FineGridHostSupplementaryView,
                       let coordinator = (collectionView as? FineGridView)?.coordinator as? Coordinator,
+                      let kind = FineSupplementaryKind(elementKind: kind),
                       let id = coordinator.sectionID(at: indexPath.section),
                       coordinator.supplementaryNode(forSection: id, kind: kind) != nil
                 else { return view }
@@ -481,73 +325,8 @@ extension FineGrid {
             gridView.delegate = self
         }
 
-        func updateRefreshControl(on gridView: FineGridView) {
-            guard onRefresh != nil else {
-                gridView.refreshControl?.fineSetHandler(FineGrid<Element>.refreshActionKey, for: .valueChanged, handler: nil)
-                gridView.refreshControl = nil
-                return
-            }
-
-            let refreshControl = gridView.refreshControl ?? UIRefreshControl()
-            gridView.refreshControl = refreshControl
-
-            refreshControl.fineSetHandler(FineGrid<Element>.refreshActionKey, for: .valueChanged) { [weak self, weak refreshControl] _ in
-                guard let self, let refreshControl else { return }
-
-                Task { @MainActor in
-                    if let onRefresh = self.onRefresh {
-                        await onRefresh()
-                    }
-                    refreshControl.endRefreshing()
-                }
-            }
-        }
-
-        /// The current description for a section's header or footer, found by
-        /// section identity.
-        ///
-        /// Supplementary views re-render outside the data source — on an
-        /// environment change, say — so they read the description here rather
-        /// than keeping the one they were handed, which the next root render
-        /// has already replaced. Identity, not position: a view stays on screen
-        /// while a section removed above it shifts every index below.
-        func supplementaryNode(forSection id: AnyHashable, kind: String) -> (any Renderable)? {
-            guard let section = sectionsByID[id] else { return nil }
-
-            switch kind {
-            case UICollectionView.elementKindSectionHeader:
-                return section.header
-            case UICollectionView.elementKindSectionFooter:
-                return section.footer
-            default:
-                return nil
-            }
-        }
-
-        /// The identifier the data source currently shows at `index`.
-        ///
-        /// Asked through the data source rather than a cache of our own, so an
-        /// index UIKit hands us during an animated apply still resolves against
-        /// the sections on screen. `sectionIdentifier(for:)` reads the applied
-        /// snapshot directly; `snapshot()` would copy the whole thing, and this
-        /// runs per visible supplementary view.
-        func sectionID(at index: Int) -> AnyHashable? {
+        override func sectionID(at index: Int) -> AnyHashable? {
             dataSource.sectionIdentifier(for: index)?.value
-        }
-
-        /// Points `view` at the description for `id`, re-read on every host
-        /// re-render. Falls back to the description installed here, so a lookup
-        /// that misses leaves the last content in place instead of blanking it.
-        func install(id: AnyHashable, kind: String, in view: FineGridHostSupplementaryView) {
-            let installed = supplementaryNode(forSection: id, kind: kind)
-            let identity = FineSupplementaryIdentity(section: id, kind: kind)
-            view.render(
-                identity: AnyHashable(identity),
-                environment: environmentStorage,
-                renderGate: renderGate
-            ) { [weak self] in
-                self?.supplementaryNode(forSection: id, kind: kind) ?? installed ?? FineSpacer()
-            }
         }
 
         /// Re-renders on-screen headers and footers from the current sections.
@@ -556,9 +335,9 @@ extension FineGrid {
         /// view for a supplementary view it already has, so a header built from
         /// changed state would keep showing the old description.
         func refreshVisibleSupplementaryViews(in gridView: UICollectionView) {
-            for kind in [UICollectionView.elementKindSectionHeader, UICollectionView.elementKindSectionFooter] {
-                for indexPath in gridView.indexPathsForVisibleSupplementaryElements(ofKind: kind) {
-                    guard let view = gridView.supplementaryView(forElementKind: kind, at: indexPath)
+            for kind in [FineSupplementaryKind.header, .footer] {
+                for indexPath in gridView.indexPathsForVisibleSupplementaryElements(ofKind: kind.elementKind) {
+                    guard let view = gridView.supplementaryView(forElementKind: kind.elementKind, at: indexPath)
                             as? FineGridHostSupplementaryView,
                           let id = sectionID(at: indexPath.section),
                           supplementaryNode(forSection: id, kind: kind) != nil
@@ -587,19 +366,12 @@ extension FineGrid {
             )
         }
 
-        private func section(at index: Int) -> FineGridSection<Element>? {
-            guard let id = sectionID(at: index) else { return nil }
-            return sectionsByID[id]
-        }
-
         func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
             collectionView.deselectItem(at: indexPath, animated: true)
 
-            guard let id = dataSource.itemIdentifier(for: indexPath),
-                  let element = elementsByID[id]
-            else { return }
+            guard let id = dataSource.itemIdentifier(for: indexPath) else { return }
 
-            onSelect?(element)
+            selectElement(withID: id)
         }
 
         func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt indexPath: IndexPath) -> Bool {
@@ -699,7 +471,7 @@ final class FineGridHostCell: UICollectionViewCell {
 }
 
 @MainActor
-final class FineGridHostSupplementaryView: UICollectionReusableView {
+final class FineGridHostSupplementaryView: UICollectionReusableView, FineSupplementaryHosting {
     static let reuseIdentifier = "FineGridHostSupplementaryView"
 
     private var host: FineNodeHost?

@@ -30,6 +30,8 @@
 
 組み込みにないビューは `FineViewRepresentable` で任意の `UIView` をラップできます(後述)。
 
+`FineList` と `FineGrid` のセクションは**同じ型**です。`FineSection<Element>`(id・任意のヘッダー / フッター・items)が本体で、`FineListSection` / `FineGridSection` はその別名なので、1 つ組み立てたセクション値をどちらにも渡せます。両者は差分の取り方(どのセクションが増減したか、生き残った要素のうちどれが古いか、データソースに渡すことがそもそも有るか)を1つの実装で共有しており、セクション型が別々である理由はありませんでした。
+
 `FineProgressView(value:)` / `FineActivityIndicator(isAnimating:)` は表示値を `@autoclosure` で受け取ります(`FineLabel(text:)` と同じ)。読み取りはそのノードの `_update` 内で起きるため、進捗やローディングの変化では**そのビューだけ**が更新され、`body` は再評価されません。`total:` は素の値なので、これが変わったときは `body` から再評価されます。
 
 ```swift
