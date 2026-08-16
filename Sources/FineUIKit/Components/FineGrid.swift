@@ -320,7 +320,7 @@ extension FineGrid {
             self.columns = columns
             self.spacing = spacing
 
-            gridView.register(FineGridHostCell.self, forCellWithReuseIdentifier: FineGridHostCell.reuseIdentifier)
+            gridView.register(FineCollectionHostCell.self, forCellWithReuseIdentifier: FineCollectionHostCell.reuseIdentifier)
             gridView.register(
                 FineGridHostSupplementaryView.self,
                 forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader,
@@ -336,16 +336,20 @@ extension FineGrid {
             // instead of capturing it, avoiding a retain cycle.
             dataSource = .init(collectionView: gridView) { collectionView, indexPath, id in
                 let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: FineGridHostCell.reuseIdentifier,
+                    withReuseIdentifier: FineCollectionHostCell.reuseIdentifier,
                     for: indexPath
                 )
 
-                guard let cell = cell as? FineGridHostCell,
+                guard let cell = cell as? FineCollectionHostCell,
                       let coordinator = (collectionView as? FineGridView)?.coordinator as? Coordinator,
                       let element = coordinator.elementsByID[id],
                       let content = coordinator.content
                 else { return cell }
 
+                // A grid item is as tall as its content, so the cell measures
+                // itself. Said rather than assumed: the cell class is shared
+                // with the flat collections, which set this the other way.
+                cell.usesGivenSize = false
                 cell.render(
                     identity: AnyHashable(id),
                     environment: coordinator.environmentStorage,
@@ -442,94 +446,7 @@ extension FineGrid {
 }
 
 @MainActor
-final class FineGridView: UICollectionView {
-    var coordinator: AnyObject?
-
-    private var isLayoutInvalidationScheduled = false
-
-    /// Coalesces self-sizing invalidation from concurrently re-rendered hosts
-    /// into one layout pass per main-actor turn, instead of a full
-    /// invalidateLayout per changed item. Inside a transaction the pass runs
-    /// in the animation block so item frames animate.
-    func fineScheduleLayoutInvalidation() {
-        guard !isLayoutInvalidationScheduled else { return }
-        isLayoutInvalidationScheduled = true
-
-        Task { @MainActor in
-            self.isLayoutInvalidationScheduled = false
-
-            if case .animate(let animation) = FineTransactionContext.current {
-                animation.animate {
-                    self.collectionViewLayout.invalidateLayout()
-                    self.layoutIfNeeded()
-                }
-            } else {
-                UIView.performWithoutAnimation {
-                    self.collectionViewLayout.invalidateLayout()
-                    self.layoutIfNeeded()
-                }
-            }
-        }
-    }
-}
-
-@MainActor
-final class FineGridHostCell: UICollectionViewCell {
-    static let reuseIdentifier = "FineGridHostCell"
-
-    private var host: FineNodeHost?
-
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        host?.invalidate()
-    }
-
-    /// Renders item content under local observation tracking.
-    ///
-    /// This mirrors `FineUI`'s render tracking at cell scope: values read while
-    /// building and rendering the item can invalidate only this cell. When an
-    /// observed update changes the item's fitting height, the enclosing
-    /// collection view coalesces a layout invalidation.
-    func render(
-        identity: AnyHashable?,
-        environment: FineEnvironmentStorage,
-        renderGate: FineRenderGate?,
-        _ makeNode: @escaping @MainActor () -> any Renderable
-    ) {
-        ensureHost().render(identity: identity, environment: environment, renderGate: renderGate, makeNode)
-    }
-
-    /// Re-measures the grid when this view's content no longer fits its
-    /// current size.
-    func invalidateEnclosingLayoutIfNeeded() {
-        guard contentView.fineNeedsHeightRemeasure,
-              let gridView = fineEnclosing(FineGridView.self)
-        else { return }
-
-        gridView.fineScheduleLayoutInvalidation()
-    }
-
-    private func ensureHost() -> FineNodeHost {
-        if let host { return host }
-
-        let host = FineNodeHost(owner: self) { [unowned self] view in
-            contentView.addSubview(view)
-
-            let guide = contentView.layoutMarginsGuide
-            NSLayoutConstraint.activate([
-                view.topAnchor.constraint(equalTo: guide.topAnchor),
-                view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
-                view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
-                view.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
-            ])
-        }
-        host.onObservedRerender = { [unowned self] in
-            invalidateEnclosingLayoutIfNeeded()
-        }
-        self.host = host
-        return host
-    }
-}
+final class FineGridView: FineCollectionHostView {}
 
 @MainActor
 final class FineGridHostSupplementaryView: UICollectionReusableView, FineSupplementaryHosting {

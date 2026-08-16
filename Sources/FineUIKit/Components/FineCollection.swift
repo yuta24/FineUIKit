@@ -179,7 +179,9 @@ struct FineCollectionPlan<Element: Identifiable> where Element.ID: Sendable {
 /// A base class rather than a value the coordinators hold, so the members the
 /// cell providers and delegates already reach for keep their names.
 @MainActor
-class FineCollectionCoordinator<Element: Identifiable>: NSObject where Element.ID: Sendable {
+class FineCollectionCoordinator<Element: Identifiable>: NSObject, FineCollectionPrefetchReporting
+    where Element.ID: Sendable
+{
     var sections: [FineSection<Element>] = [] {
         didSet {
             sectionsByID = Dictionary(
@@ -472,4 +474,272 @@ class FineCollectionCoordinator<Element: Identifiable>: NSObject where Element.I
         appliedItemIDs = Set(plan.elementsByID.keys)
         appliedSupplementarySignature = plan.supplementarySignature
     }
+}
+
+/// The collection view a `FineGrid`, `FineCarousel` or `FineShelf` renders
+/// into.
+///
+/// Holds the coordinator — the cell providers reach it through the view rather
+/// than capturing it, which is what keeps them out of a retain cycle — and owns
+/// the one piece of behaviour every collection needs: folding self-sizing
+/// invalidation into a single layout pass.
+@MainActor
+class FineCollectionHostView: UICollectionView {
+    var coordinator: AnyObject?
+
+    private var isLayoutInvalidationScheduled = false
+
+    /// Coalesces self-sizing invalidation from concurrently re-rendered hosts
+    /// into one layout pass per main-actor turn, instead of a full
+    /// invalidateLayout per changed item. Inside a transaction the pass runs in
+    /// the animation block so item frames animate.
+    func fineScheduleLayoutInvalidation() {
+        guard !isLayoutInvalidationScheduled else { return }
+        isLayoutInvalidationScheduled = true
+
+        Task { @MainActor in
+            self.isLayoutInvalidationScheduled = false
+
+            if case .animate(let animation) = FineTransactionContext.current {
+                animation.animate {
+                    self.collectionViewLayout.invalidateLayout()
+                    self.layoutIfNeeded()
+                }
+            } else {
+                UIView.performWithoutAnimation {
+                    self.collectionViewLayout.invalidateLayout()
+                    self.layoutIfNeeded()
+                }
+            }
+        }
+    }
+}
+
+/// The cell every collection-view-backed component renders an element into.
+@MainActor
+final class FineCollectionHostCell: UICollectionViewCell {
+    static let reuseIdentifier = "FineCollectionHostCell"
+
+    /// Whether the layout's size is final.
+    ///
+    /// A grid item is as tall as its content, so its cell negotiates: it
+    /// measures what it holds and asks the layout for that height. A carousel
+    /// page and a shelf item are as tall as the thing they sit in, and a cell
+    /// that measured its content there would shrink to fit a short label and
+    /// leave a ragged run — so those say the size they were given is the size
+    /// they are.
+    var usesGivenSize = false
+
+    private var host: FineNodeHost?
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        host?.invalidate()
+        usesGivenSize = false
+    }
+
+    override func preferredLayoutAttributesFitting(
+        _ layoutAttributes: UICollectionViewLayoutAttributes
+    ) -> UICollectionViewLayoutAttributes {
+        guard !usesGivenSize else { return layoutAttributes }
+        return super.preferredLayoutAttributesFitting(layoutAttributes)
+    }
+
+    /// Renders item content under local observation tracking.
+    ///
+    /// This mirrors `FineUI`'s render tracking at cell scope: values read while
+    /// building and rendering the item can invalidate only this cell. When an
+    /// observed update changes the item's fitting size, the enclosing
+    /// collection view coalesces a layout invalidation.
+    func render(
+        identity: AnyHashable?,
+        environment: FineEnvironmentStorage,
+        renderGate: FineRenderGate?,
+        _ makeNode: @escaping @MainActor () -> any Renderable
+    ) {
+        ensureHost().render(identity: identity, environment: environment, renderGate: renderGate, makeNode)
+    }
+
+    /// Re-measures the collection when this cell's content no longer fits its
+    /// current size.
+    func invalidateEnclosingLayoutIfNeeded() {
+        guard contentView.fineNeedsHeightRemeasure,
+              let collectionView = fineEnclosing(FineCollectionHostView.self)
+        else { return }
+
+        collectionView.fineScheduleLayoutInvalidation()
+    }
+
+    private func ensureHost() -> FineNodeHost {
+        if let host { return host }
+
+        let host = FineNodeHost(owner: self) { [unowned self] view in
+            contentView.addSubview(view)
+
+            let guide = contentView.layoutMarginsGuide
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: guide.topAnchor),
+                view.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
+                view.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
+            ])
+        }
+        host.onObservedRerender = { [unowned self] in
+            invalidateEnclosingLayoutIfNeeded()
+        }
+        self.host = host
+        return host
+    }
+}
+
+/// The coordinator for a collection that is one flat run of elements.
+///
+/// A carousel and a shelf have no sections, no headers and no footers — they
+/// are a sequence, and the only structure they need is the one the diffable
+/// data source already provides. What is left after that is the cell provider
+/// and two delegate methods, which is the same in both, so it is written here
+/// and each component adds only what makes it that component.
+@MainActor
+class FineFlatCollectionCoordinator<Element: Identifiable>: FineCollectionCoordinator<Element>,
+    UICollectionViewDelegate,
+    UICollectionViewDataSourcePrefetching
+    where Element.ID: Sendable
+{
+    /// The one section a flat collection has. Its identity never changes, so
+    /// the diff is always about items.
+    static var sectionID: FineSectionIdentifier {
+        .init(AnyHashable("__FineFlatCollection.main"))
+    }
+
+    let dataSource: UICollectionViewDiffableDataSource<FineSectionIdentifier, Element.ID>
+
+    init(collectionView: FineCollectionHostView) {
+        collectionView.register(
+            FineCollectionHostCell.self,
+            forCellWithReuseIdentifier: FineCollectionHostCell.reuseIdentifier
+        )
+
+        // The provider reaches the coordinator through the collection view
+        // instead of capturing it, avoiding a retain cycle.
+        dataSource = .init(collectionView: collectionView) { collectionView, indexPath, id in
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: FineCollectionHostCell.reuseIdentifier,
+                for: indexPath
+            )
+
+            guard let cell = cell as? FineCollectionHostCell,
+                  let coordinator = (collectionView as? FineCollectionHostView)?
+                      .coordinator as? FineFlatCollectionCoordinator<Element>,
+                  let element = coordinator.elementsByID[id],
+                  let content = coordinator.content
+            else { return cell }
+
+            // A flat collection sizes its cells itself — a page is the
+            // carousel's width, a shelf item is the shelf's height — so the
+            // cell does not measure its way to a different answer.
+            cell.usesGivenSize = true
+            cell.render(
+                identity: AnyHashable(id),
+                environment: coordinator.environmentStorage,
+                renderGate: coordinator.renderGate
+            ) { content(element) }
+
+            return cell
+        }
+
+        super.init()
+
+        collectionView.delegate = self
+    }
+
+    override func sectionID(at index: Int) -> AnyHashable? {
+        dataSource.sectionIdentifier(for: index)?.value
+    }
+
+    /// Folds a flat run of elements into the one section and applies it.
+    func apply(_ elements: [Element], reconfiguresAll: Bool, name: String, in collectionView: UICollectionView) {
+        let plan = plan(
+            sections: [.init(id: Self.sectionID.value, items: elements)],
+            reconfiguresAll: reconfiguresAll,
+            areElementsEqual: nil,
+            name: name
+        )
+
+        guard plan.needsApply else { return }
+
+        commit(plan)
+        dataSource.apply(
+            plan.makeSnapshot(),
+            animatingDifferences: FineTransactionContext.allowsDiffAnimation(inWindow: collectionView.window != nil)
+        )
+    }
+
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        collectionView.deselectItem(at: indexPath, animated: true)
+
+        guard let id = dataSource.itemIdentifier(for: indexPath) else { return }
+
+        selectElement(withID: id)
+    }
+
+    func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt indexPath: IndexPath) -> Bool {
+        onSelect != nil
+    }
+
+    func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
+        prefetchElements(withIDs: indexPaths.compactMap { dataSource.itemIdentifier(for: $0) })
+    }
+
+    func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
+        cancelPrefetchingElements(withIDs: indexPaths.compactMap { dataSource.itemIdentifier(for: $0) })
+    }
+
+    /// Called as the scroll offset changes, for collections that care where
+    /// they are. Empty here: a shelf has no notion of a current anything.
+    ///
+    /// Declared on this class rather than the subclass that uses it because
+    /// this is the class that states the `UICollectionViewDelegate`
+    /// conformance, and that is where UIKit looks for the methods answering
+    /// it — a scroll callback added further down goes uncalled.
+    func scrollOffsetDidChange(in scrollView: UIScrollView) {}
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        scrollOffsetDidChange(in: scrollView)
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        scrollOffsetDidChange(in: scrollView)
+    }
+
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        scrollOffsetDidChange(in: scrollView)
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        scrollOffsetDidChange(in: scrollView)
+    }
+}
+
+/// Installs or removes a prefetch data source to match what a coordinator can
+/// report.
+///
+/// Gated on change: assigning it is a statement to UIKit about its own prefetch
+/// bookkeeping, and a root render caused by an unrelated part of the tree has
+/// nothing to say about it.
+@MainActor
+func fineUpdatePrefetching(
+    on collectionView: UICollectionView,
+    with coordinator: some UICollectionViewDataSourcePrefetching & FineCollectionPrefetchReporting
+) {
+    let wantsPrefetching = coordinator.wantsPrefetching
+    if (collectionView.prefetchDataSource != nil) != wantsPrefetching {
+        collectionView.prefetchDataSource = wantsPrefetching ? coordinator : nil
+    }
+}
+
+/// What `fineUpdatePrefetching(on:with:)` needs to know, so it does not have to
+/// be generic over the element type.
+@MainActor
+protocol FineCollectionPrefetchReporting: AnyObject {
+    var wantsPrefetching: Bool { get }
 }

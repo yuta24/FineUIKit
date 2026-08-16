@@ -14,6 +14,8 @@
 | `FineStack` | `UIStackView` | `vertical` / `horizontal`、`spacing` / `alignment` / `distribution`。子は keyed + 位置ベースで差分適用 |
 | `FineList` | `UITableView` | diffable data source(`Identifiable`)。セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedRows()` / `.onSelect` / `.onDelete` / `.onPrefetch` / `.onCancelPrefetch` / `.keyboardDismissMode`。行の高さは観測起因の変化に自動追従 |
 | `FineGrid` | `UICollectionView` | compositional layout。`columns: .count(n)` / `.adaptive(minimum:)`、セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedItems()` / `.onSelect` / `.onPrefetch` / `.onCancelPrefetch` / `.keyboardDismissMode` |
+| `FineCarousel` | `UICollectionView` | 横ページング。`.currentPage(FineBinding<Int>)` で現在ページを双方向に。セルは再利用・差分適用。高さは `.height(_:)` で与える |
+| `FineShelf` | `UICollectionView` | 横スクロールの一列。`itemWidth: .fixed(pt)` / `.fractional(比率)`、`spacing`。セルは再利用・差分適用。高さは `.height(_:)` で与える |
 | `FineTextField` | `UITextField` | `FineBinding<String>` で双方向。`.keyboardType` / `.returnKeyType` / `.secureTextEntry` / `.onSubmit` / `.enabled` / `.focused` |
 | `FineTextView` | `UITextView` | 複数行入力。`FineBinding<String>` + placeholder(UIKit にないので独自描画)。既定でスクロール無効=内容に合わせて伸びる。`.font` / `.textColor` / `.textAlignment` / `.editable` / `.scrollEnabled` / `.keyboardType` / `.focused` |
 | `FineToggle` | `UISwitch` | `FineBinding<Bool>`。`.enabled` |
@@ -29,6 +31,49 @@
 | `FineScrollView` | `UIScrollView` | 縦横対応。`.keyboardDismissMode`。`FineList` / `FineGrid` は自身がスクロールするので入れないこと |
 
 組み込みにないビューは `FineViewRepresentable` で任意の `UIView` をラップできます(後述)。
+
+## 横に並ぶもの(FineCarousel / FineShelf)
+
+`FineList` と `FineGrid` は縦に伸びます。**横**は2つの形があり、どちらも表現できませんでした。
+
+### FineCarousel — 1画面ずつのページ
+
+`FinePageControl` は最初からありましたが、**組み合わせる相手がいませんでした**。ページングを自前で書き、ドットを手で駆動するしかありません。`.currentPage` は page control と同じ `FineBinding<Int>` を受け取るので、2つで1つのことを記述できます。
+
+```swift
+FineStack.vertical {
+    FineCarousel(banners) { FineBannerCard($0) }
+        .currentPage(FineBinding(self, \.page))
+        .height(220)
+    FinePageControl(numberOfPages: banners.count, currentPage: FineBinding(self, \.page))
+}
+```
+
+双方向です。スクロールすれば落ち着いたページが binding に書かれ、binding に書けばそこへスクロールします。**今表示中のページを指す書き込みは何もしません** — これが2つの方向が追いかけ合わないようにしている仕掛けです。指が動かしている最中(`isDragging` / `isDecelerating`)の書き込みも無視します。
+
+### FineShelf — 横に流れる一列
+
+「続きを見る」「最近再生した」の形です。`FineGrid` は縦、`FineScrollView` は横に動きますが**再利用も差分適用もしない**ため、長い shelf は全項目のビューを同時に抱えます。
+
+```swift
+FineStack.vertical(spacing: 16) {
+    FineLabel(text: "続きを見る")
+    FineShelf(episodes, itemWidth: .fixed(160)) { FineEpisodeCard($0) }
+        .height(200)
+}
+```
+
+`itemWidth` は `.fixed(pt)` か `.fractional(比率)` です。**1 未満の比率は次の項目を端に覗かせます** — 読み手が「横に続きがある」と分かるのはこれによってです。
+
+### 両方に共通すること
+
+- **高さは自分では決めません。** `UICollectionView` と同じで、`.height(_:)` か `.frame(height:)` で与えてください
+- セクション・ヘッダー・フッターはありません。どちらも「並び」であって表ではないためです
+- 項目は**与えられた大きさに従います**(カルーセルのページは横幅いっぱい、shelf の項目は shelf の高さいっぱい)。内容に合わせて縮むことはありません — 短いラベルで背が縮んだ項目が並ぶと、列がガタつくためです
+- セーフエリアを自分では引きません。ステータスバーの下に敷いたカルーセルもページは指定した高さのままです(ツリーの上位が既にセーフエリアを処理しています)
+- `FineList` / `FineGrid` と同じ差分適用・セル再利用・環境の伝播・`.onSelect` / `.onPrefetch` が効きます
+
+---
 
 ## 表示される前に知る(prefetch)
 
