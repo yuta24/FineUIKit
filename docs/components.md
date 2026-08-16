@@ -12,8 +12,8 @@
 | `FineButton` | `UIButton` | `action` クロージャ。`.image` / `.configuration(UIButton.Configuration)` / `.enabled` |
 | `FineImage` | `UIImageView` | |
 | `FineStack` | `UIStackView` | `vertical` / `horizontal`、`spacing` / `alignment` / `distribution`。子は keyed + 位置ベースで差分適用 |
-| `FineList` | `UITableView` | diffable data source(`Identifiable`)。セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedRows()` / `.onSelect` / `.onDelete` / `.keyboardDismissMode`。行の高さは観測起因の変化に自動追従 |
-| `FineGrid` | `UICollectionView` | compositional layout。`columns: .count(n)` / `.adaptive(minimum:)`、セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedItems()` / `.onSelect` / `.keyboardDismissMode` |
+| `FineList` | `UITableView` | diffable data source(`Identifiable`)。セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedRows()` / `.onSelect` / `.onDelete` / `.onPrefetch` / `.keyboardDismissMode`。行の高さは観測起因の変化に自動追従 |
+| `FineGrid` | `UICollectionView` | compositional layout。`columns: .count(n)` / `.adaptive(minimum:)`、セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedItems()` / `.onSelect` / `.onPrefetch` / `.keyboardDismissMode` |
 | `FineTextField` | `UITextField` | `FineBinding<String>` で双方向。`.keyboardType` / `.returnKeyType` / `.secureTextEntry` / `.onSubmit` / `.enabled` / `.focused` |
 | `FineTextView` | `UITextView` | 複数行入力。`FineBinding<String>` + placeholder(UIKit にないので独自描画)。既定でスクロール無効=内容に合わせて伸びる。`.font` / `.textColor` / `.textAlignment` / `.editable` / `.scrollEnabled` / `.keyboardType` / `.focused` |
 | `FineToggle` | `UISwitch` | `FineBinding<Bool>`。`.enabled` |
@@ -29,6 +29,32 @@
 | `FineScrollView` | `UIScrollView` | 縦横対応。`.keyboardDismissMode`。`FineList` / `FineGrid` は自身がスクロールするので入れないこと |
 
 組み込みにないビューは `FineViewRepresentable` で任意の `UIView` をラップできます(後述)。
+
+## 表示される前に知る(prefetch)
+
+行の記述はセルが構成されるとき — つまり**見えるようになる瞬間**に組み立てられます。その中に遅いもの(リモート画像、デコードの要るアセット)があると、開始が遅すぎて行がポップインします。`.onPrefetch` は UIKit の予告(`UITableViewDataSourcePrefetching` / `UICollectionViewDataSourcePrefetching`)を受け取る入口です。
+
+```swift
+FineGrid(photos, columns: .adaptive(minimum: 120)) { photo in
+    FinePhotoCell(photo)
+}
+.onPrefetch { photos in
+    for photo in photos { ImageLoader.shared.start(photo.url) }
+}
+.onCancelPrefetch { photos in
+    for photo in photos { ImageLoader.shared.cancel(photo.url) }
+}
+```
+
+**ランタイムは何も先読みしません。** 高い処理はアプリの content クロージャの中にあるので、できるのは予告を転送することだけです。渡されるのは index path ではなく**要素**で、これは差分適用で index が意味を失うためです(このライブラリの他の部分と同じく identity ベース)。
+
+- スクロール中にメインアクターで呼ばれます。**ここで処理を行わず、投げてください**。UIKit がどれだけ先を読むかは UIKit が決め、同じ行を複数回要求することもあります
+- `.onCancelPrefetch` は**対応関係のある呼び出しではありません**。表示された行は単に使われるだけで報告されず、要素がコレクションから消えた行も報告されません(それを知っているのは削除したコード自身なので)。**開始していない処理の中止を求められることはありません**が、既に終わった処理について呼ばれることはあるので冪等に書いてください
+- キャンセルは index で届きます。**index は差分適用で意味が変わる**ため、このライブラリは「実際に予告した要素」だけを報告します。並べ替えの後に届いたキャンセルが無関係な行を指していた場合、それは無視されます
+- どちらのハンドラも無い場合、`prefetchDataSource` は設定されません
+- グリッドで特に効きます。リストの1行は1セルですが、グリッドの1行は列数ぶんのセルです
+
+---
 
 `FineList` と `FineGrid` のセクションは**同じ型**です。`FineSection<Element>`(id・任意のヘッダー / フッター・items)が本体で、`FineListSection` / `FineGridSection` はその別名なので、1 つ組み立てたセクション値をどちらにも渡せます。両者は差分の取り方(どのセクションが増減したか、生き残った要素のうちどれが古いか、データソースに渡すことがそもそも有るか)を1つの実装で共有しており、セクション型が別々である理由はありませんでした。
 
