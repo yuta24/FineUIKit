@@ -51,7 +51,7 @@ public enum FineRenderer {
             return existing
         }
 
-        let view = node._makeView()
+        let view = FineDiagnostics.makingView(of: node) { node._makeView() }
         // Before the update, so the counters the render is about to add to are
         // the ones the replaced view accumulated.
         FineDiagnostics.carryCounters(from: existing, to: view)

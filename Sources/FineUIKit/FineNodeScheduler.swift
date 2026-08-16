@@ -68,7 +68,7 @@ final class FineNodeScheduler {
             kind = .updated
         } else {
             existing?.fineNodeIfPresent?.generation += 1
-            view = primitive._makeView()
+            view = FineDiagnostics.makingView(of: primitive) { primitive._makeView() }
             FineDiagnostics.carryCounters(from: existing, to: view)
             kind = existing == nil ? .created : .rebuilt
         }

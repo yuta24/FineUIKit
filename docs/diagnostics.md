@@ -106,6 +106,39 @@ FineUIKit が管理していないビュー(UIKit が内部で作るラベルな
 
 ---
 
+## makeView() の中で状態を読んでしまった場合
+
+`FineViewRepresentable.makeView()` は**ビュー identity ごとに1回**しか呼ばれず、しかも**観測スコープの外**で実行されます(追跡されるのは `_update` だけです)。そのため、ここで `@Observable` な値を読んでも登録は行われず、後からその値が変わっても**何も起きません** — 再レンダリングもエラーも無く、ビューは最初の値を表示し続けます。
+
+```swift
+struct Badge: FineViewRepresentable {
+    let model: Model
+
+    func makeView() -> UILabel {
+        let label = UILabel()
+        label.text = model.title      // ← 効きません
+        return label
+    }
+
+    func updateView(_ view: UILabel, environment: FineEnvironmentValues) {}
+}
+```
+
+DEBUG ビルドでは、**その値が実際に変化した時点で**次のように報告されます(変化しなければ実害が無いので何も出ません)。
+
+```text
+FineUIKit FineRepresentableAdapter<Badge>: a value read while creating its view has changed.
+makeView() runs once per view identity and outside observation tracking, so this change
+will not be applied — read the value in updateView(_:environment:) instead, which runs on
+every render.
+```
+
+出力先は `FineDiagnostics.handler` です(既定は `OSLog`)。
+
+**読み取りは `updateView(_:environment:)` に移してください。** こちらは毎レンダリング呼ばれ、観測スコープの内側です。
+
+---
+
 ## Instruments(signpost)
 
 3つのレンダリングループが Points of Interest に signpost 区間を出します。Time Profiler や Animation Hitches のテンプレートでそのまま見えるため、専用テンプレートは不要です。

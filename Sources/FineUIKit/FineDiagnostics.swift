@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Observation
 import OSLog
 import UIKit
 
@@ -70,6 +71,55 @@ public enum FineDiagnostics {
     }
 
     private static let logger = Logger(subsystem: "FineUIKit", category: "reuse")
+
+    /// Creates a view, watching for observable state read while doing it.
+    ///
+    /// `makeView()` runs once per view identity, and outside every observation
+    /// scope — only `_update` is tracked. A value read while creating a view is
+    /// therefore never registered, and changing it later does nothing: no
+    /// re-render, no error, and a view still showing what the value was the
+    /// first time. Of the ways to be wrong that is the worst, because nothing
+    /// about it looks wrong.
+    ///
+    /// So the read is watched. If it never changes, nothing was ever wrong and
+    /// nothing is said. If it does change, that is the moment the bug becomes
+    /// real, and it is said then — naming the description, because by the time
+    /// someone notices the stale view they will be looking anywhere but here.
+    ///
+    /// `withObservationTracking` registers nothing for a closure that reads no
+    /// observable, so a tree of plain components pays for this with one closure
+    /// call. DEBUG only.
+    static func makingView(
+        of description: any FinePrimitiveRenderable,
+        _ make: () -> UIView
+    ) -> UIView {
+        #if DEBUG
+        var view: UIView!
+        // The component that actually makes the view, looked up the same way
+        // `FineNode.primitiveName` does — a name the reader will recognise,
+        // rather than the wrapper the description happened to be inside.
+        let name = String(describing: type(of: description._viewProvider))
+
+        withObservationTracking {
+            view = make()
+        } onChange: {
+            Task { @MainActor in
+                handler(
+                    """
+                    FineUIKit \(name): a value read while creating its view has changed. \
+                    makeView() runs once per view identity and outside observation tracking, \
+                    so this change will not be applied — read the value in \
+                    updateView(_:environment:) instead, which runs on every render.
+                    """
+                )
+            }
+        }
+
+        return view
+        #else
+        make()
+        #endif
+    }
 
     /// Measures `work`, so the two clock reads live in one place rather than
     /// at every update site.
