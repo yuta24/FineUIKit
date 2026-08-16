@@ -452,7 +452,35 @@ func _update(_ view: UIView, context: FineRenderContext) {
 2. **セル単位の観測**: 各ホストセルは `FineNodeHost` が content を**独自の `withObservationTracking` スコープ**で組み立てる。行の記述を作るときに読まれた値(`content(element)` のクロージャや `Renderable.body` の中の読み取り)がここに属します。
 3. **セル内のノード単位の観測**: そのスコープの中で組み立てた記述は、**セル専用の `FineNodeScheduler`** を通して描画されます。root ツリーと同じく各 `_update` が独立した観測スコープを持つので、`FineLabel(text:)` の autoclosure が読んだ値の変化は**そのラベルだけ**を更新します。
 
-3 が無かった頃は、リストに入れた瞬間だけ粒度が行全体に落ちていました。8 ノードのカード型の行で計測すると、1 プロパティの変更あたりのノード書き込みは **8 → 1** になります(`FineCellGranularityTests`)。代償はセル構成時の命令数 **+3.4%** で、`RenderingPerformanceTests` の `testHeavyCellReconfigurationFineUIKit` が固定しています(Instructions Retired、RSD 0.4%。同ベンチの Clock / CPU Cycles はシミュレータでは RSD が 10〜48% あり判断に使えません)。
+3 が無かった頃は、リストに入れた瞬間だけ粒度が行全体に落ちていました。8 ノードのカード型の行で計測すると、1 プロパティの変更あたりのノード書き込みは **8 → 1** になります(`FineCellGranularityTests`)。代償はセル構成時の命令数 **+3.4%** で、`RenderingPerformanceTests` の `testHeavyCellReconfigurationFineUIKit` が固定しています。
+
+### どの指標が読めるのか(Debug / Release)
+
+上の **+3.4%** は「この機能の有無」を A/B したときの差分で、実装を戻さない限り再現できません。一方、**同じベンチを Debug と Release で走らせて、どの指標がノイズに埋もれるか**は測り直せます(iPhone 17 シミュレータ、5 回計測)。
+
+| 指標 | Debug | Release | 読めるか |
+|---|---|---|---|
+| **Instructions Retired** | 34,298 kI(RSD **0.32%**) | 31,106 kI(RSD **0.10%**) | ✅ どちらでも |
+| CPU Cycles | 15,482 kC(RSD 9.9%) | 14,431 kC(RSD **4.6%**) | ⚠️ Release なら |
+| CPU Time | 5 ms(RSD 15.2%) | 5 ms(RSD **4.7%**) | ⚠️ Release なら |
+| Clock Monotonic | 5 ms(RSD 37.6%) | 5 ms(RSD 13.0%) | ❌ どちらでも不可 |
+
+わかったこと:
+
+- **Instructions Retired を基準に据えた判断は正しかった**。両構成で最も安定し、Release では RSD 0.1% まで下がります
+- **CPU Cycles / CPU Time は Release なら使えます**(RSD 10% 超 → 5% 未満)。以前「シミュレータでは判断に使えない」と書いていたのは Debug 限定の話でした
+- **Clock は Release でも使えません**(13%)。壁時計はシミュレータのスケジューリングを拾いすぎます
+- Debug → Release の命令数削減は **9% だけ**です。このベンチは UIKit(既に最適化済み)が支配的で、Swift のコードは全体の一部でしかないことを示しています
+
+```sh
+xcodebuild -scheme FineUIKit -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -configuration Release ENABLE_TESTABILITY=YES -parallel-testing-enabled NO \
+  -only-testing:FineUIKitTests/RenderingPerformanceTests/testHeavyCellReconfigurationFineUIKit test
+```
+
+`ENABLE_TESTABILITY=YES` は `@testable import` のために必要で、モジュール間最適化の一部を無効にします。つまり上の Release 値は**最適化の上限ではありません**。
+
+> **実機では未計測です。** 上記はすべて iPhone 17 シミュレータの値で、シミュレータは実機の CPU で実行される別物です。絶対値の判断には実機での再計測が要ります。
 
 セル内のノードには 2 つ、root ツリーには無い事情があります。
 
