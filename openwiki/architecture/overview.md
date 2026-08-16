@@ -46,14 +46,16 @@ flowchart TD
 
 ただし「どの既存ビューを候補として渡すか」は親コンテナが決めます。`FineStack` は子を key の有無で分け、key 付きは `.key(_:)` の値で対応するビューを引き当て、key なしは並び順の位置で引き当てます（[FineStack.swift](../../Sources/FineUIKit/Components/FineStack.swift)）。したがって key を付けない限り identity は位置に依存し、要素の挿入・並べ替えでビューと `FineState` が別の子に付き替わります。安定させたい子には `.key(_:)` を付けてください。
 
+`if` で生成される子が一方の render に現れ次に消えると、後続の key なし兄弟が一つずつ前に詰められ、無関係なビューが作り直されたり別の子の view と `FineState` を静かに引き継いだりしていました。`FineStructural`（[FineStructural.swift](../../Sources/FineUIKit/FineStructural.swift)）は `@FineBuilder` の `buildOptional` / `buildEither` / `buildArray` が生成した子に、記述の**静的**構造に基づくスロット（`path`）を `_key` として与えることで、それらを位置リストから外します。スロット付き子は key マッチングで再利用されるため、兄弟の位置は動かなくなります。`FineStructuralKey` は `path` に加えて `.key(_:)` の値（`user`）またはループ順序（`position`）のいずれか一つを持ち、`user` があれば `position` を捨てて key が reorder を追う設計です。`FineStack` の重複 key assert は、呼び出し側が選んだ `.key(_:)` の重複だけを報告し、ビルダが採番したスロット（`fineIsGeneratedSlot`）の衝突は無視します — 「誰が選んだか」が基準です（commit `c15fc20`、`75d87aa`）。switch/else-if の各分岐は同じスロットを共有し、compatible ビューへの分岐切替は在来の in-place 更新を保ちます。直列の `buildBlock` はスロットを与えないため余分な wrapper を割り当てません。
+
 候補が三条件を満たせば `_update` を既存ビューへ適用し、満たさなければ新しいビューを生成します。モディファイアの構成や key を変更すると、古い装飾・状態を引きずらずに再構築できる一方、局所状態は失われます。詳細な更新経路と観測粒度は[レンダリングワークフロー](../workflows/rendering.md)を参照してください。
 
 ## 役割分担
 
-- `FineUI`(internal): root `body` を観測し、コンテナへの設置、trait 監視、可視性ゲートを管理します。公開 API からは直接露出せず、`FineContentController` 経由で利用します（[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)、[FineContentController.swift](../../Sources/FineUIKit/FineContentController.swift)）。ランタイムを非公開にした判断と根拠は [`docs/api-design.md`](../../docs/api-design.md) §7 にあります。
-- `FineRenderer`: 記述の primitive 解決と、同期的な再利用判定を行います。解決時に通り過ぎた composite 型は `FineComposite` で包んで署名へ前置します（[FineComposite.swift](../../Sources/FineUIKit/FineComposite.swift)）。
+- `FineUI`(internal): root `body` を観測し、コンテナへの設置、trait 監視、可視性ゲート、DEBUG の hot-reload 監視を管理します。公開 API からは直接露出せず、`FineContentController` 経由で利用します（[FineUI.swift](../../Sources/FineUIKit/FineUI.swift)、[FineContentController.swift](../../Sources/FineUIKit/FineContentController.swift)）。ランタイムを非公開にした判断と根拠は [`docs/api-design.md`](../../docs/api-design.md) §7 にあります。
+- `FineRenderer`: 記述の primitive 解決と、同期的な再利用判定を行います。解決時に通り過ぎた composite 型は `FineComposite` で包んで署名へ前置します（[FineComposite.swift](../../Sources/FineUIKit/FineComposite.swift)）。透過ラッパが 1 render で最大 5 回 `body` を再解決するのを防ぐため、ラッパは `FineResolvedRenderable`（[FineResolvedRenderable.swift](../../Sources/FineUIKit/FineResolvedRenderable.swift)）で primitive を遅延キャッシュします。root の署名取得は孤立したスコープで起きてしまうため、`FineRenderer.prime(_:)` が root の再利用 identity を root 自身の観測スコープ内で尋ねます（commit `75e52b0`）。
 - `FineNodeScheduler`: 通常のツリーでは子ノードの `_update` を個別に観測し、該当ノードだけを再キューします（[FineNodeScheduler.swift](../../Sources/FineUIKit/FineNodeScheduler.swift)）。
-- `FineRenderContext`: scheduler、render gate、environment を子孫へ渡します（[FineRenderContext.swift](../../Sources/FineUIKit/FineRenderContext.swift)）。
+- `FineRenderContext`: scheduler、render gate、environment、宣言的アニメーション要求を子孫へ渡します（[FineRenderContext.swift](../../Sources/FineUIKit/FineRenderContext.swift)）。
 - `FineNodeHost`: List/Grid のセルや supplementary view 用に、独立した局所レンダーループを持ちます。この特殊経路は[UIKit 統合とコレクション](../integrations/uikit-collections.md)で扱います。
 
 ## 直近の設計上の優先事項
