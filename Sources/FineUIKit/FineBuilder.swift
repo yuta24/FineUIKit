@@ -50,7 +50,7 @@ public enum FineBuilder {
 
         for (index, child) in expression.enumerated() {
             guard let structural = child as? FineStructural else {
-                children.append(FineStructural(path: "[]", position: [index], content: child))
+                children.append(FineStructural(kind: .run, path: "[]", position: [index], content: child))
                 continue
             }
 
@@ -122,7 +122,7 @@ public enum FineBuilder {
             for child in component {
                 guard let structural = child as? FineStructural else {
                     children.append(
-                        FineStructural(path: "*", position: [iteration, unslottedPosition], content: child)
+                        FineStructural(kind: .run, path: "*", position: [iteration, unslottedPosition], content: child)
                     )
                     unslottedPosition += 1
                     continue
@@ -160,9 +160,15 @@ public enum FineBuilder {
         var unslottedPosition = 0
 
         return children.map { child in
-            guard !(child is FineStructural) else { return child }
+            // A branch slot is passed through — see `FineStructural.Kind`. A run
+            // is not: an array expression in one branch and a single child in
+            // the other have to end up in the same slot, or swapping between
+            // them rebuilds a view that could have been updated in place.
+            if let structural = child as? FineStructural, structural.kind == .branch {
+                return child
+            }
 
-            let slotted = FineStructural(path: component, position: [unslottedPosition], content: child)
+            let slotted = FineStructural(kind: .branch, path: component, position: [unslottedPosition], content: child)
             unslottedPosition += 1
             return slotted
         }

@@ -42,7 +42,15 @@ struct FineStructuralKey: Hashable, CustomStringConvertible {
 /// A duplicate the caller chose is still the caller's mistake, wherever it sits.
 func fineIsGeneratedSlot(_ key: AnyHashable) -> Bool {
     guard let structural = key.base as? FineStructuralKey else { return false }
-    return structural.user == nil
+    guard let user = structural.user else { return true }
+
+    // A slot can end up nested inside another when a transparent modifier hides
+    // the inner one from the builder — `helper().map { $0.backgroundColor(…) }`
+    // wraps the helper's slot in a `FineStyled`, and the outer slot reads the
+    // inner key through it as though a caller had chosen it. Asking the same
+    // question of that key is what keeps a made-up slot from being reported as
+    // the caller's mistake.
+    return fineIsGeneratedSlot(user)
 }
 
 /// Gives a builder child a slot in the builder's static structure, so its
@@ -71,6 +79,23 @@ func fineIsGeneratedSlot(_ key: AnyHashable) -> Bool {
 /// not already have one, rather than nesting a slot inside a slot.
 @MainActor
 struct FineStructural: FinePrimitiveRenderable {
+    /// What kind of structure produced this slot.
+    ///
+    /// A conditional's slot and a run's slot are wanted for different reasons,
+    /// and `FineBuilder.slotted(_:in:)` has to tell them apart: it passes a
+    /// branch slot through, because a `switch` reaches it as nested
+    /// `buildEither` calls and nesting one slot per level would make the first
+    /// case shallower than the rest — but it must *not* pass a run through, or
+    /// `if flag { [a] } else { b }` would leave the two branches in different
+    /// slots and rebuild the view on every swap.
+    enum Kind {
+        /// An `if`, an `if-else`, a `switch`.
+        case branch
+        /// A `for-in` or an array expression.
+        case run
+    }
+
+    let kind: Kind
     /// The static structure this child came from, outermost first.
     let path: String
     /// Runtime placement within the slot, outermost first: loop iterations, and
@@ -78,13 +103,15 @@ struct FineStructural: FinePrimitiveRenderable {
     let position: [Int]
     let content: FineResolvedRenderable
 
-    init(path: String, position: [Int], content: any Renderable) {
+    init(kind: Kind, path: String, position: [Int], content: any Renderable) {
+        self.kind = kind
         self.path = path
         self.position = position
         self.content = FineResolvedRenderable(content)
     }
 
-    private init(path: String, position: [Int], content: FineResolvedRenderable) {
+    private init(kind: Kind, path: String, position: [Int], content: FineResolvedRenderable) {
+        self.kind = kind
         self.path = path
         self.position = position
         self.content = content
@@ -93,12 +120,12 @@ struct FineStructural: FinePrimitiveRenderable {
     /// Nests this slot inside an enclosing one. The resolved content is carried
     /// over rather than re-boxed, so nesting costs no extra walk through `body`.
     func prefixed(by component: String) -> FineStructural {
-        FineStructural(path: component + "." + path, position: position, content: content)
+        FineStructural(kind: kind, path: component + "." + path, position: position, content: content)
     }
 
     /// Records that an enclosing loop produced this child on its `iteration`.
     func positioned(at iteration: Int) -> FineStructural {
-        FineStructural(path: path, position: [iteration] + position, content: content)
+        FineStructural(kind: kind, path: path, position: [iteration] + position, content: content)
     }
 
     func _makeView() -> UIView {
@@ -122,7 +149,12 @@ struct FineStructural: FinePrimitiveRenderable {
         // *where in the source* the child is, the key says *which* child it is.
         // Position is dropped entirely, or a keyed child in a loop would be
         // pinned to the iteration that first produced it.
-        if let user = content.primitive._key {
+        //
+        // Only a key someone chose, though. A slot that a transparent modifier
+        // hid from the builder arrives here looking like one, and deferring to
+        // it would drop this slot's position — leaving two children of one
+        // array with the same key, which is how they stopped being told apart.
+        if let user = content.primitive._key, !fineIsGeneratedSlot(user) {
             return AnyHashable(FineStructuralKey(path: path, position: nil, user: user))
         }
 
