@@ -295,6 +295,51 @@ struct FineDeclarativeAnimationTests {
         _ = window
     }
 
+    /// An update that was not animated still counts as an update.
+    ///
+    /// A view that first appears during the catch-up after `resume()` is
+    /// written to under a disabled transaction. If that does not count, the
+    /// view goes on believing it has never been written to, and the next
+    /// change — the first one anybody is actually watching — arrives without
+    /// the animation the description asked for.
+    @Test func aViewFirstWrittenSilentlyStillAnimatesItsNextChange() async throws {
+        let state = AnimationState()
+        let container = UIView()
+        let ui = FineUI(state: state) { state in
+            FineStack.vertical {
+                if state.isVisible {
+                    FineLabel(text: "B")
+                        .scale(state.isFocused ? 1.4 : 1)
+                        .animation(.linear(duration: 2))
+                }
+            }
+        }
+        let window = attachToWindow(container)
+        state.isVisible = false
+        ui.build(to: container)
+        window.layoutIfNeeded()
+        await waitTicks()
+
+        // The label is made while the tree is off screen, so its first write
+        // happens inside the catch-up's disabled transaction.
+        ui.suspend()
+        state.isVisible = true
+        await waitTicks()
+        ui.resume()
+
+        let stack = try #require(container.subviews.first as? UIStackView)
+        await waitUntil { !stack.arrangedSubviews.isEmpty }
+        let label = try #require(stack.arrangedSubviews.first)
+        label.layer.removeAllAnimations()
+
+        // Now the user is watching, and this one is meant to move.
+        state.isFocused = true
+        await waitUntil { !(label.layer.animationKeys() ?? []).isEmpty }
+
+        #expect((label.layer.animationKeys() ?? []).contains("transform"))
+        _ = window
+    }
+
     /// `nil` holds a subtree still while the mutation around it animates.
     @Test func aNilAnimationOptsASubtreeOutOfAnAnimatedMutation() async throws {
         let state = AnimationState()

@@ -74,15 +74,21 @@ struct FineAnimated: FinePrimitiveRenderable {
     /// slide in things the viewer never saw leave. A description asking to
     /// animate does not get to overrule either.
     static func resolved(_ animation: FineAnimation?, at view: UIView) -> FineTransactionValue {
-        if case .disabled = FineTransactionContext.current {
-            return .disabled
-        }
-
         let node = view.fineNode
         // Nothing to animate from, and nowhere to show it: a view still being
         // built holds only defaults, and one outside a window has no viewer.
         let hasSomethingToAnimateFrom = node.hasBeenUpdated && view.window != nil
+        // Recorded before anything can return, because an update that was not
+        // animated is still an update. A view that first appears during a
+        // catch-up is written to with animation off, and if that did not count
+        // it would go on believing it had never been written to — leaving the
+        // next change, the first one anybody watches, to arrive as a first
+        // render with no animation at all.
         node.hasBeenUpdated = true
+
+        if case .disabled = FineTransactionContext.current {
+            return .disabled
+        }
 
         guard let animation, hasSomethingToAnimateFrom else { return .disabled }
         return .animate(animation)
