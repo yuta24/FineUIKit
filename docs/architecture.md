@@ -456,7 +456,18 @@ func _update(_ view: UIView, context: FineRenderContext) {
 
 ### どの指標が読めるのか(Debug / Release)
 
-上の **+3.4%** は「この機能の有無」を A/B したときの差分で、実装を戻さない限り再現できません。一方、**同じベンチを Debug と Release で走らせて、どの指標がノイズに埋もれるか**は測り直せます(iPhone 17 シミュレータ、5 回計測)。
+上の **+3.4%** は「この機能の有無」を A/B したときの差分で、実装を戻さない限り再現できません。一方、**同じベンチを Debug と Release で走らせて、どの指標がノイズに埋もれるか**は測り直せます。
+
+計測環境(この数字はこの環境の数字です):
+
+| | |
+|---|---|
+| ホスト | Apple M4(Mac mini) |
+| Xcode | 27.0(27A5228h)、iOS SDK 27.0 |
+| ランタイム | iOS 27.0 シミュレータ(24A5370g)、iPhone 17 |
+| サンプル数 | 5(`XCTMeasureOptions` の既定。ウォームアップ 1 回を除く計測反復) |
+
+`XCTMeasureOptions` は既定のままで、サンプル数はコマンドラインからは変えられません(`-test-iterations` は**テスト実行の反復**であって XCTest の計測サンプル数ではありません)。比較する場合は同じ OS・同じ機種を指定してください — `-destination` に OS を書かないと、インストール済みランタイムのどれが選ばれるかは Xcode 任せになります。
 
 | 指標 | Debug | Release | 読めるか |
 |---|---|---|---|
@@ -473,7 +484,8 @@ func _update(_ view: UIView, context: FineRenderContext) {
 - Debug → Release の命令数削減は **9% だけ**です。このベンチは UIKit(既に最適化済み)が支配的で、Swift のコードは全体の一部でしかないことを示しています
 
 ```sh
-xcodebuild -scheme FineUIKit -destination 'platform=iOS Simulator,name=iPhone 17' \
+xcodebuild -scheme FineUIKit \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' \
   -configuration Release ENABLE_TESTABILITY=YES -parallel-testing-enabled NO \
   -only-testing:FineUIKitTests/RenderingPerformanceTests/testHeavyCellReconfigurationFineUIKit test
 ```

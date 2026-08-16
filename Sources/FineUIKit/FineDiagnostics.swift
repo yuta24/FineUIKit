@@ -74,12 +74,16 @@ public enum FineDiagnostics {
 
     /// Creates a view, watching for observable state read while doing it.
     ///
-    /// `makeView()` runs once per view identity, and outside every observation
-    /// scope — only `_update` is tracked. A value read while creating a view is
-    /// therefore never registered, and changing it later does nothing: no
-    /// re-render, no error, and a view still showing what the value was the
-    /// first time. Of the ways to be wrong that is the worst, because nothing
-    /// about it looks wrong.
+    /// `makeView()` runs once per view identity, and outside the observation
+    /// scope that re-renders anything — only `_update` is tracked that way. A
+    /// value read while creating a view therefore registers nothing that could
+    /// apply a later change: no re-render, no error, and a view still showing
+    /// what the value was the first time. Of the ways to be wrong that is the
+    /// worst, because nothing about it looks wrong.
+    ///
+    /// What this adds is a scope that only watches. It registers for the
+    /// notification and does not invalidate anything, so it changes what the
+    /// runtime *says* and never what it does.
     ///
     /// So the read is watched. If it never changes, nothing was ever wrong and
     /// nothing is said. If it does change, that is the moment the bug becomes
@@ -107,10 +111,11 @@ public enum FineDiagnostics {
                 handler(
                     """
                     FineUIKit \(name): a value read while creating its view has changed. \
-                    makeView() runs once per view identity and outside observation tracking, \
-                    so that read did not register and cannot apply the change — \
-                    unless updateView(_:environment:) writes the same value, the view is \
-                    now stale. Reading state in updateView is what makes it follow.
+                    makeView() runs once per view identity, and outside the observation \
+                    scope that re-renders — so that read registered nothing able to apply \
+                    the change. Unless updateView(_:environment:) writes the same value, \
+                    the view is now stale. Reading state in updateView is what makes it \
+                    follow.
                     """
                 )
             }

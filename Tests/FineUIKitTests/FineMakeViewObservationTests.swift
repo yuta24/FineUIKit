@@ -56,30 +56,44 @@ private struct ReadsWhileUpdating: FineViewRepresentable {
     }
 }
 
-/// `makeView()` runs once per view identity and outside every observation
-/// scope, so a value read there is never tracked and changing it later does
-/// nothing at all. The view keeps showing what the value was the first time,
-/// with no error and no rebuild — which is the worst way for it to be wrong.
+/// `makeView()` runs once per view identity, and outside the observation scope
+/// that re-renders, so a value read there registers nothing able to apply a
+/// later change. The view keeps showing what the value was the first time, with
+/// no error and no rebuild — which is the worst way for it to be wrong.
 ///
 /// Serialized because the diagnostics handler is process-wide.
 @MainActor
 @Suite(.serialized)
 struct FineMakeViewObservationTests {
-    private func captureMessages(_ body: @MainActor () async -> Void) async -> [String] {
+    /// Captures diagnostics for the duration of `body`, which is handed the
+    /// collector so it can wait for the message it is about.
+    ///
+    /// Waiting on the message rather than on a count of yields is the whole
+    /// point: the diagnostic arrives on a task of its own, and yielding a fixed
+    /// number of times gives that task an opportunity to run without
+    /// establishing that it did. One that lands after this restores the handler
+    /// would be missed, which is a test that passes for the wrong reason on a
+    /// fast machine and fails on a slow one.
+    private func captureMessages(_ body: @MainActor (Messages) async -> Void) async -> [String] {
         let previous = FineDiagnostics.handler
         defer { FineDiagnostics.handler = previous }
 
-        // The box outlives the handler assignment, so a message that arrives on
-        // a later turn is still collected.
         let messages = Messages()
         FineDiagnostics.handler = { messages.all.append($0) }
-        await body()
+        await body(messages)
         return messages.all
     }
 
     @MainActor
     private final class Messages {
         var all: [String] = []
+
+        /// Waits for a message the test is about, rather than for a while.
+        func waitFor(_ matches: @escaping (String) -> Bool) async {
+            for _ in 0..<200 where !all.contains(where: matches) {
+                await Task.yield()
+            }
+        }
     }
 
     private func waitTicks(_ count: Int = 40) async {
@@ -91,12 +105,12 @@ struct FineMakeViewObservationTests {
     @Test func aValueReadWhileCreatingAViewIsReportedWhenItChanges() async {
         let caption = Caption()
 
-        let messages = await captureMessages {
+        let messages = await captureMessages { messages in
             let view = FineRenderer.render(ReadsWhileCreating(caption: caption))
             #expect((view as? UILabel)?.text == "A")
 
             caption.text = "B"
-            await waitTicks()
+            await messages.waitFor { $0.contains("ReadsWhileCreating") }
 
             // The silent part: nothing re-reads it, so the label still says "A".
             #expect((view as? UILabel)?.text == "A")
@@ -119,7 +133,7 @@ struct FineMakeViewObservationTests {
         let caption = Caption()
         let container = UIView()
 
-        let messages = await captureMessages {
+        let messages = await captureMessages { messages in
             let ui = FineUI(state: caption) { caption in
                 ReadsWhileCreatingAndUpdating(caption: caption)
             }
@@ -127,7 +141,7 @@ struct FineMakeViewObservationTests {
             await waitTicks()
 
             caption.text = "B"
-            await waitTicks()
+            await messages.waitFor { $0.contains("ReadsWhileCreatingAndUpdating") }
 
             #expect((container.subviews.first as? UILabel)?.text == "B")
             _ = ui
@@ -139,11 +153,13 @@ struct FineMakeViewObservationTests {
     @Test func aValueReadWhileUpdatingIsNotReported() async {
         let caption = Caption()
 
-        let messages = await captureMessages {
+        let messages = await captureMessages { _ in
             let view = FineRenderer.render(ReadsWhileUpdating(caption: caption))
             #expect((view as? UILabel)?.text == "A")
 
             caption.text = "B"
+            // Nothing to wait *for* here — the assertion is that no message
+            // arrives — so this waits a bounded while and then checks.
             await waitTicks()
         }
 
@@ -159,7 +175,7 @@ struct FineMakeViewObservationTests {
         let caption = Caption()
         let container = UIView()
 
-        let messages = await captureMessages {
+        let messages = await captureMessages { messages in
             let ui = FineUI(state: caption) { caption in
                 ReadsWhileCreating(caption: caption)
             }
@@ -167,7 +183,7 @@ struct FineMakeViewObservationTests {
             await waitTicks()
 
             caption.text = "B"
-            await waitTicks()
+            await messages.waitFor { $0.contains("ReadsWhileCreating") }
             _ = ui
         }
 
@@ -179,7 +195,7 @@ struct FineMakeViewObservationTests {
     @Test func aTreeThatReadsNothingWhileCreatingSaysNothing() async {
         let caption = Caption()
 
-        let messages = await captureMessages {
+        let messages = await captureMessages { _ in
             _ = FineRenderer.render(FineStack.vertical {
                 FineLabel(text: caption.text)
                 FineButton(title: "Action") {}
