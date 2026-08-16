@@ -1718,18 +1718,22 @@ struct FineUITests {
         // An instance-specific name keeps this post from re-rendering every
         // live FineUI in concurrently running tests.
         let notificationName = Notification.Name("FineUIKitTests.injection.\(UUID().uuidString)")
-        fineUI.injectionNotificationName = notificationName
+        fineUI.hotReloadBackend = FineNotificationHotReloadBackend(name: notificationName)
         fineUI.build(to: container)
 
         NotificationCenter.default.post(name: notificationName, object: nil)
 
-        for _ in 0..<10 where bodyEvaluationCount < 2 {
+        for _ in 0..<200 where bodyEvaluationCount < 2 {
             await Task.yield()
         }
+        // Asserted rather than assumed: mutating before the reload landed would
+        // leave a final count of 3 reachable by a second route, and the test
+        // would pass while saying nothing about a stale scope.
+        #expect(bodyEvaluationCount == 2)
 
         counter.count = 1
 
-        for _ in 0..<10 where bodyEvaluationCount < 3 {
+        for _ in 0..<200 where bodyEvaluationCount < 3 {
             await Task.yield()
         }
         for _ in 0..<10 {

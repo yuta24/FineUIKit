@@ -70,14 +70,15 @@ final class FineUI {
     #endif
 
     #if DEBUG
+    /// Where reloads are reported from. Replaceable so a test can drive one
+    /// tree without a process-wide notification, and so which injection tool is
+    /// in use stays a fact about the backend rather than about the render loop.
+    /// Read once, in `build(to:)`.
+    var hotReloadBackend: any FineHotReloadBackend = FineNotificationHotReloadBackend()
+
     // nonisolated(unsafe): only written on the main actor; deinit reads it
     // when no other references remain.
-    private nonisolated(unsafe) var injectionObserver: (any NSObjectProtocol)?
-
-    /// The notification that triggers an injection re-render. Overridable so
-    /// tests can post to an instance-specific name instead of broadcasting to
-    /// every live `FineUI` in the process. Read once in `build(to:)`.
-    var injectionNotificationName = Notification.Name("INJECTION_BUNDLE_NOTIFICATION")
+    private nonisolated(unsafe) var hotReloadTask: Task<Void, Never>?
     #endif
 
     /// - Parameter avoidsKeyboard: When `true` (the default), the tree's
@@ -113,9 +114,9 @@ final class FineUI {
 
     deinit {
         #if DEBUG
-        if let injectionObserver {
-            NotificationCenter.default.removeObserver(injectionObserver)
-        }
+        // Ends the consumer, which is the last thing holding the backend's
+        // stream open; the backend itself goes with this object.
+        hotReloadTask?.cancel()
         #endif
     }
 
@@ -134,7 +135,7 @@ final class FineUI {
         render()
 
         #if DEBUG
-        observeInjection()
+        observeHotReload()
         #endif
     }
 
@@ -185,30 +186,48 @@ final class FineUI {
     }
 
     #if DEBUG
-    /// Re-renders after a code injection (InjectionIII / InjectionNext /
-    /// InjectionLite) so updated component implementations take effect.
-    /// Injection rebinds symbols, and the content's `body()` is one, so a
-    /// replacement takes effect on the next render. The closure initialiser is
-    /// the exception: what it stores is fixed when it is made, so a tree
-    /// written that way has to be rebuilt to pick up a change.
-    private func observeInjection() {
-        guard injectionObserver == nil else { return }
+    /// Renders again after a code injection (InjectionIII / InjectionNext /
+    /// InjectionLite) so replaced implementations take effect. Injection
+    /// rebinds symbols and the content's `body()` is one, so a replacement is
+    /// picked up by the next render. The closure initialiser is the exception:
+    /// what it stores is fixed when it is made, so a tree written that way has
+    /// to be rebuilt to see a change.
+    ///
+    /// Which tool reported the reload is the backend's business. This only
+    /// knows that one happened.
+    private func observeHotReload() {
+        // Building into a second container moves the tree rather than mounting
+        // another, so a consumer already running is the one to keep.
+        guard hotReloadTask == nil else { return }
 
-        injectionObserver = NotificationCenter.default.addObserver(
-            forName: injectionNotificationName,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                FineDiagnostics.rendering(because: .injection) {
-                    self?.render()
-                }
-                self?.onInjectionReload?()
+        // Subscribing before starting, so a backend that reports immediately
+        // has somewhere to report it.
+        let events = hotReloadBackend.events()
+        hotReloadBackend.start()
 
-                if FineDiagnostics.showsInjectionToast {
-                    FineDebugToast.show("FineUIKit reloaded", in: self?.container?.window)
+        // Deliberately weak: the backend outlives nothing here, but a consumer
+        // holding its tree would keep a screen's whole node graph alive for as
+        // long as it waited for a reload that may never come.
+        hotReloadTask = Task { @MainActor [weak self] in
+            for await event in events {
+                guard let self else { return }
+
+                switch event {
+                case .codeInjected:
+                    self.reloadInjectedCode()
                 }
             }
+        }
+    }
+
+    private func reloadInjectedCode() {
+        FineDiagnostics.rendering(because: .injection) {
+            render()
+        }
+        onInjectionReload?()
+
+        if FineDiagnostics.showsInjectionToast {
+            FineDebugToast.show("FineUIKit reloaded", in: container?.window)
         }
     }
     #endif

@@ -181,7 +181,7 @@ struct FineDebugTests {
         // An instance-specific name keeps this post from re-rendering every
         // live FineUI in concurrently running tests.
         let notificationName = Notification.Name("FineUIKitTests.toast.\(UUID().uuidString)")
-        ui.injectionNotificationName = notificationName
+        ui.hotReloadBackend = FineNotificationHotReloadBackend(name: notificationName)
         ui.build(to: container)
 
         NotificationCenter.default.post(name: notificationName, object: nil)
@@ -214,7 +214,7 @@ struct FineDebugTests {
             let ui = FineUI(state: DebugCounter()) { model in
                 FineLabel(text: "\(model.count)")
             }
-            ui.injectionNotificationName = notificationName
+            ui.hotReloadBackend = FineNotificationHotReloadBackend(name: notificationName)
             ui.build(to: container)
             return ui
         }
@@ -247,7 +247,7 @@ struct FineDebugTests {
             FineLabel(text: "\(model.count)")
         }
         let notificationName = Notification.Name("FineUIKitTests.toast.\(UUID().uuidString)")
-        ui.injectionNotificationName = notificationName
+        ui.hotReloadBackend = FineNotificationHotReloadBackend(name: notificationName)
         ui.build(to: container)
 
         NotificationCenter.default.post(name: notificationName, object: nil)
