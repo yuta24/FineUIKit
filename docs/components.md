@@ -12,8 +12,8 @@
 | `FineButton` | `UIButton` | `action` クロージャ。`.image` / `.configuration(UIButton.Configuration)` / `.enabled` |
 | `FineImage` | `UIImageView` | |
 | `FineStack` | `UIStackView` | `vertical` / `horizontal`、`spacing` / `alignment` / `distribution`。子は keyed + 位置ベースで差分適用 |
-| `FineList` | `UITableView` | diffable data source(`Identifiable`)。セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedRows()` / `.onSelect` / `.onDelete` / `.onPrefetch` / `.keyboardDismissMode`。行の高さは観測起因の変化に自動追従 |
-| `FineGrid` | `UICollectionView` | compositional layout。`columns: .count(n)` / `.adaptive(minimum:)`、セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedItems()` / `.onSelect` / `.onPrefetch` / `.keyboardDismissMode` |
+| `FineList` | `UITableView` | diffable data source(`Identifiable`)。セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedRows()` / `.onSelect` / `.onDelete` / `.onPrefetch` / `.onCancelPrefetch` / `.keyboardDismissMode`。行の高さは観測起因の変化に自動追従 |
+| `FineGrid` | `UICollectionView` | compositional layout。`columns: .count(n)` / `.adaptive(minimum:)`、セクション / ヘッダー・フッター / `.onRefresh` / `.reconfiguringOnlyChangedItems()` / `.onSelect` / `.onPrefetch` / `.onCancelPrefetch` / `.keyboardDismissMode` |
 | `FineTextField` | `UITextField` | `FineBinding<String>` で双方向。`.keyboardType` / `.returnKeyType` / `.secureTextEntry` / `.onSubmit` / `.enabled` / `.focused` |
 | `FineTextView` | `UITextView` | 複数行入力。`FineBinding<String>` + placeholder(UIKit にないので独自描画)。既定でスクロール無効=内容に合わせて伸びる。`.font` / `.textColor` / `.textAlignment` / `.editable` / `.scrollEnabled` / `.keyboardType` / `.focused` |
 | `FineToggle` | `UISwitch` | `FineBinding<Bool>`。`.enabled` |
@@ -51,7 +51,7 @@ FineGrid(photos, columns: .adaptive(minimum: 120)) { photo in
 - スクロール中にメインアクターで呼ばれます。**ここで処理を行わず、投げてください**。UIKit がどれだけ先を読むかは UIKit が決め、同じ行を複数回要求することもあります
 - `.onCancelPrefetch` は**対応関係のある呼び出しではありません**。表示された行は単に使われるだけで報告されず、要素がコレクションから消えた行も報告されません(それを知っているのは削除したコード自身なので)。**開始していない処理の中止を求められることはありません**が、既に終わった処理について呼ばれることはあるので冪等に書いてください
 - キャンセルは index で届きます。**index は差分適用で意味が変わる**ため、このライブラリは「実際に予告した要素」だけを報告します。並べ替えの後に届いたキャンセルが無関係な行を指していた場合、それは無視されます
-- どちらのハンドラも無い場合、`prefetchDataSource` は設定されません
+- `.onPrefetch` が無い場合、`prefetchDataSource` は設定されません。**`.onCancelPrefetch` だけを書いても何も起きません** — キャンセルは「始まった処理」の話なので、開始を報告する者がいなければ正直にキャンセルできるものもありません
 - グリッドで特に効きます。リストの1行は1セルですが、グリッドの1行は列数ぶんのセルです
 
 ---

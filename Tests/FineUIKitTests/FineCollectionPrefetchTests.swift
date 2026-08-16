@@ -102,6 +102,39 @@ struct FineCollectionPrefetchTests {
         #expect(try #require(removed as? UITableView).prefetchDataSource == nil)
     }
 
+    /// Cancelling is about work that started, so a list that reports no
+    /// starting has nothing to cancel.
+    ///
+    /// A cancel handler on its own is a strange thing to write, but it is legal
+    /// to write it, and what it must not do is hear about rows the app was
+    /// never told were coming — the one promise `onCancelPrefetch` makes.
+    @Test func aCancelHandlerAloneIsNeverToldToStopWorkThatNeverStarted() async throws {
+        var cancelled: [[String]] = []
+
+        let view = FineRenderer.render(
+            FineList(items) { FineLabel(text: $0.title) }
+                .onCancelPrefetch { cancelled.append($0.map(\.id)) }
+        )
+        let listView = try #require(view as? UITableView)
+        let window = attachToWindow(listView)
+        await waitUntil { listView.numberOfRows(inSection: 0) == 3 }
+
+        // Nothing here reports work starting, so UIKit is not asked to predict
+        // anything: a prefetch data source that could only ever drop the call
+        // is bookkeeping asked of the frameworks below for nothing.
+        #expect(listView.prefetchDataSource == nil)
+
+        // And were it asked anyway, a cancellation still says nothing.
+        let coordinator = try #require(
+            (listView as? FineListView)?.coordinator as? FineList<PrefetchItem>.Coordinator
+        )
+        coordinator.prefetchElements(withIDs: ["a", "b"])
+        coordinator.cancelPrefetchingElements(withIDs: ["a", "b"])
+
+        #expect(cancelled.isEmpty)
+        _ = window
+    }
+
     // MARK: - Grid
 
     @Test func gridReportsItemsAboutToBeNeeded() async throws {
