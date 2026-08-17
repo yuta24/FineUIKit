@@ -41,6 +41,7 @@ tags: [source-map, navigation, swift, uikit]
 | `Components/FineSegmentedControl.swift`, `FineDatePicker.swift`, `FinePageControl.swift` | binding ベースの選択コントロール | [UI 合成と状態](domain/ui-composition.md) |
 | `Components/FineProgressView.swift`, `FineActivityIndicator.swift`, `FineDivider.swift`, `FineSpacer.swift` | 表示・区切り・余白（autoclosure または非 binding） | [UI 合成と状態](domain/ui-composition.md) |
 | `Components/FineList.swift`, `FineGrid.swift`, `FineCollection.swift` | diffable data source、sections、セル、layout、共有コーディネータと `FineSection` | [UIKit 統合とコレクション](integrations/uikit-collections.md) |
+| `Components/FineCarousel.swift`, `FineShelf.swift` | 横ページング / 横スクロール 1 列、`FineFlatCollectionCoordinator` ベースの flat コレクション | [UIKit 統合とコレクション](integrations/uikit-collections.md) |
 | `UIControl+FineHandlers.swift`, `FineTapGesture.swift` | 再利用可能な `@MainActor` イベント handler | [テストと運用](operations/testing.md) |
 
 ## テストと既存資料
@@ -68,5 +69,7 @@ tags: [source-map, navigation, swift, uikit]
 - `FineDeclarativeAnimationTests.swift`: `.animation(_:)` の観測起因 animate、disabled 優先、catch-up 非アニメ、reuse 新行非 animate、継承 duration 上書き、`hasBeenUpdated` 順序、transform 合成と値変化の署名非依存。
 - `FineHotReloadTests.swift`(DEBUG): `FineHotReloadBackend` seam、shipping 後端の通知名固定、全ツリー到達、解放で登録解放。
 - `FineCollectionSharingTests.swift`: 1 つの `FineSection` 値が List/Grid 両方に描画、`FineSupplementaryKind` の elementKind 往復、header/footer identity 区別。
+- `FineCollectionPrefetchTests.swift`: List/Grid の `.onPrefetch` / `.onCancelPrefetch`。ハンドラがあるときだけ prefetchDataSource 設定、cancel 単独は何もしない、reorder 後の要素解決、離脱要素の忘却、reorder 後 cancel の無関係行除外、解決不能 index の非報告。
+- `FineCarouselShelfTests.swift`: carousel のページング・双方向 binding・範囲外 clamp 報告・pending page・ジェスチャ中書き込み遅延・diff。shelf の幅・fractional peek・幅変更 relays・select・prefetch 転送。
 
 テストの実行方法と変更別選択は[テストと運用](operations/testing.md)が正本です。内部設計のより詳細な一次資料は [`docs/architecture.md`](../docs/architecture.md)、公開 API の形状に至った判断と根拠は [`docs/api-design.md`](../docs/api-design.md)、公開 API の例は [`README.md`](../README.md) と [`docs/getting-started.md`](../docs/getting-started.md) にあります。
