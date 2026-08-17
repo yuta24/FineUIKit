@@ -28,6 +28,13 @@ public protocol FineViewRepresentable: Renderable {
     associatedtype ViewType: UIView
 
     /// Creates the wrapped view. Called once per view identity.
+    ///
+    /// Do not read `@Observable` state here. This runs outside the observation
+    /// scope that re-renders, so the read registers nothing able to apply a
+    /// later change, and it runs once, so nothing re-reads it either — the view
+    /// goes on showing the first value with nothing to say it is wrong. A DEBUG
+    /// build reports it if the value ever does change.
+    /// `updateView(_:environment:)` is where state belongs.
     func makeView() -> ViewType
 
     /// Writes the current description into `view`. Called on every render,

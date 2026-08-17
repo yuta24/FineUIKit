@@ -113,6 +113,29 @@ struct FineStructuralIdentityTests {
         #expect(stackView.arrangedSubviews[1] === footer)
     }
 
+
+
+
+
+    /// A transparent modifier hides a helper's slot from the builder, so the
+    /// slot the array puts around it reads that inner key through the modifier.
+    /// It must not mistake a made-up slot for one the caller chose: doing so
+    /// drops the array position, leaves two children sharing a key, and reports
+    /// the caller for a duplicate they did not write.
+    @Test func modifiedHelperChildrenAreStillToldApart() throws {
+        let stack = FineRenderer.render(FineStack.vertical {
+            for text in ["A", "B"] {
+                self.maybe(true, text).map { $0.backgroundColor(.red) }
+            }
+        })
+        let stackView = try #require(stack as? UIStackView)
+
+        #expect(stackView.arrangedSubviews.count == 2)
+        #expect(firstLabel(in: stackView.arrangedSubviews[0])?.text == "A")
+        #expect(firstLabel(in: stackView.arrangedSubviews[1])?.text == "B")
+    }
+
+
     /// Two conditionals in one builder occupy different slots, so the second one
     /// appearing must not adopt the view the first one left behind.
     @Test func separateConditionalsDoNotShareOneView() throws {

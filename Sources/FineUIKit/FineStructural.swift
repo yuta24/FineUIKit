@@ -42,7 +42,15 @@ struct FineStructuralKey: Hashable, CustomStringConvertible {
 /// A duplicate the caller chose is still the caller's mistake, wherever it sits.
 func fineIsGeneratedSlot(_ key: AnyHashable) -> Bool {
     guard let structural = key.base as? FineStructuralKey else { return false }
-    return structural.user == nil
+    guard let user = structural.user else { return true }
+
+    // A slot can end up nested inside another when a transparent modifier hides
+    // the inner one from the builder — `helper().map { $0.backgroundColor(…) }`
+    // inside a loop puts a `FineStyled` in the way, so the loop wraps it as if
+    // it had no slot and then reads the inner key through the modifier as one
+    // the caller chose. Asking the same question of that key is what keeps a
+    // made-up slot from being reported as the caller's mistake.
+    return fineIsGeneratedSlot(user)
 }
 
 /// Gives a builder child a slot in the builder's static structure, so its
@@ -122,7 +130,12 @@ struct FineStructural: FinePrimitiveRenderable {
         // *where in the source* the child is, the key says *which* child it is.
         // Position is dropped entirely, or a keyed child in a loop would be
         // pinned to the iteration that first produced it.
-        if let user = content.primitive._key {
+        //
+        // Only a key someone chose, though. A slot that a transparent modifier
+        // hid from the builder arrives here looking like one, and deferring to
+        // it would drop this slot's position — leaving two children of one run
+        // with the same key, which is how they stopped being told apart.
+        if let user = content.primitive._key, !fineIsGeneratedSlot(user) {
             return AnyHashable(FineStructuralKey(path: path, position: nil, user: user))
         }
 

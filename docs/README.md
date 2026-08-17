@@ -19,5 +19,6 @@
 |---|---|
 | [内部アーキテクチャ](architecture.md) | 記述層 / `FineNode` / `UIView` の三層、差分適用、observation の粒度 |
 | [公開 API の設計判断](api-design.md) | 現在の API 形状に至った判断とその根拠 |
+| [`FineList` の土台](list-backing-store.md) | `UITableView` を `UICollectionView` に載せ替えるかの検討と、やらない判断の根拠 |
 
 概要とクイックスタートは [README](../README.md) にあります。
