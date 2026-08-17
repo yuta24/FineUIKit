@@ -60,6 +60,8 @@ Swift Testing の振る舞いテストが大半を占めます。`RenderingPerfo
 | セル再利用と行バウンド lifecycle | `FineCellReuseTests.swift`、`FineLifecycleIdentityTests.swift`、`FineCellReuseViewStateTests.swift` | `FineState` が行をまたがない、行切替で lifecycle/.task が切替、キーボード/scroll/focus 書き戻し |
 | 宣言的アニメーションと transform | `FineDeclarativeAnimationTests.swift` | `.animation(_:)` の観測起因 animate、disabled 優先、catch-up 非アニメ、再利用セル非 animate、`hasBeenUpdated` 順序、transform 合成と署名非依存値 |
 | List/Grid のセクション型共有 | `FineCollectionSharingTests.swift` | 1 つの `FineSection` 値が両方に描画、`FineSupplementaryKind` 往復、header/footer の identity 区別 |
+| コレクションの prefetch（`.onPrefetch` / `.onCancelPrefetch`） | `FineCollectionPrefetchTests.swift` | ハンドラがあるときだけ `prefetchDataSource` 設定、cancel 単独は無効、要素ベース報告、reorder 後の解決と無関係行除外 |
+| `FineCarousel` / `FineShelf` | `FineCarouselShelfTests.swift` | カルーセルのページング・双方向 binding・clamp 報告・pending・ジェスチャ遅延・diff、shelf の幅・peek・幅変更・select・prefetch 転送 |
 
 ## 実装変更のチェックリスト
 
@@ -69,6 +71,7 @@ Swift Testing の振る舞いテストが大半を占めます。`RenderingPerfo
 - 宣言的アニメーションを変更する: `.animation(_:)` は `FineRenderContext.animation` 経由で子孫とノード局所再描画に届く設計です。disabled トランザクション（`withFineAnimation(nil)` と `resume()` 後 catch-up）を `.animation(_:)` が覆せないこと、初回描画と reuse セルの新行が非 animate であることを `FineDeclarativeAnimationTests.swift` で確認します（commit `c634ea3`、`21d5fa0`、`1dca181`）。
 - handler や builder の capture を変更する: `body()` 内の `self` は content であり、強参照キャプチャしてもリークしません(DAG)。リークするのは content が controller を強参照で保持したときだけです。`FineLeakTests.swift` が content の全キャプチャ形状の解放(`aContentCapturingItselfEverywhereIsReleased`)、controller 強参照のリーク(`aContentHoldingItsControllerLeaks`)、weak delegate の解放(`aWeakDelegatePointingAtTheControllerIsReleased`)を検証します。詳しくは[UI 合成と状態の保持とキャプチャ](../domain/ui-composition.md#保持とキャプチャ)を参照してください。
 - handler を変更する: UIKit の再利用時に action や gesture を二重登録せず、最新 closure に置換することを確認します。
+- コレクションの prefetch を変更する: `.onPrefetch` があるときだけ `prefetchDataSource` を設定し(`wantsPrefetching` = `onPrefetch != nil`)、`.onCancelPrefetch` 単独では設定しないことを確認します。キャンセルは `outstandingPrefetchIDs` に記録された要素だけを報告し、reorder 後に無関係な行を指した cancel は無視することを `FineCollectionPrefetchTests.swift` で確認します（commit `b7cf6b0`、`b6770d7`）。
 - 可視性ゲートを変更する: root とセルで異なる復帰経路が必要です。`FineRenderScopeTests` と List の振る舞いテストをセットで実行します。
 - 計測・診断を変更する: 計測は `_update` の実行点で行うことでノード局所再レンダリングを取りこぼさない点を確認します。詳しくは[レンダリング計測とデバッグ診断](diagnostics.md)を参照してください。
 
