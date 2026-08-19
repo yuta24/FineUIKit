@@ -66,6 +66,7 @@ tags: [source-map, navigation, swift, uikit]
 - `FineLifecycleIdentityTests.swift`: 行バウンド lifecycle。行切替で appear/disappear/.task が切替、再利用前でも前行の task をキャンセル、可視コンテナへ追加した子の `onAppear`。
 - `FineCellReuseViewStateTests.swift`: 再利用でのキーボード/scroll/focus binding 書き戻し。handover で全解放、park で scroll 位置保持。
 - `FineUpdateReasonTests.swift`: `UpdateReason`（`.initial`/`.parent`/`.observation`/`.injection`）、catch-up とセルの自己復帰、子へ理由が漏れない、理由が次回 render に漏れない、所要時間記録、`fineFormatted` 単位選択、`fineDebugDescription` の `because` 含有。
+- `FineMakeViewObservationTests.swift`: `makeView()` 内で読んだ `@Observable` 値の変化報告、`updateView` で読んだ値の非報告、observable を読まないツリーの無言、報告がタスク経由のためメッセージを待つ検証（DEBUG、`@Suite(.serialized)`）。
 - `FineDeclarativeAnimationTests.swift`: `.animation(_:)` の観測起因 animate、disabled 優先、catch-up 非アニメ、reuse 新行非 animate、継承 duration 上書き、`hasBeenUpdated` 順序、transform 合成と値変化の署名非依存。
 - `FineHotReloadTests.swift`(DEBUG): `FineHotReloadBackend` seam、shipping 後端の通知名固定、全ツリー到達、解放で登録解放。
 - `FineCollectionSharingTests.swift`: 1 つの `FineSection` 値が List/Grid 両方に描画、`FineSupplementaryKind` の elementKind 往復、header/footer identity 区別。

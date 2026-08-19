@@ -94,6 +94,8 @@ FineImage(image: poster)
 
 組み込み外の UIView は `FineViewRepresentable` でラップします。`makeView()` は identity ごとの生成、`updateView(_:environment:)` は現在の記述を実体へ反映する場所です。representable の具象型・モディファイア署名・key が一致する場合だけ再利用されるため、別の wrapper 型で UIView を共有することはありません（[FineViewRepresentable.swift](../../Sources/FineUIKit/FineViewRepresentable.swift)）。具象型の identity は `FineRepresentableAdapter` が自前で署名に入れるのではなく、解決が `FineViewRepresentable.body` を経由する時点で `FineComposite` に記録される仕組みに一本化されています（[レンダリングランタイムの構造](../architecture/overview.md)の差分適用の契約）。
 
+**`makeView()` で `@Observable` な状態を読まないでください。** `makeView()` は identity ごとに1回しか呼ばれず、再レンダリングを起こす観測スコープの外で実行されるため、ここでの読み取りは追跡されず、値が変わってもビューは最初の値のまま更新されません。DEBUG ビルドでは [レンダリング計測とデバッグ診断](../operations/diagnostics.md) の makeView 観測診断が、値が実際に変化した時点でこれを警告します。状態は毎レンダリング呼ばれ観測スコープの内側である `updateView(_:environment:)` で読んでください。
+
 ## 保持とキャプチャ
 
 `Renderable` の記述は使い捨ての値ですが、ノードが管理する UIView には[レンダリングランタイムの構造](../architecture/overview.md)の `FineNode` が付随し、最後に描画した primitive(記述) を保持します。`FineStack` などの `@FineBuilder` クロージャは `@escaping` で記述値に保持され、ノードがその記述を持つため、node 単位の再レンダリングが content を再評価できます。

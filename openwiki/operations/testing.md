@@ -49,6 +49,7 @@ Swift Testing の振る舞いテストが大半を占めます。`RenderingPerfo
 | `FineState`、environment | `FineStateTests.swift`、`FineEnvironmentTests.swift` | identity をまたぐ状態、注入と伝播 |
 | trait、Dynamic Type、診断 | `FineTraitTests.swift`、`FineDiagnosticsTests.swift` | trait 起因再描画、再構築理由 |
 | レンダリング計測、デバッグ説明、ハイライト、トースト、signpost | `FineDebugTests.swift`、`FineDiagnosticsTests.swift` | レンダリング回数、コンポーネント名解決、注入トースト、`_viewProvider` 透過 |
+| makeView() 観測診断 | `FineMakeViewObservationTests.swift` | makeView で読んだ値の変化報告、updateView で読んだ値の非報告、observable 非読み取りツリーの無言、メッセージ待機による非 flaky 検証 |
 | input、focus、action handler、grid math | `FineInteractionTests.swift` | 双方向 binding、target-action の再利用、境界条件 |
 | UIKit コントロール（stepper、segmented、date picker、page control、progress、activity indicator、divider、text view） | `FineComponentTests.swift`、`FineSliderTests.swift` | in-place 差分適用、クランプ書き戻し、modifier リセット、placeholder 描画、focus binding |
 | List/Grid の section、header/footer、行高、セル更新 | `FineListBehaviorTests.swift`、`FineUIKitTests.swift` | diffable、supplementary identity、layout 再計測 |
@@ -71,6 +72,7 @@ Swift Testing の振る舞いテストが大半を占めます。`RenderingPerfo
 - 宣言的アニメーションを変更する: `.animation(_:)` は `FineRenderContext.animation` 経由で子孫とノード局所再描画に届く設計です。disabled トランザクション（`withFineAnimation(nil)` と `resume()` 後 catch-up）を `.animation(_:)` が覆せないこと、初回描画と reuse セルの新行が非 animate であることを `FineDeclarativeAnimationTests.swift` で確認します（commit `c634ea3`、`21d5fa0`、`1dca181`）。
 - handler や builder の capture を変更する: `body()` 内の `self` は content であり、強参照キャプチャしてもリークしません(DAG)。リークするのは content が controller を強参照で保持したときだけです。`FineLeakTests.swift` が content の全キャプチャ形状の解放(`aContentCapturingItselfEverywhereIsReleased`)、controller 強参照のリーク(`aContentHoldingItsControllerLeaks`)、weak delegate の解放(`aWeakDelegatePointingAtTheControllerIsReleased`)を検証します。詳しくは[UI 合成と状態の保持とキャプチャ](../domain/ui-composition.md#保持とキャプチャ)を参照してください。
 - handler を変更する: UIKit の再利用時に action や gesture を二重登録せず、最新 closure に置換することを確認します。
+- `FineViewRepresentable` の makeView/updateView を変更する: `makeView()` は観測スコープ外で1回だけ実行されるため、状態の読み取りは `updateView(_:environment:)` に置いてください。DEBUG で makeView 観測診断が違反を報告するため、`FineMakeViewObservationTests.swift` で両経路（同期 render と scheduler）を確認します（commit `55b0545`、`8d143f5`）。詳しくは[レンダリング計測とデバッグ診断](diagnostics.md)を参照してください。
 - コレクションの prefetch を変更する: `.onPrefetch` があるときだけ `prefetchDataSource` を設定し(`wantsPrefetching` = `onPrefetch != nil`)、`.onCancelPrefetch` 単独では設定しないことを確認します。キャンセルは `outstandingPrefetchIDs` に記録された要素だけを報告し、reorder 後に無関係な行を指した cancel は無視することを `FineCollectionPrefetchTests.swift` で確認します（commit `b7cf6b0`、`b6770d7`）。
 - 可視性ゲートを変更する: root とセルで異なる復帰経路が必要です。`FineRenderScopeTests` と List の振る舞いテストをセットで実行します。
 - 計測・診断を変更する: 計測は `_update` の実行点で行うことでノード局所再レンダリングを取りこぼさない点を確認します。詳しくは[レンダリング計測とデバッグ診断](diagnostics.md)を参照してください。
