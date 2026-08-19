@@ -29,6 +29,8 @@ bar button の action は既存の `UIAction.primaryAction` を最新 closure �
 
 `FineList` は `UITableViewDiffableDataSource`、`FineGrid` は `UICollectionViewDiffableDataSource` と compositional layout に基づきます。いずれも `Identifiable` な item、section、header/footer、selection、refresh、keyboard dismiss を扱い、Grid は固定列数または adaptive 最小幅を指定できます（[FineList.swift](../../Sources/FineUIKit/Components/FineList.swift)、[FineGrid.swift](../../Sources/FineUIKit/Components/FineGrid.swift)）。
 
+`FineList` を `UICollectionView`(list configuration)に載せ替える案は検討済みで、**結論は「今はやらない」**です。重複解消は `FineCollectionCoordinator` への一本化（[#49](https://github.com/yuta24/FineUIKit/pull/49)）で既に達成されており、残るテーブル固有コードは約 75 行のみ。載せ替えの動機の大部分は別手段で回収済みで、一方で視覚的破壊（セパレータ、セル余白、ヘッダー追従、選択ハイライト）と 51 箇所のテスト書き換えを引き受ける釣り合いが取れません。判断の根拠と、要件が変わった場合の段階的分けは [`docs/list-backing-store.md`](../../docs/list-backing-store.md) が正本です。
+
 `fe0a733` 以降、両者の section は**同じ型** `FineSection<Element>` です（[FineCollection.swift](../../Sources/FineUIKit/Components/FineCollection.swift)）。`FineListSection` / `FineGridSection` はその typealias であり、1 つの section 値をどちらにも渡せます。差分ロジック（`plan(sections:reconfiguresAll:areElementsEqual:name:) → FineCollectionPlan` と `commit(_:)`）は共有の `FineCollectionCoordinator<Element>` に一本化され、テーブルとコレクションそれぞれに存在した section-Folding / `reconfiguredIDs` 補助付き signature 確認 / `needsApply` / snapshot 構築 / refresh 制御は重複しません。ヘッダー・フッターの enum は `FineSupplementaryKind`（`.header` / `.footer`）に統一され、`elementKind: String` は UIKit 境界でのみ変換します（List はかつて `Bool isHeader`、Grid は raw `String` を使っていました）。この後退（挙動の prior 差）は [`docs/components.md`](../../docs/components.md) で公に意図されます。`FineSection` 以外の同領域シンボル（`FineCollectionCoordinator`、`FineCollectionPlan`、`FineSupplementaryKind` など）は内部です。
 
 ### identity と更新ポリシー

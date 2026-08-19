@@ -7,7 +7,7 @@ tags: [diagnostics, debugging, performance, signpost, rendering]
 
 # レンダリング計測とデバッグ診断
 
-差分ベースのランタイムでは「再構築された理由」は分かっても、「そもそも再レンダリングされたか、何回か」が読めないことが多いです。FineUIKit は `bd4d3a1` 以降、ランタイムが既に通る計測ポイントを利用する4つの計測器と2つのデバッガ内省 API を備えています。いずれも観測経路や再利用判定を変えず、[レンダリングワークフロー](../workflows/rendering.md)の既存経路の上に乗っています。`55d03e6` 以降は各ノードに「誰が再描画を頼んだか（`UpdateReason`）」と「その `_update` が何を要したか（`Duration`）」が常時記録され、カウンタの「ビューに何が起きたか」を補完します。
+差分ベースのランタイムでは「再構築された理由」は分かっても、「そもそも再レンダリングされたか、何回か」が読めないことが多いです。FineUIKit は `bd4d3a1` 以降、ランタイムが既に通る計測ポイントを利用する4つの計測器と2つのデバッガ内省 API を備えています。いずれも観測経路や再利用判定を変えず、[レンダリングワークフロー](../workflows/rendering.md)の既存経路の上に乗っています。`55d03e6` 以降は各ノードに「誰が再描画を頼んだか（`UpdateReason`）」と「その `_update` が何を要したか（`Duration`）」が常時記録され、カウンタの「ビューに何が起きたか」を補完します。`55b0545` 以降は、`makeView()` 内で読んだ `@Observable` 値が変わった瞬間に警告を報告する仕組みも備えています（後述）。
 
 ## レンダリング回数
 
@@ -93,6 +93,26 @@ FineStack → UIStackView  renders 1  because it is new here            330.17 �
 
 全ライブツリーが同じ通知で再レンダリングするため、トーストはツリーごとに1枚重ねるのではなく件数をカウントし `×3` のように1枚に統合します。タップを吸わないよう `isUserInteractionEnabled = false` です。DEBUG ビルド限定、`FineDiagnostics.showsInjectionToast` で制御します。
 
+## makeView() で状態を読んだ場合の警告
+
+`FineViewRepresentable.makeView()` は**ビュー identity ごとに1回**しか呼ばれず、**再レンダリングを起こす観測スコープの外**で実行されます（そのように追跡されるのは `_update` だけです）。そのため、ここで `@Observable` な値を読んでも「後の変更を反映できる登録」は行われず、値が変わっても**何も起きません** — 再レンダリングもエラーも無く、ビューは最初の値を表示し続けます。doc comment はこれを禁じていましたが、違反しても何も知らせないため、問題に気づけないままでした。
+
+`55b0545` 以降、`FineDiagnostics.makingView(of:_:)`（[FineDiagnostics.swift](../../Sources/FineUIKit/FineDiagnostics.swift)）が `makeView()` を**監視だけを行う観測スコープ**で包みます。このスコープは `withObservationTracking` の通知を受け取るだけで何も無効化しないため、**ランタイムの言うことは変わっても、やることは変わりません**。observable を読まない記述はクロージャ呼び出し1回で何も登録せず、読んでも変わらなければ何も報告しません。報告は**値が実際に変化した時点**で行われます — それがバグが現実になる瞬間であり、`makeView` を疑う頃には誰もここを見ていないためです。
+
+コンポーネント名の解決は `FineNode.primitiveName` と同じ `_viewProvider` を使うため、メッセージはラッパーではなく `Badge` のような読者が認識できる名前を報告します。出力先は `FineDiagnostics.handler`（既定は `OSLog`）で、DEBUG ビルド限定です。
+
+```text
+FineUIKit FineRepresentableAdapter<Badge>: a value read while creating its view has changed.
+makeView() runs once per view identity, and outside the observation scope that re-renders —
+so that read registered nothing able to apply the change. Unless updateView(_:environment:)
+writes the same value, the view is now stale. Reading state in updateView is what makes it
+follow.
+```
+
+ビュー生成の両経路 — `FineRenderer.render(_:reusing:)`（テストが使う同期経路）と `FineNodeScheduler`（マウントされたツリーが通る経路）— がこの監視を経由します（[FineRenderer.swift](../../Sources/FineUIKit/FineRenderer.swift)、[FineNodeScheduler.swift](../../Sources/FineUIKit/FineNodeScheduler.swift)）。
+
+assert ではなくメッセージなのは、`makeView` と `updateView` の**両方**で同じ値を読んでいる場合をランタイムが区別できないためです。この形はビューとしては `updateView` 側の読み取りで正しく更新されますが、`makeView` 側の読み取りは何もしていません。ランタイムには「別の場所での読み取りが面倒を見ている」ことが見えないため、どちらも報告します。**修正は読み取りを `updateView(_:environment:)` に移すこと** — こちらは毎レンダリング呼ばれ、観測スコープの内側です。この契約と利用上の注意は[UI 合成と状態](../domain/ui-composition.md#任意の-uikit-view-を接続する)が正本です。
+
 ## デバッガからの内省
 
 `UIView` の `fineDebugDescription` と `fineDumpTree()`（[UIView+FineDebug.swift](../../Sources/FineUIKit/UIView+FineDebug.swift)）は、Xcode の View Debugger が見せない「ビューを作ったコンポーネント・key・モディファイア署名」を名付けます。UIKit の標準ビューにレンダリングするため、`debugDescription` の override ではなくデバッガ専用 API として実装されています。
@@ -131,6 +151,7 @@ FineUIKit が管理していないビューは `unmanaged` と表示されます
 ## 変更時の確認
 
 - カウンタや計測器を変更する: `FineDebugTests.swift` と `FineDiagnosticsTests.swift` を確認します。ハイライト・トーストはプロセス単位のフラグを使うため `@Suite(.serialized)` で直列化されています。
+- makeView() 観測診断を変更する: `FineMakeViewObservationTests.swift` を確認します。makeView で読んだ値の変化が報告されること、updateView で読んだ値は報告されないこと、observable を読まないツリーは無言であること、報告がタスク経由で届くためテストは yield 回数ではなくメッセージを待つこと（commit `55b0545`、`8d143f5`）。
 - 更新理由・所要時間を変更する: `FineUpdateReasonTests.swift`（初回 `.initial`、親起因 `.parent`、観測 `.observation`、catch-up、セルの自己復帰、子へ漏れないこと、理由が漏れないこと、所要時間の記録、`fineDebugDescription` の `because` 含有）と `FineDurationFormattingTests` を確認します。理由の宣言は「ゲートは catch-up だけ、ノード局所とホストはそれぞれ自身」の分離を壊さないでください（commit `3d209b4`）。
 - `_viewProvider` を持つモディファイアを追加する: コンテンツのビューへ描画するなら `_viewProvider` で内側を返し、自身のビューを持つならデフォルト（自身）のままにします。`looksThroughEveryModifierThatSharesAView` が全 transparent モディファイアを検査します。
 - 計測ポイントを移動する: 計測は `_update` の実行点にあることでノード局所再レンダリングを取りこぼさない点に注意してください。再利用判定の場所へ移動すると、ノード局所再レンダリングがカウントされなくなります。
