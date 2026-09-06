@@ -59,7 +59,8 @@ tags: [source-map, navigation, swift, uikit]
 - `FineLeakTests.swift`: handler/builder のキャプチャ形状による保持サイクル(リーク)と解放の検証。
 - `FineCompositeTests.swift`: composite 型の identity。同じ型なら in-place、別の型なら作り直し、組み込みだけのツリーには composite 署名が付かないこと。
 - `FineCompositeObservationTests.swift`: root 直下の composite が読む observable が正しくトラッキングされること（解決を `withObservationTracking` の内側に保つ回帰）。
-- `FineStructuralIdentityTests.swift`: `if`/`for` の構造スロット。分岐消滅でも兄弟 view と `FineState` 保持、key が reorder を追う、switch/else-if の同一スロット共用、生成 slot 衝突の非 assert。
+- `FineStructuralIdentityTests.swift`: `if`/`for` の構造スロット。分岐消滅でも兄弟 view と `FineState` 保持、key が reorder を追う、switch/else-if の同一スロット共用、生成 slot 衝突の非 assert、transparent modifier が隠したスロットの子区別。
+- `FineMakeViewObservationTests.swift`(DEBUG): `makeView()` 内の状態読み取り報告。renderer / scheduler 両経路、両場所読み取りの報告、`updateView` 読み取りの非報告、無読み取りツリーの無音。`@Suite(.serialized)`（handler がプロセス単位のため）。
 - `FineResolutionTests.swift`: 透過モディファイアが 1 render で primitive を一度だけ解決すること、root prime による root 直下 composite の観測。
 - `FineCellGranularityTests.swift`: セル内ノード局所観測（1 値変更が 1 ノードだけ更新）、ホストスコープ停止値の resume 復帰。
 - `FineCellReuseTests.swift`: `FineState` が行をまたがない、同一行再 render は状態保持。

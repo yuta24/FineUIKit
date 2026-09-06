@@ -39,6 +39,8 @@ flowchart TD
 
 primitive の `_update` 内で読まれた値は、scheduler がノードごとの `withObservationTracking` で追跡します。たとえば `FineLabel(text: state.title)` はラベル更新時に `title` を読むため、変更時はラベルのノードだけが再更新されます。root の構造を変えない値を eager に `body` 内で読むと root scope になるため、読み取り位置が性能と更新範囲を決めます。
 
+追跡されるのは `_update` で読まれた値だけです。ビューの**生成**（`_makeView()`、identity ごとに1回）はこのスコープの外で走るため、`FineViewRepresentable.makeView()` 内で読んだ値の変化はどこにも登録されません。この読み取りは DEBUG ビルドで監視専用スコープが拾い、変化した時点で[レンダリング計測とデバッグ診断](../operations/diagnostics.md)の makeView 報告を出します（契約は[UI 合成と状態](../domain/ui-composition.md)の `FineViewRepresentable` 節）。
+
 この経路は `FineState` の局所更新にも使われます。identity をまたぐ状態保持の条件は[UI 合成と状態](../domain/ui-composition.md)を参照してください。
 
 ノード局所再描画は記述を再評価せず、最後の `_update` で保存した `FineNode.context` を再利用します。そのため宣言的アニメーション（[UI 合成と状態](../domain/ui-composition.md)の `.animation(_:)`）が context に伝播した値は、観測起因の再描画でも記述どおりに animate します — 値が単独で変わるケースこそ宣言的アニメーションが存在する理由です。

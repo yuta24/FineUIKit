@@ -19,7 +19,7 @@ xcodebuild -scheme FineUIKit \
   test
 ```
 
-Swift Testing の振る舞いテストが大半を占めます。`RenderingPerformanceTests.swift` は XCTest の計測ケースで、性能の絶対値ではなく、変更前後の傾向を把握する用途です。
+Swift Testing の振る舞いテストが大半を占めます。`RenderingPerformanceTests.swift` は XCTest の計測ケースで、性能の絶対値ではなく、変更前後の傾向を把握する用途です。どの指標が読めるかは構成で変わります — Instructions Retired は Debug / Release 両方で、CPU Cycles / CPU Time は Release のみで判断に使え、Clock Monotonic はシミュレータではどちらも使えません。指標ごとの実測（RSD）、計測環境、再現コマンドは [`docs/architecture.md`](../../docs/architecture.md) §13 が正本です。
 
 ## CI の前提
 
@@ -56,7 +56,8 @@ Swift Testing の振る舞いテストが大半を占めます。`RenderingPerfo
 | handler や builder の capture、保持サイクル | `FineLeakTests.swift` | content が `self` を強キャプチャした全形状の解放、controller 強参照のリーク、weak delegate の解放検証 |
 | 性能回帰 | `RenderingPerformanceTests.swift` | 大量 list と changed-row-only の比較傾向 |
 | 更新理由・所要時間診断 | `FineUpdateReasonTests.swift` | 初回 `.initial`、親起因 `.parent`、観測 `.observation`、catch-up、セルの自己復帰、子へ理由が漏れないこと、理由が次回 render に漏れないこと、所要時間記録、`fineDebugDescription` の `because` 含有 |
-| 条件分岐/ループの構造 identity | `FineStructuralIdentityTests.swift`、`FineResolutionTests.swift`、`FineCellGranularityTests.swift` | 分岐消滅でも兄弟 view と `FineState` 保持、resolve-once と root prime、セル内ノード局所観測 |
+| 条件分岐/ループの構造 identity | `FineStructuralIdentityTests.swift`、`FineResolutionTests.swift`、`FineCellGranularityTests.swift` | 分岐消滅でも兄弟 view と `FineState` 保持、resolve-once と root prime、セル内ノード局所観測、モディファイア越しの生成 slot 誤認防止 |
+| `makeView` 内の状態読み取り診断 | `FineMakeViewObservationTests.swift`(DEBUG) | renderer / scheduler 両経路の報告、両場所読み取りの報告、`updateView` 読み取りの非報告、observable を読まないツリーの無音 |
 | セル再利用と行バウンド lifecycle | `FineCellReuseTests.swift`、`FineLifecycleIdentityTests.swift`、`FineCellReuseViewStateTests.swift` | `FineState` が行をまたがない、行切替で lifecycle/.task が切替、キーボード/scroll/focus 書き戻し |
 | 宣言的アニメーションと transform | `FineDeclarativeAnimationTests.swift` | `.animation(_:)` の観測起因 animate、disabled 優先、catch-up 非アニメ、再利用セル非 animate、`hasBeenUpdated` 順序、transform 合成と署名非依存値 |
 | List/Grid のセクション型共有 | `FineCollectionSharingTests.swift` | 1 つの `FineSection` 値が両方に描画、`FineSupplementaryKind` 往復、header/footer の identity 区別 |
