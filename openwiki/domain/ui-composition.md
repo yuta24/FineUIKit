@@ -92,7 +92,7 @@ FineImage(image: poster)
 
 ## 任意の UIKit view を接続する
 
-組み込み外の UIView は `FineViewRepresentable` でラップします。`makeView()` は identity ごとの生成、`updateView(_:environment:)` は現在の記述を実体へ反映する場所です。representable の具象型・モディファイア署名・key が一致する場合だけ再利用されるため、別の wrapper 型で UIView を共有することはありません（[FineViewRepresentable.swift](../../Sources/FineUIKit/FineViewRepresentable.swift)）。具象型の identity は `FineRepresentableAdapter` が自前で署名に入れるのではなく、解決が `FineViewRepresentable.body` を経由する時点で `FineComposite` に記録される仕組みに一本化されています（[レンダリングランタイムの構造](../architecture/overview.md)の差分適用の契約）。
+組み込み外の UIView は `FineViewRepresentable` でラップします。`makeView()` は identity ごとの生成、`updateView(_:environment:)` は現在の記述を実体へ反映する場所です。**`@Observable` な状態は `makeView()` で読まないでください** — 生成は identity ごとに1回、再レンダリングを起こす観測スコープの外で走るため、そこで読んだ値の変化を反映する登録は何も行われず、ビューは最初の値を表示し続けます（DEBUG ビルドでは値が変化した時点で[レンダリング計測とデバッグ診断](../operations/diagnostics.md)の makeView 報告が出ます）。状態は毎レンダリング呼ばれ観測スコープの内側である `updateView` で読みます。representable の具象型・モディファイア署名・key が一致する場合だけ再利用されるため、別の wrapper 型で UIView を共有することはありません（[FineViewRepresentable.swift](../../Sources/FineUIKit/FineViewRepresentable.swift)）。具象型の identity は `FineRepresentableAdapter` が自前で署名に入れるのではなく、解決が `FineViewRepresentable.body` を経由する時点で `FineComposite` に記録される仕組みに一本化されています（[レンダリングランタイムの構造](../architecture/overview.md)の差分適用の契約）。
 
 ## 保持とキャプチャ
 

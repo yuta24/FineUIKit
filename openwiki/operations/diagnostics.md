@@ -110,6 +110,33 @@ FineLabel → UILabel  renders 3  hidden
 
 FineUIKit が管理していないビューは `unmanaged` と表示されます。どちらも observable な状態を読まないため、ブレークポイントから呼んでもレンダリングループを乱しません。詳しい出力例は [`docs/diagnostics.md`](../../docs/diagnostics.md) の診断セクションが正本です。
 
+## `makeView()` 内の状態読み取りの報告
+
+`FineViewRepresentable.makeView()` は**ビュー identity ごとに1回**しか呼ばれず、再レンダリングを起こす観測スコープの外で走ります（そのように追跡されるのは `_update` だけです）。ここで読んだ `@Observable` な値は、後の変化を反映できる登録を何も行わないため、値が変わっても再レンダリングもエラーも無くビューは最初の値のままです — 何も間違って見えない、というのが最悪の失敗形です（[FineViewRepresentable.swift](../../Sources/FineUIKit/FineViewRepresentable.swift) のドキュメントコメント、契約は[UI 合成と状態](../domain/ui-composition.md)の `FineViewRepresentable` 節）。
+
+`55b0545` 以降、DEBUG ビルドではこの読み取りを**監視だけを行う観測スコープ**で包みます（`FineDiagnostics.makingView(of:)`、[FineDiagnostics.swift](../../Sources/FineUIKit/FineDiagnostics.swift)）。通知の登録は行いますが何も無効化しないため、**ランタイムの言うことは変わっても、やることは変わりません**。 observable を読まない記述はクロージャ呼び出し 1 回の追いコストしか払いません。
+
+```mermaid
+flowchart TD
+    Gen["renderer か scheduler がビューを生成"] --> Config{"DEBUG ビルド?"}
+    Config -->|"はい"| Watch["makeView() を監視専用スコープで実行"]
+    Config -->|"いいえ"| Plain["makeView() をそのまま実行"]
+    Watch --> Changed{"読んだ値が変化した"}
+    Changed -->|"はい"| Report["別 Task で handler へ報告"]
+    Changed -->|"いいえ"| Silent["何も言わない(実害が無い)"]
+```
+
+*報告は値が実際に変わった時点で初めて出ます。監視スコープは無効化を行わないため、この診断は再利用判定や観測経路を一切変えません。*
+
+報告は **値が変化した時点**で、`FineDiagnostics.handler`（既定は `OSLog`）へ届きます。メッセージ中のコンポーネント名は `FineNode.primitiveName` と同じ `_viewProvider` 解決によるもので、representable では `FineRepresentableAdapter<Badge>` のように adapter 型名として出ます。出力例と対策は [`docs/diagnostics.md`](../../docs/diagnostics.md) の makeView 節が正本です。
+
+2 つの注意点があります。
+
+- **`makeView` と `updateView` の両方で同じ値を読んでいる場合も報告されます。** ビューとしては `updateView` が面倒を見るため正しく更新されますが、ランタイムには別の場所の読み取りが見えず区別できません。assert ではなくメッセージなのはこのためです（`d47cb55` の文言修正: 何をしたかを言い、ビューがどうなるかは言わない）。
+- **値が変わらない限り何も出ません。** 変化しなければ実害が無いためです。報告を待つのではなく、`makeView` を書く時点で契約を守ってください。
+
+呼び出し点は runtime の 2 経路の両方にあります（`FineRenderer.render` と `FineNodeScheduler.renderChild`、`55b0545`）。`8d143f5` は文言を「再レンダリングを起こす観測スコープの外で走る」へ正し、テストを「固定回数の yield」から「対象のメッセージを待つ」方式に改めました — その理由は `FineMakeViewObservationTests.swift` の `captureMessages` コメントが正本です。
+
 ## コンポーネント名の解決とキャッシュ
 
 デバッグ説明が「モディファイアのラッパー」ではなく「ビューを作ったコンポーネント」を名付けるため、`FinePrimitiveRenderable._viewProvider`（[Renderable.swift](../../Sources/FineUIKit/Renderable.swift)）がコンポーネントを解決します。コンテンツのビューへ描画する transparent モディファイア（`FineStyled`、`FineKeyed`、`FineConstrained`、`FineCustomConstrained`、`FineTapModified`、`FineEnvironmentWriter`）は `_viewProvider` で内側のコンテンツを返し、自身のビューを持つモディファイア（`FinePadded`、`FineFramed`）は自身を返します。
@@ -132,6 +159,7 @@ FineUIKit が管理していないビューは `unmanaged` と表示されます
 
 - カウンタや計測器を変更する: `FineDebugTests.swift` と `FineDiagnosticsTests.swift` を確認します。ハイライト・トーストはプロセス単位のフラグを使うため `@Suite(.serialized)` で直列化されています。
 - 更新理由・所要時間を変更する: `FineUpdateReasonTests.swift`（初回 `.initial`、親起因 `.parent`、観測 `.observation`、catch-up、セルの自己復帰、子へ漏れないこと、理由が漏れないこと、所要時間の記録、`fineDebugDescription` の `because` 含有）と `FineDurationFormattingTests` を確認します。理由の宣言は「ゲートは catch-up だけ、ノード局所とホストはそれぞれ自身」の分離を壊さないでください（commit `3d209b4`）。
+- `makeView` の監視を変更する: 監視スコープは無効化しない（ランタイムのやることが変わらない）ことを壊さないでください。`FineMakeViewObservationTests.swift` が renderer と scheduler の両経路の報告、`updateView` で読む場合の非報告、observable を読まないツリーの無音を固定します。
 - `_viewProvider` を持つモディファイアを追加する: コンテンツのビューへ描画するなら `_viewProvider` で内側を返し、自身のビューを持つならデフォルト（自身）のままにします。`looksThroughEveryModifierThatSharesAView` が全 transparent モディファイアを検査します。
 - 計測ポイントを移動する: 計測は `_update` の実行点にあることでノード局所再レンダリングを取りこぼさない点に注意してください。再利用判定の場所へ移動すると、ノード局所再レンダリングがカウントされなくなります。
 
